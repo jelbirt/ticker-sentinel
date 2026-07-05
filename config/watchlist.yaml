@@ -1,0 +1,28 @@
+recipients:            # actual addresses live in secrets; these are labels
+  - primary
+  - secondary
+universe:
+  - ticker: CRWD
+    tags: [software, r40]
+  - ticker: DDOG
+    tags: [software, r40]
+  - ticker: SNOW
+    tags: [software, r40]
+  - ticker: NET
+    tags: [software, r40]
+  - ticker: ZS
+    tags: [software, r40]
+  - ticker: MDB
+    tags: [software, r40]
+  - ticker: TEAM
+    tags: [software, r40]
+  - ticker: PANW
+    tags: [software, r40]
+benchmark: SPY
+report:
+  top_n: 10
+  bottom_n: 5
+  timezone: America/New_York
+scoring:               # weights, overridable without code changes
+  fundamentals_weight: 0.6
+  technicals_weight: 0.4

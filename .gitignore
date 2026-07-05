@@ -1,0 +1,15 @@
+# secrets & local env — never commit
+.env
+.env.*
+
+# run outputs
+reports/
+
+# python
+__pycache__/
+*.pyc
+*.egg-info/
+.venv/
+.pytest_cache/
+build/
+dist/

@@ -1,0 +1,37 @@
+name: daily-report
+on:
+  schedule:
+    - cron: "45 21 * * 1-5"   # 21:45 UTC ≈ 4:45/5:45pm ET depending on DST
+  workflow_dispatch:
+    inputs:
+      tickers: {description: "Optional comma-separated override", required: false}
+      send_email: {description: "Send email?", type: boolean, default: true}
+      deep: {description: "Deep-dive mode (more history/detail)", type: boolean, default: false}
+
+permissions:
+  contents: write   # weekly fundamentals-cache commit
+
+jobs:
+  run:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with: {python-version: "3.12", cache: pip}
+      - run: pip install -e .
+      - run: python -m sentinel.run ${{ inputs.tickers && format('--tickers {0}', inputs.tickers) || '' }} ${{ inputs.send_email == false && '--no-email' || '' }} ${{ inputs.deep && '--deep' || '' }}
+        env:
+          SMTP_HOST: ${{ secrets.SMTP_HOST }}
+          SMTP_PORT: ${{ secrets.SMTP_PORT }}
+          SMTP_USER: ${{ secrets.SMTP_USER }}
+          SMTP_PASS: ${{ secrets.SMTP_PASS }}
+          RECIPIENT_EMAILS: ${{ secrets.RECIPIENT_EMAILS }}
+          TWELVEDATA_API_KEY: ${{ secrets.TWELVEDATA_API_KEY }}
+      - uses: actions/upload-artifact@v4
+        with: {name: report, path: reports/}
+      - name: refresh fundamentals cache commit (weekly)
+        if: github.event_name == 'schedule'
+        run: |
+          git config user.name sentinel-bot && git config user.email bot@users.noreply.github.com
+          git add data/cache
+          git diff --cached --quiet || { git commit -m "cache: refresh fundamentals" && git push; }
