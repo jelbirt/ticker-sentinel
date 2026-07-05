@@ -27,7 +27,7 @@ FLAG_LABELS = {
 }
 
 CSV_COLUMNS = [
-    "ticker", "score", "r40_fcf", "r40_ebitda", "r40_sbc_adj", "rule_of_x", "r40_trend",
+    "ticker", "company_name", "score", "r40_fcf", "r40_ebitda", "r40_sbc_adj", "rule_of_x", "r40_trend",
     "growth", "growth_source", "fcf_margin", "ebitda_margin", "op_margin",
     "fcf_margin_ex_sbc", "dilution", "sbc_intensity", "ev_revenue", "fcf_yield",
     "valuation", "statement_date", "stale", "flags",
@@ -63,6 +63,20 @@ def flag_labels(sc: Scorecard) -> list[str]:
     return [FLAG_LABELS.get(f, f) for f in sc.flags]
 
 
+def r40_breadth(sc: Scorecard) -> int:
+    """How many of the three R40 variants clear 40 (None never counts)."""
+    return sum(
+        1 for v in (sc.r40_fcf, sc.r40_ebitda, sc.r40_sbc_adj) if v is not None and v >= 0.40
+    )
+
+
+def rank_key(sc: Scorecard, ranking: str):
+    """Sort key (ascending sort, so negated): breadth-first or plain score."""
+    if ranking == "breadth":
+        return (-r40_breadth(sc), -(sc.score or 0.0))
+    return (-(sc.score or 0.0),)
+
+
 def build_context(
     scorecards: list[Scorecard],
     cfg: Config,
@@ -72,7 +86,8 @@ def build_context(
     today: date | None = None,
 ) -> dict:
     scored = sorted(
-        (sc for sc in scorecards if sc.score is not None), key=lambda s: s.score, reverse=True
+        (sc for sc in scorecards if sc.score is not None),
+        key=lambda s: rank_key(s, cfg.ranking),
     )
     unscored = [sc for sc in scorecards if sc.score is None]
     strongest = scored[: cfg.top_n]

@@ -39,6 +39,7 @@ def load_fixture_inputs(fixtures_dir: Path = FIXTURES_DIR) -> list[FundamentalIn
                 df,
                 raw.get("market_cap"),
                 notes=[f"{raw['ticker']}: fixture data ({raw.get('profile', '')})"],
+                company_name=raw.get("name"),
             )
         )
     return inputs

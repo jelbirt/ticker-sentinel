@@ -33,6 +33,7 @@ class Config:
     top_n: int = 10
     bottom_n: int = 5
     timezone: str = "America/New_York"
+    ranking: str = "breadth"  # "breadth": most R40 variants ≥ 40 first; "score": plain F-score
     fundamentals_weight: float = 0.6
     technicals_weight: float = 0.4
 
@@ -60,6 +61,7 @@ def load_config(path: Path | None = None) -> Config:
         top_n=int(report.get("top_n", 10)),
         bottom_n=int(report.get("bottom_n", 5)),
         timezone=str(report.get("timezone", "America/New_York")),
+        ranking=str(report.get("ranking", "breadth")),
         fundamentals_weight=float(scoring.get("fundamentals_weight", 0.6)),
         technicals_weight=float(scoring.get("technicals_weight", 0.4)),
     )

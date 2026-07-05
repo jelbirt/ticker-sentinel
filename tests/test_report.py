@@ -65,6 +65,42 @@ def test_cli_dry_run_end_to_end(tmp_path, capsys):
     assert "ALFA" in out and "r40_fcf" in out
 
 
+def test_company_names_rendered(html):
+    assert "Alfa Systems, Inc." in html
+    assert "Bravo Cloud Corp." in html
+
+
+def test_legend_rendered(html):
+    assert "How to read this report" in html
+    assert "Rule of 40" in html
+    assert "stock-based compensation" in html
+    assert "free cash flow" in html
+
+
+def test_breadth_ranking_beats_raw_score():
+    """A name passing all 3 R40 variants outranks a higher-scoring 1-variant name."""
+    from dataclasses import replace
+
+    from sentinel.indicators.fundamentals import Scorecard
+    from sentinel.report.builder import rank_key
+
+    all_three = Scorecard(
+        ticker="AAA", r40_fcf=0.45, r40_ebitda=0.42, r40_sbc_adj=0.41, score=50.0
+    )
+    one_only = Scorecard(
+        ticker="BBB", r40_fcf=0.55, r40_ebitda=0.30, r40_sbc_adj=0.25, score=70.0
+    )
+    ranked = sorted([one_only, all_three], key=lambda s: rank_key(s, "breadth"))
+    assert [s.ticker for s in ranked] == ["AAA", "BBB"]
+    # plain score mode preserves old behavior
+    ranked = sorted([one_only, all_three], key=lambda s: rank_key(s, "score"))
+    assert [s.ticker for s in ranked] == ["BBB", "AAA"]
+    # None variants never count toward breadth
+    missing = replace(all_three, r40_ebitda=None, r40_sbc_adj=None)
+    ranked = sorted([one_only, missing], key=lambda s: rank_key(s, "breadth"))
+    assert [s.ticker for s in ranked] == ["BBB", "AAA"]
+
+
 def test_small_watchlist_weakest_empty(scored):
     cfg = load_config()  # top_n=10 > 3 fixtures
     ctx = build_context(scored, cfg, run_type="dry", notes=[], today=FIXED_TODAY)

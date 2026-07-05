@@ -140,6 +140,7 @@ def inputs_from_canonical(
     market_cap: float | None,
     annual_revenue: dict[date, float] | None = None,
     notes: list[str] | None = None,
+    company_name: str | None = None,
 ) -> FundamentalInputs:
     """Canonical statements frame -> FundamentalInputs for the indicator engine."""
     statement_date: date | None = None
@@ -151,6 +152,7 @@ def inputs_from_canonical(
 
     return FundamentalInputs(
         ticker=ticker,
+        company_name=company_name,
         ttm_now=build_ttm(stmts, 0),
         ttm_minus_2q=build_ttm(stmts, 2),
         ttm_minus_4q=build_ttm(stmts, 4),
@@ -195,9 +197,16 @@ def _fetch_statements(ticker: str) -> tuple[pd.DataFrame, dict[str, Any]]:
         except Exception:
             pass
 
+    company_name: str | None = None
+    try:
+        company_name = t.info.get("shortName") or t.info.get("longName")
+    except Exception:
+        pass
+
     meta = {
         "fetched_at": datetime.now(timezone.utc).isoformat(),
         "market_cap": market_cap,
+        "company_name": company_name,
         "annual_revenue": annual_revenue,
         "source": "yfinance",
     }
@@ -209,14 +218,17 @@ def get_fundamentals(ticker: str, force_refresh: bool = False) -> tuple[Fundamen
     notes: list[str] = []
     cached_df, cached_meta = cache.load(ticker)
 
-    if not force_refresh and cache.is_fresh(cached_meta):
+    # "company_name" in meta doubles as a cache-schema check: entries written
+    # before the field existed get refreshed instead of served for a week
+    if not force_refresh and cache.is_fresh(cached_meta) and "company_name" in (cached_meta or {}):
         df, meta = cached_df, cached_meta
     else:
         try:
             fresh_df, meta = _fetch_statements(ticker)
             df = cache.merge_statements(cached_df, fresh_df)
-            if meta.get("market_cap") is None and cached_meta:
-                meta["market_cap"] = cached_meta.get("market_cap")
+            for carry in ("market_cap", "company_name"):
+                if meta.get(carry) is None and cached_meta:
+                    meta[carry] = cached_meta.get(carry)
             cache.save(ticker, df, meta)
         except Exception as exc:
             log.warning("fundamentals fetch failed for %s: %s", ticker, exc)
@@ -231,6 +243,11 @@ def get_fundamentals(ticker: str, force_refresh: bool = False) -> tuple[Fundamen
         date.fromisoformat(k): v for k, v in (meta or {}).get("annual_revenue", {}).items()
     }
     inputs = inputs_from_canonical(
-        ticker, df, (meta or {}).get("market_cap"), annual_revenue, notes
+        ticker,
+        df,
+        (meta or {}).get("market_cap"),
+        annual_revenue,
+        notes,
+        company_name=(meta or {}).get("company_name"),
     )
     return inputs, notes

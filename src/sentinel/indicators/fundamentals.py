@@ -44,6 +44,7 @@ class FundamentalInputs:
     needs the growth denominator a further 4 quarters back, hence −6Q and −8Q.
     """
     ticker: str
+    company_name: str | None = None
     ttm_now: TTMWindow | None = None
     ttm_minus_2q: TTMWindow | None = None
     ttm_minus_4q: TTMWindow | None = None
@@ -62,6 +63,7 @@ class FundamentalInputs:
 @dataclass
 class Scorecard:
     ticker: str
+    company_name: str | None = None
     growth: float | None = None
     growth_source: str | None = None  # "ttm" | "annual"
     fcf_margin: float | None = None
@@ -195,7 +197,9 @@ def _annual_growth(annual_revenue: dict[date, float]) -> float | None:
 
 def compute_scorecard(inp: FundamentalInputs, today: date | None = None) -> Scorecard:
     """Assemble the full section-5 scorecard. Missing data flags, never raises."""
-    sc = Scorecard(ticker=inp.ticker, statement_date=inp.statement_date)
+    sc = Scorecard(
+        ticker=inp.ticker, company_name=inp.company_name, statement_date=inp.statement_date
+    )
     now = inp.ttm_now
 
     if now is None or now.revenue is None:
