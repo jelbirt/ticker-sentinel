@@ -11,10 +11,11 @@ log = logging.getLogger(__name__)
 
 def send_report(html: str, subject: str) -> tuple[bool, str]:
     """Send the HTML report. Returns (sent, human-readable status) — never raises."""
-    host = os.environ.get("SMTP_HOST", "smtp.gmail.com")
-    port = int(os.environ.get("SMTP_PORT", "587"))
-    user = os.environ.get("SMTP_USER")
-    password = os.environ.get("SMTP_PASS")
+    # `or` (not .get defaults): unset secrets reach Actions steps as empty strings
+    host = os.environ.get("SMTP_HOST") or "smtp.gmail.com"
+    port = int(os.environ.get("SMTP_PORT") or "587")
+    user = os.environ.get("SMTP_USER") or None
+    password = os.environ.get("SMTP_PASS") or None
     recipients = [
         r.strip() for r in os.environ.get("RECIPIENT_EMAILS", "").split(",") if r.strip()
     ]
