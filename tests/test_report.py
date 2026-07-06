@@ -84,6 +84,9 @@ def test_legend_rendered(html):
     # alert terms are always defined (movers can mention them any day)...
     assert "relative strength index" in html
     assert "RS 3m" in html
+    assert "earnings per share" in html          # EPS expanded
+    assert "Golden / death cross" in html
+    assert "FINRA" in html
     # ...but the deep-grid glossary only ships with --deep
     assert "Deep-dive grid" not in html
 
