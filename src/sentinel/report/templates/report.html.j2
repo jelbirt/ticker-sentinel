@@ -8,7 +8,7 @@
     <th align="right" style="padding:8px 10px;">R40 SBC-adj</th>
     <th align="right" style="padding:8px 10px;">Growth</th>
     <th align="right" style="padding:8px 10px;">FCF mgn</th>
-    <th align="left" style="padding:8px 10px;">Trend (1y)</th>
+    <th align="left" style="padding:8px 10px;">Trend</th>
     <th align="left" style="padding:8px 10px;">Valuation</th>
     <th align="left" style="padding:8px 10px;">{{ "Why weakest" if show_reason else "Flags" }}</th>
   </tr>
@@ -94,7 +94,7 @@
           <tr style="background-color:#33404d;color:#ffffff;">
             <th align="left" style="padding:8px 10px;">Ticker</th>
             <th align="right" style="padding:8px 10px;">T score</th>
-            <th align="left" style="padding:8px 10px;">Trend (1y)</th>
+            <th align="left" style="padding:8px 10px;">Trend</th>
             <th align="right" style="padding:8px 10px;">RSI</th>
             <th align="right" style="padding:8px 10px;">RS 3m</th>
             <th align="right" style="padding:8px 10px;">vs 52w high</th>
@@ -171,13 +171,14 @@
         <b>EBITDA</b> &mdash; earnings before interest, taxes, depreciation &amp; amortization; the stricter accounting-basis margin.<br>
         <b>SBC</b> &mdash; stock-based compensation. The SBC-adj variant treats it as a cash cost &mdash; the &ldquo;honest&rdquo; R40.<br>
         <b>Growth</b> &mdash; trailing-twelve-month revenue vs a year earlier (fiscal-year based when flagged &ldquo;Growth from annual&rdquo;).<br>
-        <b>Comp</b> &mdash; composite 0&ndash;100: weighted blend of <b>F</b> (fundamental score: driven by R40&nbsp;FCF with bonuses for breadth and improving trend, minus penalties for dilution and heavy SBC) and <b>T</b> (technical score: trend state, 3-month strength vs SPY, recent crosses, distance from the 52-week high). Fundamentals say <i>what's</i> good; technicals say <i>how it's trading now</i>.<br>
-        <b>Trend (1y)</b> &mdash; &uarr; price above both the 50- and 200-day averages, &darr; below both, &rarr; in between; the sparkline is the 1-year price path (green = up on the year).<br>
-        <b>Valuation</b> &mdash; price label only, never part of Score: <i>cheap</i> (FCF yield &gt; 4%), <i>fair</i>, or <i>priced-for-perfection</i> (&gt; 12&times; revenue and &lt; 1% FCF yield).<br>
+        <b>Comp</b> &mdash; the ranking number: a 0&ndash;100 composite blending <b>F</b> and <b>T</b> below. Fundamentals say <i>what's</i> good; technicals say <i>how it's trading now</i>.<br>
+        <b>F</b> &mdash; fundamental score: driven by R40&nbsp;FCF, with bonuses for passing more variants and an improving trend, penalties for dilution and heavy SBC.<br>
+        <b>T</b> &mdash; technical score: trend state, 3-month strength vs SPY, recent crosses, and distance from the 52-week high.<br>
+        <b>Trend</b> &mdash; &uarr; price above both the 50- and 200-day averages, &darr; below both, &rarr; in between; the sparkline is the 1-year price path (green = up on the year).<br>
+        <b>Valuation</b> &mdash; price label only, never part of Comp: <i>cheap</i> (FCF yield &gt; 4%), <i>fair</i>, or <i>priced-for-perfection</i> (&gt; 12&times; revenue and &lt; 1% FCF yield).<br>
         <b>Flags</b> &mdash; caveats on data quality (stale/short history) or earnings quality (dilution, high SBC, SBC-inflated R40).<br>
-        <b>RSI</b> &mdash; 14-day relative strength index, 0&ndash;100 momentum gauge: &gt; 70 overbought, &lt; 30 oversold (informational only, barely scored).<br>
+        <b>RSI</b> &mdash; 14-day relative strength index, 0&ndash;100 momentum gauge: &gt; 70 overbought, &lt; 30 oversold.<br>
         <b>RS 3m</b> &mdash; 3-month return relative to SPY; positive means beating the market, negative means lagging it.<br>
-        <b>Vol ratio / unusual volume</b> &mdash; 20-day vs 100-day average trading volume; &gt; 1.5&times; means unusual activity worth a look.<br>
         <b>Golden / death cross</b> &mdash; the 50-day average crossing above (📈 golden, bullish) or below (📉 death, bearish) the 200-day average within the last 10 sessions; classic trend-shift markers.<br>
         <b>EPS</b> &mdash; earnings per share: quarterly profit divided by share count; the number analysts publish estimates for.<br>
         <b>Est. revisions 30d</b> &mdash; how many analysts raised (▲) vs cut (▼) current-quarter EPS estimates in the last 30 days; the freshest fundamental tell between earnings reports.<br>
@@ -192,7 +193,8 @@
         <b>Dilution</b> &mdash; 1-year growth in diluted share count; your ownership shrinks by this much per year, &gt; 3% is flagged.<br>
         <b>SBC int.</b> &mdash; stock-based compensation as % of TTM revenue; &gt; 15% is flagged.<br>
         <b>EV/Rev</b> &mdash; enterprise value (market cap + debt &minus; cash) &divide; TTM revenue; the size-adjusted price tag.<br>
-        <b>FCF yield</b> &mdash; TTM free cash flow &divide; market cap; the cash return you'd earn at today's price &mdash; higher = cheaper.
+        <b>FCF yield</b> &mdash; TTM free cash flow &divide; market cap; the cash return you'd earn at today's price &mdash; higher = cheaper.<br>
+        <b>Vol ratio</b> &mdash; 20-day vs 100-day average trading volume; &gt; 1.5&times; = unusual activity.
         {% endif %}
       </td></tr>
       <tr><td style="padding:10px 24px 16px;font-family:Arial,Helvetica,sans-serif;font-size:11px;color:#8a94a0;">
