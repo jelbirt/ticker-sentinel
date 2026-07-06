@@ -16,15 +16,15 @@
   <tr style="background-color:{{ '#ffffff' if loop.index is odd else '#f2f5f8' }};border-bottom:1px solid #dde3e9;">
     <td style="padding:7px 10px;white-space:nowrap;"><span style="font-weight:bold;">{{ sc.ticker }}</span>{% if sc.company_name %}<br><span style="font-size:11px;color:#66727f;">{{ sc.company_name }}</span>{% endif %}</td>
     <td align="right" style="padding:7px 10px;white-space:nowrap;"><span style="font-weight:bold;">{{ sc.composite|score }}</span><br><span style="font-size:10px;color:#66727f;">F {{ sc.score|score }} · T {{ sc.technical_score|score }}</span></td>
-    <td align="right" style="padding:7px 10px;font-weight:bold;">{{ sc.r40_fcf|pts }}</td>
-    <td align="right" style="padding:7px 10px;">{{ sc.r40_ebitda|pts }}</td>
-    <td align="right" style="padding:7px 10px;">{{ sc.r40_sbc_adj|pts }}</td>
+    <td align="right" style="padding:7px 10px;{% if sc.r40_fcf is not none and sc.r40_fcf >= 0.40 %}font-weight:bold;{% endif %}">{{ sc.r40_fcf|pts }}</td>
+    <td align="right" style="padding:7px 10px;{% if sc.r40_ebitda is not none and sc.r40_ebitda >= 0.40 %}font-weight:bold;{% endif %}">{{ sc.r40_ebitda|pts }}</td>
+    <td align="right" style="padding:7px 10px;{% if sc.r40_sbc_adj is not none and sc.r40_sbc_adj >= 0.40 %}font-weight:bold;{% endif %}">{{ sc.r40_sbc_adj|pts }}</td>
     <td align="right" style="padding:7px 10px;">{{ sc.growth|pct }}</td>
     <td align="right" style="padding:7px 10px;">{{ sc.fcf_margin|pct }}</td>
     <td style="padding:7px 10px;white-space:nowrap;">{{ trend_arrows.get(sc.tech.trend_state, "—") if sc.tech else "—" }}{% if spark_src.get(sc.ticker) %}<br><img src="{{ spark_src[sc.ticker] }}" width="120" height="30" alt="1y price" style="display:block;border:0;">{% endif %}</td>
     <td style="padding:7px 10px;">{{ sc.valuation or "—" }}</td>
     {% if show_reason %}
-    <td style="padding:7px 10px;color:#8a2a2a;">{{ sc.reason or "—" }}</td>
+    <td style="padding:7px 10px;color:#8a2a2a;">{{ sc.reason or "—" }}{% if sc.flags %}<br><span style="font-size:11px;color:#8a6d00;">{{ flag_labels(sc)|join(" · ") }}</span>{% endif %}</td>
     {% else %}
     <td style="padding:7px 10px;color:#8a6d00;">{{ flag_labels(sc)|join(" · ") or "—" }}</td>
     {% endif %}
@@ -163,7 +163,7 @@
       <tr><td style="padding:14px 24px 4px;border-top:1px solid #d8dee5;font-family:Arial,Helvetica,sans-serif;font-size:13px;font-weight:bold;color:#1f2d3d;">How to read this report</td></tr>
       <tr><td style="padding:2px 24px 12px;font-family:Arial,Helvetica,sans-serif;font-size:11px;color:#55606c;line-height:1.6;">
         Each row is one stock's quality check: did revenue growth plus profitability clear the &ldquo;Rule of 40&rdquo; bar?
-        Rows are ranked by how many R40 variants clear 40, then by Score. The three variants use the same growth number but
+        Rows are ranked by how many R40 variants clear 40 (those cells are shown <b>bold</b> &mdash; more bold cells, higher rank), then by Comp. The three variants use the same growth number but
         different profit margins &mdash; when they agree, the quality is real; when only R40&nbsp;FCF passes, stock comp is usually doing the heavy lifting.
         <br><br>
         <b>R40 (Rule of 40)</b> &mdash; revenue growth % + profit margin %; &ge; 40 points suggests a healthy growth/profitability balance.<br>

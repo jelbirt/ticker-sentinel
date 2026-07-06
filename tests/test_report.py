@@ -142,6 +142,26 @@ def test_signal_alerts_reach_movers(html):
     assert "CHRL: analyst bullishness slipping (4 → 2" in html
 
 
+def test_ranking_explanation_and_conditional_bold(html):
+    assert "then by Comp" in html            # legend matches the actual sort key
+    assert 'font-weight:bold;">62.0' in html     # ALFA r40_fcf ≥ 40 → bold
+    assert 'font-weight:bold;">53.9' in html     # ALFA r40_sbc_adj ≥ 40 → bold
+    assert 'font-weight:bold;">-19.6' not in html  # CHRL failing variant not emphasized
+    assert 'font-weight:bold;">35.0' not in html   # BRVO r40_fcf below 40 not bold
+
+
+def test_weakest_rows_keep_reason_and_flags(scored):
+    from sentinel.config import Config
+
+    cfg = Config(universe=(), top_n=1, bottom_n=2)  # force BRVO/CHRL into weakest
+    ctx = build_context(scored, cfg, run_type="dry", notes=[], today=FIXED_TODAY)
+    assert [sc.ticker for sc in ctx["strongest"]] == ["ALFA"]
+    assert len(ctx["weakest"]) == 2
+    html = render_report(ctx)
+    assert "Why weakest" in html
+    assert "⚠ Dilution" in html and "⚠ High SBC" in html  # flags survive in weakest cells
+
+
 def test_small_watchlist_weakest_empty(scored):
     cfg = load_config()  # top_n=10 > 3 fixtures
     ctx = build_context(scored, cfg, run_type="dry", notes=[], today=FIXED_TODAY)
