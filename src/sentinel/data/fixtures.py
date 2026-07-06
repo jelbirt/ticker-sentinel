@@ -17,11 +17,30 @@ _PRICE_BARS = 300
 _PRICE_END = pd.Timestamp("2026-07-02")
 
 
+def _target_latest_close(ticker: str) -> float | None:
+    """Latest close implied by the fixture's market_cap / diluted_shares_now, so
+    _reprice_market_cap() lands back on the fixture's own market_cap instead of
+    a distorted one built from raw (unscaled) synthetic price levels."""
+    path = FIXTURES_DIR / f"{ticker}.json"
+    if not path.exists():
+        return None
+    raw = json.loads(path.read_text())
+    market_cap = raw.get("market_cap")
+    shares = raw.get("fields", {}).get("diluted_shares")
+    if market_cap is None or not shares:
+        return None
+    return float(market_cap) / float(shares[0])
+
+
 def synthetic_prices() -> tuple[pd.DataFrame, pd.DataFrame]:
     """Deterministic daily close/volume for fixture tickers + benchmark (no randomness).
 
     ALFA: steady uptrend. BRVO: drifting/oscillating (ambiguous trend).
     CHRL: flat then breaking down, with a recent volume spike.
+
+    Each ticker's series is scaled so its latest close, times the fixture's
+    diluted_shares_now, reproduces the fixture's own market_cap - preserving
+    the trend/oscillation shape while keeping valuation labels sane.
     """
     idx = pd.bdate_range(end=_PRICE_END, periods=_PRICE_BARS)
     i = np.arange(_PRICE_BARS, dtype="float64")
@@ -34,6 +53,12 @@ def synthetic_prices() -> tuple[pd.DataFrame, pd.DataFrame]:
         },
         index=idx,
     )
+    for ticker in close.columns:
+        if ticker == FIXTURE_BENCHMARK:
+            continue
+        target = _target_latest_close(ticker)
+        if target is not None:
+            close[ticker] *= target / close[ticker].iloc[-1]
     volume = pd.DataFrame(1_000_000.0, index=idx, columns=close.columns)
     volume.iloc[-20:, volume.columns.get_loc("CHRL")] = 2_500_000.0  # unusual-volume alert
     return close, volume
