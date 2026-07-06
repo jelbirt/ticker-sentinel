@@ -75,6 +75,23 @@ def test_legend_rendered(html):
     assert "Rule of 40" in html
     assert "stock-based compensation" in html
     assert "free cash flow" in html
+    # alert terms are always defined (movers can mention them any day)...
+    assert "relative strength index" in html
+    assert "RS 3m" in html
+    # ...but the deep-grid glossary only ships with --deep
+    assert "Deep-dive grid" not in html
+
+
+def test_deep_legend_and_grid(scored):
+    cfg = load_config()
+    ctx = build_context(scored, cfg, run_type="dry", notes=[], today=FIXED_TODAY)
+    ctx["deep"] = True
+    deep_html = render_report(ctx)
+    assert "Deep dive — full metric grid" in deep_html
+    assert "Deep-dive grid" in deep_html
+    assert "Rule of X" in deep_html
+    assert "enterprise value" in deep_html
+    assert "FCF yield" in deep_html
 
 
 def test_breadth_ranking_beats_raw_score():
