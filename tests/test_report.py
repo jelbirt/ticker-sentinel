@@ -14,9 +14,15 @@ from tests.conftest import FIXED_TODAY
 
 @pytest.fixture()
 def scored(fixture_inputs):
-    return apply_scores(
+    from sentinel.data.fixtures import fixture_signals
+
+    cards = apply_scores(
         [compute_scorecard(inp, today=FIXED_TODAY) for inp in fixture_inputs.values()]
     )
+    sigs = fixture_signals()
+    for sc in cards:
+        sc.signals = sigs.get(sc.ticker)
+    return cards
 
 
 @pytest.fixture()
@@ -116,6 +122,21 @@ def test_breadth_ranking_beats_raw_score():
     missing = replace(all_three, r40_ebitda=None, r40_sbc_adj=None)
     ranked = sorted([one_only, missing], key=lambda s: rank_key(s, "breadth"))
     assert [s.ticker for s in ranked] == ["BBB", "AAA"]
+
+
+def test_signals_table_rendered(html):
+    assert "Between-quarter signals" in html
+    assert "▲6" in html                       # ALFA estimate revisions up
+    assert "+150k" in html                    # ALFA insider net buying
+    assert "−400k" in html                    # BRVO insider net selling
+    assert "Insider net 6m" in html           # legend/table header
+
+
+def test_signal_alerts_reach_movers(html):
+    assert "ALFA: estimates revised up by 6 analysts" in html
+    assert "BRVO: short interest up 33% month-over-month" in html
+    assert "CHRL: estimates revised down" in html
+    assert "CHRL: analyst bullishness slipping (4 → 2" in html
 
 
 def test_small_watchlist_weakest_empty(scored):

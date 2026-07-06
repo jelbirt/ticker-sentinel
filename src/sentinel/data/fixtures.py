@@ -54,6 +54,41 @@ def canonical_from_fixture(raw: dict) -> pd.DataFrame:
     return df
 
 
+def fixture_signals() -> dict[str, "SignalSnapshot"]:
+    """Deterministic between-quarter signals matching the three fixture profiles."""
+    from sentinel.indicators.signals import SignalSnapshot
+
+    return {
+        "ALFA": SignalSnapshot(  # loved: estimates up, insiders buying
+            ticker="ALFA",
+            eps_rev_up_7d=2, eps_rev_up_30d=6, eps_rev_down_7d=0, eps_rev_down_30d=0,
+            rec_bullish=20, rec_neutral=3, rec_bearish=1,
+            rec_bullish_prior=18, rec_bearish_prior=1,
+            short_pct_float=0.02, shares_short=2_000_000, shares_short_prior=2_100_000,
+            insider_net_shares_6m=150_000, insider_buy_txns_6m=12, insider_sell_txns_6m=3,
+            sources=["fixture"],
+        ),
+        "BRVO": SignalSnapshot(  # short-squeeze bait: shorts piling in
+            ticker="BRVO",
+            eps_rev_up_7d=0, eps_rev_up_30d=1, eps_rev_down_7d=1, eps_rev_down_30d=1,
+            rec_bullish=8, rec_neutral=6, rec_bearish=2,
+            rec_bullish_prior=8, rec_bearish_prior=2,
+            short_pct_float=0.12, shares_short=12_000_000, shares_short_prior=9_000_000,
+            insider_net_shares_6m=-400_000, insider_buy_txns_6m=1, insider_sell_txns_6m=14,
+            sources=["fixture"],
+        ),
+        "CHRL": SignalSnapshot(  # deteriorating: estimates cut, analysts bailing
+            ticker="CHRL",
+            eps_rev_up_7d=0, eps_rev_up_30d=0, eps_rev_down_7d=2, eps_rev_down_30d=4,
+            rec_bullish=2, rec_neutral=5, rec_bearish=4,
+            rec_bullish_prior=4, rec_bearish_prior=3,
+            short_pct_float=0.08, shares_short=7_000_000, shares_short_prior=6_500_000,
+            insider_net_shares_6m=-900_000, insider_buy_txns_6m=0, insider_sell_txns_6m=20,
+            sources=["fixture"],
+        ),
+    }
+
+
 def load_fixture_inputs(fixtures_dir: Path = FIXTURES_DIR) -> list[FundamentalInputs]:
     inputs = []
     for path in sorted(fixtures_dir.glob("*.json")):

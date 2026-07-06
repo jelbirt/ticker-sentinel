@@ -94,21 +94,28 @@ def main(argv: list[str] | None = None) -> int:
 
     # --- data: fundamentals + prices -------------------------------------------------
     if args.dry_run:
-        from sentinel.data.fixtures import load_fixture_inputs, synthetic_prices
+        from sentinel.data.fixtures import fixture_signals, load_fixture_inputs, synthetic_prices
 
         inputs_list = load_fixture_inputs()
         close, volume = synthetic_prices()
+        signals = fixture_signals()
         notes.append("dry run: committed fixture data, no network access")
     else:
         from sentinel.data.fundamentals import get_fundamentals
         from sentinel.data.prices import fetch_prices
+        from sentinel.data.signals import fetch_signals
 
         inputs_list = []
+        signals = {}
         for ticker in tickers:
             inputs, t_notes = get_fundamentals(ticker)
             notes.extend(t_notes)
             if inputs is not None:
                 inputs_list.append(inputs)
+            snap, s_notes = fetch_signals(ticker)
+            notes.extend(s_notes)
+            if snap is not None:
+                signals[ticker] = snap
         price_universe = sorted({*tickers, *tech_only_tickers, cfg.benchmark})
         close, volume, price_notes = fetch_prices(
             price_universe, period="2y" if args.deep else "1y"
@@ -133,6 +140,8 @@ def main(argv: list[str] | None = None) -> int:
         cfg.fundamentals_weight,
         cfg.technicals_weight,
     )
+    for sc in scorecards:  # between-quarter signals: informational, never scored
+        sc.signals = signals.get(sc.ticker)
 
     tech_only = []
     for ticker in tech_only_tickers:

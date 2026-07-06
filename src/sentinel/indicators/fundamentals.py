@@ -9,6 +9,7 @@ from __future__ import annotations
 from dataclasses import dataclass, field
 from datetime import date
 
+from sentinel.indicators.signals import SignalSnapshot
 from sentinel.indicators.technicals import TechnicalSnapshot
 
 # Flag identifiers (rendered with labels/emoji by the report builder)
@@ -92,6 +93,7 @@ class Scorecard:
     technical_score: float | None = None  # T; None for fundamentals-only runs
     composite: float | None = None        # C = w_f·F + w_t·T (== F when T missing)
     reason: str | None = None             # weakest-list one-liner, set by the report builder
+    signals: "SignalSnapshot | None" = None  # Phase 2.5 between-quarter signals (informational)
 
 
 def _div(num: float | None, den: float | None) -> float | None:

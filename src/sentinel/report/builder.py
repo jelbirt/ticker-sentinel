@@ -12,6 +12,7 @@ from jinja2 import Environment, FileSystemLoader, select_autoescape
 
 from sentinel.config import Config
 from sentinel.indicators.fundamentals import Scorecard
+from sentinel.indicators.signals import short_change_mom, signal_alerts
 
 TEMPLATES_DIR = Path(__file__).resolve().parent / "templates"
 
@@ -36,10 +37,16 @@ CSV_COLUMNS = [
     "growth", "growth_source", "fcf_margin", "ebitda_margin", "op_margin",
     "fcf_margin_ex_sbc", "dilution", "sbc_intensity", "ev_revenue", "fcf_yield",
     "valuation", "trend_state", "rsi14", "rel_strength_3m", "dist_52w_high",
-    "vol_ratio", "statement_date", "stale", "flags",
+    "vol_ratio", "eps_rev_up_30d", "eps_rev_down_30d", "rec_bullish", "rec_bearish",
+    "short_pct_float", "shares_short", "insider_net_shares_6m",
+    "statement_date", "stale", "flags",
 ]
 
 TECH_CSV_FIELDS = ["trend_state", "rsi14", "rel_strength_3m", "dist_52w_high", "vol_ratio"]
+SIGNAL_CSV_FIELDS = [
+    "eps_rev_up_30d", "eps_rev_down_30d", "rec_bullish", "rec_bearish",
+    "short_pct_float", "shares_short", "insider_net_shares_6m",
+]
 
 
 def _pts(v: float | None) -> str:
@@ -58,12 +65,30 @@ def _score(v: float | None) -> str:
     return "—" if v is None else f"{v:.1f}"
 
 
+def _shares(v: float | None) -> str:
+    """Signed share counts humanized: +733k, −1.2M."""
+    if v is None:
+        return "—"
+    sign = "+" if v > 0 else "−" if v < 0 else ""
+    a = abs(v)
+    if a >= 1e6:
+        return f"{sign}{a / 1e6:.1f}M"
+    if a >= 1e3:
+        return f"{sign}{a / 1e3:.0f}k"
+    return f"{sign}{a:.0f}"
+
+
+def _spct(v: float | None) -> str:
+    """Signed percent for deltas: +33%, −6%."""
+    return "—" if v is None else f"{v * 100:+.0f}%"
+
+
 def _env() -> Environment:
     env = Environment(
         loader=FileSystemLoader(TEMPLATES_DIR),
         autoescape=select_autoescape(["html", "j2"]),
     )
-    env.filters.update(pts=_pts, pct=_pct, mult=_mult, score=_score)
+    env.filters.update(pts=_pts, pct=_pct, mult=_mult, score=_score, shares=_shares, spct=_spct)
     return env
 
 
@@ -136,6 +161,9 @@ def build_movers(scorecards: list[Scorecard]) -> list[str]:
             movers.append(f"{sc.ticker}: new 52-week low")
         if t.vol_ratio is not None and t.vol_ratio > 1.5:
             movers.append(f"{sc.ticker}: unusual volume ({t.vol_ratio:.1f}× the 100-day average)")
+    for sc in scorecards:
+        if sc.signals is not None:
+            movers.extend(f"{sc.ticker}: {alert}" for alert in signal_alerts(sc.signals))
     return movers
 
 
@@ -170,6 +198,10 @@ def build_context(
         "unscored": unscored,
         "movers": build_movers(scorecards),
         "tech_only": tech_only or [],
+        "signal_rows": sorted(
+            (sc for sc in scorecards if sc.signals is not None), key=lambda s: s.ticker
+        ),
+        "short_change_mom": short_change_mom,
         "median_r40": _pts(median(r40_values)) if r40_values else "—",
         "n_total": len(scorecards),
         "flag_labels": flag_labels,
@@ -198,6 +230,8 @@ def write_outputs(outdir: Path, html: str, scorecards: list[Scorecard]) -> dict[
         row["flags"] = ";".join(sc.flags)
         for f in TECH_CSV_FIELDS:
             row[f] = getattr(sc.tech, f) if sc.tech is not None else None
+        for f in SIGNAL_CSV_FIELDS:
+            row[f] = getattr(sc.signals, f) if sc.signals is not None else None
         rows.append({k: row.get(k) for k in CSV_COLUMNS})
     pd.DataFrame(rows, columns=CSV_COLUMNS).to_csv(paths["csv"], index=False)
 

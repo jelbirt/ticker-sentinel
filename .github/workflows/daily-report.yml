@@ -27,6 +27,7 @@ jobs:
           SMTP_PASS: ${{ secrets.SMTP_PASS }}
           RECIPIENT_EMAILS: ${{ secrets.RECIPIENT_EMAILS }}
           TWELVEDATA_API_KEY: ${{ secrets.TWELVEDATA_API_KEY }}
+          FINNHUB_API_KEY: ${{ secrets.FINNHUB_API_KEY }}
       - uses: actions/upload-artifact@v4
         with: {name: report, path: reports/}
       - name: refresh fundamentals cache commit (weekly)
