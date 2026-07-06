@@ -162,6 +162,36 @@ def test_weakest_rows_keep_reason_and_flags(scored):
     assert "⚠ Dilution" in html and "⚠ High SBC" in html  # flags survive in weakest cells
 
 
+def test_movers_grouped_by_ticker(scored):
+    from sentinel.report.builder import build_movers
+
+    movers = build_movers(scored)
+    tickers = [m.split(":")[0].lstrip("📈📉 ") for m in movers]
+    # each ticker's alerts must be contiguous (no interleaving)
+    seen, last = set(), None
+    for t in tickers:
+        if t != last:
+            assert t not in seen, f"{t} alerts split across the list: {tickers}"
+            seen.add(t)
+        last = t
+
+
+def test_deep_grid_covers_every_scored_ticker(scored):
+    from sentinel.config import Config
+
+    # top_n=1/bottom_n=1 forces a middle ticker to be excluded from strongest+weakest
+    cfg = Config(universe=(), top_n=1, bottom_n=1)
+    ctx = build_context(scored, cfg, run_type="dry", notes=[], today=FIXED_TODAY)
+    ctx["deep"] = True
+    middle = set(sc.ticker for sc in ctx["all_scored"]) - {
+        sc.ticker for sc in ctx["strongest"]
+    } - {sc.ticker for sc in ctx["weakest"]}
+    assert middle, "test setup should leave a middle ticker out of strongest/weakest"
+    deep_html = render_report(ctx)
+    for ticker in middle:
+        assert ticker in deep_html.split("Deep dive")[1]
+
+
 def test_small_watchlist_weakest_empty(scored):
     cfg = load_config()  # top_n=10 > 3 fixtures
     ctx = build_context(scored, cfg, run_type="dry", notes=[], today=FIXED_TODAY)

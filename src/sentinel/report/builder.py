@@ -141,27 +141,28 @@ def weakness_reason(sc: Scorecard) -> str:
 
 
 def build_movers(scorecards: list[Scorecard]) -> list[str]:
-    """Section 7 'Movers & alerts': crosses, RSI extremes, 52w highs/lows, volume."""
+    """Section 7 'Movers & alerts': crosses, RSI extremes, 52w highs/lows, volume,
+    plus between-quarter signal alerts. One pass per ticker so its alerts sit together."""
     movers: list[str] = []
     for sc in scorecards:
         t = sc.tech
-        if t is None:
-            continue
-        if t.golden_cross_recent:
-            movers.append(f"📈 {sc.ticker}: golden cross (50d crossed above 200d)")
-        if t.death_cross_recent:
-            movers.append(f"📉 {sc.ticker}: death cross (50d crossed below 200d)")
-        if t.rsi14 is not None and t.rsi14 > 70:
-            movers.append(f"{sc.ticker}: RSI {t.rsi14:.0f} — overbought")
-        if t.rsi14 is not None and t.rsi14 < 30:
-            movers.append(f"{sc.ticker}: RSI {t.rsi14:.0f} — oversold")
-        if t.dist_52w_high is not None and t.dist_52w_high >= -0.001:
-            movers.append(f"{sc.ticker}: new 52-week high")
-        elif t.dist_52w_low is not None and t.dist_52w_low <= 0.001:
-            movers.append(f"{sc.ticker}: new 52-week low")
-        if t.vol_ratio is not None and t.vol_ratio > 1.5:
-            movers.append(f"{sc.ticker}: unusual volume ({t.vol_ratio:.1f}× the 100-day average)")
-    for sc in scorecards:
+        if t is not None:
+            if t.golden_cross_recent:
+                movers.append(f"📈 {sc.ticker}: golden cross")
+            if t.death_cross_recent:
+                movers.append(f"📉 {sc.ticker}: death cross")
+            if t.rsi14 is not None and t.rsi14 > 70:
+                movers.append(f"{sc.ticker}: RSI {t.rsi14:.0f} — overbought")
+            if t.rsi14 is not None and t.rsi14 < 30:
+                movers.append(f"{sc.ticker}: RSI {t.rsi14:.0f} — oversold")
+            if t.dist_52w_high is not None and t.dist_52w_high >= -0.001:
+                movers.append(f"{sc.ticker}: new 52-week high")
+            elif t.dist_52w_low is not None and t.dist_52w_low <= 0.001:
+                movers.append(f"{sc.ticker}: new 52-week low")
+            if t.vol_ratio is not None and t.vol_ratio > 1.5:
+                movers.append(
+                    f"{sc.ticker}: unusual volume ({t.vol_ratio:.1f}× the 100-day average)"
+                )
         if sc.signals is not None:
             movers.extend(f"{sc.ticker}: {alert}" for alert in signal_alerts(sc.signals))
     return movers
@@ -195,6 +196,7 @@ def build_context(
         "benchmark_line": benchmark_line,
         "strongest": strongest,
         "weakest": weakest,
+        "all_scored": scored,   # deep grid covers every ranked name, not just top/bottom
         "unscored": unscored,
         "movers": build_movers(scorecards),
         "tech_only": tech_only or [],

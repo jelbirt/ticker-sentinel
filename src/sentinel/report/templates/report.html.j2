@@ -142,7 +142,7 @@
             <th align="right" style="padding:6px 8px;">RS 3m</th>
             <th align="right" style="padding:6px 8px;">Vol ratio</th>
           </tr>
-          {% for sc in strongest + weakest %}
+          {% for sc in all_scored %}
           <tr style="background-color:{{ '#ffffff' if loop.index is odd else '#f2f5f8' }};border-bottom:1px solid #dde3e9;">
             <td style="padding:5px 8px;font-weight:bold;">{{ sc.ticker }}</td>
             <td align="right" style="padding:5px 8px;">{{ sc.rule_of_x|pts }}</td>
