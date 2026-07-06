@@ -203,10 +203,20 @@ def _fetch_statements(ticker: str) -> tuple[pd.DataFrame, dict[str, Any]]:
     except Exception:
         pass
 
+    next_earnings: str | None = None
+    try:
+        cal = t.calendar
+        dates = cal.get("Earnings Date") if isinstance(cal, dict) else None
+        if dates:
+            next_earnings = min(dates).isoformat()
+    except Exception:  # calendar is a freshness nicety, never fatal
+        pass
+
     meta = {
         "fetched_at": datetime.now(timezone.utc).isoformat(),
         "market_cap": market_cap,
         "company_name": company_name,
+        "next_earnings": next_earnings,
         "annual_revenue": annual_revenue,
         "source": "yfinance",
     }
@@ -220,7 +230,20 @@ def get_fundamentals(ticker: str, force_refresh: bool = False) -> tuple[Fundamen
 
     # "company_name" in meta doubles as a cache-schema check: entries written
     # before the field existed get refreshed instead of served for a week
-    if not force_refresh and cache.is_fresh(cached_meta) and "company_name" in (cached_meta or {}):
+    fresh = (
+        not force_refresh
+        and cache.is_fresh(cached_meta)
+        and "company_name" in (cached_meta or {})
+    )
+    # earnings-aware refresh: once a report date passes, refetch daily until the
+    # new quarter shows up (cheaper than waiting out the weekly window)
+    if fresh and (cached_meta or {}).get("next_earnings"):
+        try:
+            if date.today() >= date.fromisoformat(cached_meta["next_earnings"]):
+                fresh = False
+        except (TypeError, ValueError):
+            pass
+    if fresh:
         df, meta = cached_df, cached_meta
     else:
         try:

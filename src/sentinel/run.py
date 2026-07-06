@@ -11,10 +11,14 @@ import sys
 from datetime import date
 from pathlib import Path
 
-from sentinel.config import load_config, repo_root
-from sentinel.indicators.fundamentals import compute_scorecard
+import pandas as pd
+
+from sentinel.config import Config, load_config, repo_root
+from sentinel.indicators.fundamentals import FundamentalInputs, compute_scorecard
+from sentinel.indicators.technicals import TechnicalSnapshot, compute_technicals
 from sentinel.report.builder import build_context, render_report, write_outputs
-from sentinel.scoring import apply_scores
+from sentinel.report.charts import data_uri, sparkline_png
+from sentinel.scoring import apply_scores, technical_score
 
 log = logging.getLogger("sentinel")
 
@@ -29,7 +33,7 @@ def parse_args(argv: list[str] | None = None) -> argparse.Namespace:
         help="fixture data, no network, no email (for CI and offline checks)",
     )
     p.add_argument(
-        "--deep", action="store_true", help="deep-dive mode (Phase 2 — accepted, currently a no-op)"
+        "--deep", action="store_true", help="deep-dive mode: 2y price history + full metric grid"
     )
     p.add_argument("--out-dir", type=Path, help="override output directory (default reports/YYYY-MM-DD)")
     return p.parse_args(argv)
@@ -41,12 +45,7 @@ def _run_type(args: argparse.Namespace) -> str:
     return "scheduled" if os.environ.get("GITHUB_EVENT_NAME") == "schedule" else "ad hoc"
 
 
-def _benchmark_line(benchmark: str, notes: list[str]) -> str | None:
-    """Best-effort benchmark context; any failure becomes a note, not an error."""
-    from sentinel.data.prices import fetch_close_prices
-
-    close, price_notes = fetch_close_prices([benchmark])
-    notes.extend(price_notes)
+def _benchmark_line(close: pd.DataFrame | None, benchmark: str) -> str | None:
     if close is None or benchmark not in close.columns:
         return None
     series = close[benchmark].dropna()
@@ -59,28 +58,50 @@ def _benchmark_line(benchmark: str, notes: list[str]) -> str | None:
     )
 
 
+def _column(frame: pd.DataFrame | None, ticker: str) -> pd.Series | None:
+    if frame is None or ticker not in frame.columns:
+        return None
+    return frame[ticker]
+
+
+def _reprice_market_cap(inputs_list: list[FundamentalInputs], close: pd.DataFrame | None) -> None:
+    """Daily market-cap repricing: latest close × TTM-average diluted shares.
+
+    Keeps the valuation label moving with the market instead of the weekly cache.
+    Approximation (TTM-average shares, not today's count); cached value is the fallback.
+    """
+    for inp in inputs_list:
+        series = _column(close, inp.ticker)
+        if series is None or inp.diluted_shares_now is None:
+            continue
+        prices = series.dropna()
+        if not prices.empty:
+            inp.market_cap = float(prices.iloc[-1]) * inp.diluted_shares_now
+
+
 def main(argv: list[str] | None = None) -> int:
     logging.basicConfig(level=logging.INFO, format="%(levelname)s %(name)s: %(message)s")
     args = parse_args(argv)
     cfg = load_config()
     notes: list[str] = []
 
-    if args.deep:
-        notes.append("--deep requested: deep-dive mode lands in Phase 2, ignored for now")
-
     if args.tickers:
         tickers = [t.strip().upper() for t in args.tickers.split(",") if t.strip()]
+        tech_only_tickers: list[str] = []
     else:
         tickers = cfg.r40_tickers
+        tech_only_tickers = [t.ticker for t in cfg.universe if not t.is_r40]
 
-    benchmark_line = None
+    # --- data: fundamentals + prices -------------------------------------------------
     if args.dry_run:
-        from sentinel.data.fixtures import load_fixture_inputs
+        from sentinel.data.fixtures import load_fixture_inputs, synthetic_prices
 
         inputs_list = load_fixture_inputs()
+        close, volume = synthetic_prices()
         notes.append("dry run: committed fixture data, no network access")
     else:
         from sentinel.data.fundamentals import get_fundamentals
+        from sentinel.data.prices import fetch_prices
 
         inputs_list = []
         for ticker in tickers:
@@ -88,25 +109,75 @@ def main(argv: list[str] | None = None) -> int:
             notes.extend(t_notes)
             if inputs is not None:
                 inputs_list.append(inputs)
-        benchmark_line = _benchmark_line(cfg.benchmark, notes)
+        price_universe = sorted({*tickers, *tech_only_tickers, cfg.benchmark})
+        close, volume, price_notes = fetch_prices(
+            price_universe, period="2y" if args.deep else "1y"
+        )
+        notes.extend(price_notes)
 
-    scorecards = apply_scores([compute_scorecard(inp) for inp in inputs_list])
+    bench_close = _column(close, cfg.benchmark)
 
-    context = build_context(
-        scorecards, cfg, run_type=_run_type(args), notes=notes, benchmark_line=benchmark_line
+    # --- technicals + quick win: reprice market cap from today's close ---------------
+    technicals: dict[str, TechnicalSnapshot | None] = {
+        inp.ticker: compute_technicals(
+            _column(close, inp.ticker), _column(volume, inp.ticker), bench_close
+        )
+        for inp in inputs_list
+    }
+    _reprice_market_cap(inputs_list, close)
+
+    # --- score ------------------------------------------------------------------------
+    scorecards = apply_scores(
+        [compute_scorecard(inp) for inp in inputs_list],
+        technicals,
+        cfg.fundamentals_weight,
+        cfg.technicals_weight,
     )
-    html = render_report(context)
+
+    tech_only = []
+    for ticker in tech_only_tickers:
+        snap = compute_technicals(_column(close, ticker), _column(volume, ticker), bench_close)
+        if snap is not None:
+            tech_only.append({"ticker": ticker, "tech": snap, "t_score": technical_score(snap)})
+
+    # --- report -----------------------------------------------------------------------
+    context = build_context(
+        scorecards,
+        cfg,
+        run_type=_run_type(args),
+        notes=notes,
+        benchmark_line=_benchmark_line(close, cfg.benchmark),
+        tech_only=tech_only,
+    )
+    context["deep"] = args.deep
+
+    sparks: dict[str, bytes] = {}
+    for ticker in [sc.ticker for sc in scorecards] + [row["ticker"] for row in tech_only]:
+        png = sparkline_png(_column(close, ticker))
+        if png is not None:
+            sparks[ticker] = png
+
+    context["spark_src"] = {t: f"cid:spark_{t}" for t in sparks}
+    html_email = render_report(context)
+    context["spark_src"] = {t: data_uri(png) for t, png in sparks.items()}
+    html_file = render_report(context)
+
     outdir = args.out_dir or repo_root() / "reports" / date.today().isoformat()
-    paths = write_outputs(outdir, html, scorecards)
+    paths = write_outputs(outdir, html_file, scorecards)
     log.info("report written: %s", paths["html"])
 
     # stdout spot-check table (points)
-    print(f"\n{'ticker':<8}{'score':>8}{'r40_fcf':>10}{'r40_ebitda':>12}{'r40_sbc_adj':>13}  flags")
-    for sc in sorted(scorecards, key=lambda s: (s.score is None, -(s.score or 0))):
+    print(
+        f"\n{'ticker':<8}{'comp':>8}{'F':>7}{'T':>7}{'r40_fcf':>10}"
+        f"{'r40_ebitda':>12}{'r40_sbc_adj':>13}  trend/flags"
+    )
+    for sc in sorted(scorecards, key=lambda s: (s.composite is None, -(s.composite or 0))):
         fmt = lambda v, m=100: "—" if v is None else f"{v * m:.1f}"
+        trend = sc.tech.trend_state if sc.tech else "—"
         print(
-            f"{sc.ticker:<8}{fmt(sc.score, 1):>8}{fmt(sc.r40_fcf):>10}"
-            f"{fmt(sc.r40_ebitda):>12}{fmt(sc.r40_sbc_adj):>13}  {';'.join(sc.flags)}"
+            f"{sc.ticker:<8}{fmt(sc.composite, 1):>8}{fmt(sc.score, 1):>7}"
+            f"{fmt(sc.technical_score, 1):>7}{fmt(sc.r40_fcf):>10}"
+            f"{fmt(sc.r40_ebitda):>12}{fmt(sc.r40_sbc_adj):>13}  {trend};{';'.join(sc.flags)}"
         )
     print()
 
@@ -115,7 +186,11 @@ def main(argv: list[str] | None = None) -> int:
     else:
         from sentinel.deliver import send_report
 
-        sent, status = send_report(html, subject=f"Ticker Sentinel — {date.today().isoformat()}")
+        sent, status = send_report(
+            html_email,
+            subject=f"Ticker Sentinel — {date.today().isoformat()}",
+            images={f"spark_{t}": png for t, png in sparks.items()},
+        )
         log.info(status)
     return 0
 

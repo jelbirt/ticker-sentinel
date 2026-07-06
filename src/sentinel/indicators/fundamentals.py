@@ -9,6 +9,8 @@ from __future__ import annotations
 from dataclasses import dataclass, field
 from datetime import date
 
+from sentinel.indicators.technicals import TechnicalSnapshot
+
 # Flag identifiers (rendered with labels/emoji by the report builder)
 FLAG_INSUFFICIENT_DATA = "insufficient_data"      # <4 quarters: no TTM at all
 FLAG_INSUFFICIENT_HISTORY = "insufficient_history"  # trend/growth window unavailable
@@ -84,8 +86,12 @@ class Scorecard:
     stale: bool = False
     flags: list[str] = field(default_factory=list)
     # filled in by sentinel.scoring:
-    score: float | None = None
+    score: float | None = None           # fundamental score F
     valuation: str | None = None
+    tech: "TechnicalSnapshot | None" = None
+    technical_score: float | None = None  # T; None for fundamentals-only runs
+    composite: float | None = None        # C = w_f·F + w_t·T (== F when T missing)
+    reason: str | None = None             # weakest-list one-liner, set by the report builder
 
 
 def _div(num: float | None, den: float | None) -> float | None:

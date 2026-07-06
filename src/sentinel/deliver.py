@@ -9,8 +9,14 @@ from email.message import EmailMessage
 log = logging.getLogger(__name__)
 
 
-def send_report(html: str, subject: str) -> tuple[bool, str]:
-    """Send the HTML report. Returns (sent, human-readable status) — never raises."""
+def send_report(
+    html: str, subject: str, images: dict[str, bytes] | None = None
+) -> tuple[bool, str]:
+    """Send the HTML report. Returns (sent, human-readable status) — never raises.
+
+    `images` maps content-id -> PNG bytes; the HTML references them as src="cid:<id>"
+    (inline CID attachments are the only image form Gmail renders reliably).
+    """
     # `or` (not .get defaults): unset secrets reach Actions steps as empty strings
     host = os.environ.get("SMTP_HOST") or "smtp.gmail.com"
     port = int(os.environ.get("SMTP_PORT") or "587")
@@ -29,6 +35,10 @@ def send_report(html: str, subject: str) -> tuple[bool, str]:
     msg["To"] = ", ".join(recipients)
     msg.set_content("This report is HTML-only; please view in an HTML-capable client.")
     msg.add_alternative(html, subtype="html")
+    if images:
+        html_part = msg.get_payload()[-1]  # the text/html alternative
+        for cid, png in images.items():
+            html_part.add_related(png, maintype="image", subtype="png", cid=f"<{cid}>")
 
     try:
         if port == 465:

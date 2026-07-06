@@ -193,7 +193,8 @@ Notes: US market holidays → job runs but detects "no new bar" and sends nothin
 - Data-sanity guards: refuse to score a ticker whose statements are >200 days stale; label rather than crash on any missing field.
 ## 11. Phased Roadmap
 - **Phase 1 (MVP):** config + data layer + fundamentals scorecard + basic HTML email + scheduled workflow. Ship when one real email arrives with correct R40 numbers spot-checked against a public source.
-- **Phase 2:** technical overlay + composite scoring + flags + sparklines + ad hoc dispatch inputs + weakest-buy logic + tests hardened.
+- **Phase 2:** technical overlay + composite scoring + flags + sparklines + ad hoc dispatch inputs + weakest-buy logic + tests hardened. Quick wins folded in: daily market-cap repricing (valuation label moves daily) and earnings-date-aware cache refresh (new quarters land within ~1 day).
+- **Phase 2.5 (committed, next after Phase 2):** between-quarter fundamental signals — analyst estimate revisions, short interest, insider transactions — via Financial Modeling Prep and/or Finnhub free tiers. Owner is 100% certain more-than-quarterly signal granularity is wanted; do not drop this.
 - **Phase 3 (news module):** RSS ingestion (`feedparser`) from curated feeds + per-ticker news matching; optional LLM summarization pass to produce a personalized "what mattered today for your names" section appended to the same report. Designed as `src/sentinel/news/` feeding the existing report builder.
 ## 12. Risks & Mitigations
 | Risk | Mitigation |

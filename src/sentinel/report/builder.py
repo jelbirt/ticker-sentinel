@@ -24,14 +24,22 @@ FLAG_LABELS = {
     "growth_from_annual": "ℹ Growth from annual",
     "insufficient_history": "ℹ Short history",
     "insufficient_data": "⚠ Insufficient data",
+    "golden_cross": "📈 Golden cross",
+    "death_cross": "📉 Death cross",
 }
 
+TREND_ARROWS = {"uptrend": "↑ up", "downtrend": "↓ down", "mixed": "→ mixed"}
+
 CSV_COLUMNS = [
-    "ticker", "company_name", "score", "r40_fcf", "r40_ebitda", "r40_sbc_adj", "rule_of_x", "r40_trend",
+    "ticker", "company_name", "composite", "score", "technical_score",
+    "r40_fcf", "r40_ebitda", "r40_sbc_adj", "rule_of_x", "r40_trend",
     "growth", "growth_source", "fcf_margin", "ebitda_margin", "op_margin",
     "fcf_margin_ex_sbc", "dilution", "sbc_intensity", "ev_revenue", "fcf_yield",
-    "valuation", "statement_date", "stale", "flags",
+    "valuation", "trend_state", "rsi14", "rel_strength_3m", "dist_52w_high",
+    "vol_ratio", "statement_date", "stale", "flags",
 ]
+
+TECH_CSV_FIELDS = ["trend_state", "rsi14", "rel_strength_3m", "dist_52w_high", "vol_ratio"]
 
 
 def _pts(v: float | None) -> str:
@@ -70,11 +78,65 @@ def r40_breadth(sc: Scorecard) -> int:
     )
 
 
+def _strength(sc: Scorecard) -> float:
+    """Composite when technicals ran, else fundamental score."""
+    if sc.composite is not None:
+        return sc.composite
+    return sc.score or 0.0
+
+
 def rank_key(sc: Scorecard, ranking: str):
-    """Sort key (ascending sort, so negated): breadth-first or plain score."""
+    """Sort key (ascending sort, so negated): breadth-first or plain strength."""
     if ranking == "breadth":
-        return (-r40_breadth(sc), -(sc.score or 0.0))
-    return (-(sc.score or 0.0),)
+        return (-r40_breadth(sc), -_strength(sc))
+    return (-_strength(sc),)
+
+
+def deteriorating(sc: Scorecard) -> bool:
+    """Section 6 weakest-buy priority: R40 fell >10pts AND technical confirmation."""
+    fell = sc.r40_trend is not None and sc.r40_trend < -0.10
+    tech_confirms = sc.tech is not None and (
+        sc.tech.trend_state == "downtrend" or sc.tech.death_cross_recent
+    )
+    return fell and tech_confirms
+
+
+def weakness_reason(sc: Scorecard) -> str:
+    parts: list[str] = []
+    if sc.r40_trend is not None and sc.r40_trend < -0.10:
+        parts.append(f"R40 fell {abs(sc.r40_trend) * 100:.0f}pts YoY")
+    if sc.tech is not None:
+        if sc.tech.death_cross_recent:
+            parts.append("death cross")
+        elif sc.tech.trend_state == "downtrend":
+            parts.append("below 50/200-day")
+    if not parts:
+        parts.append("lowest composite in watchlist")
+    return "; ".join(parts)
+
+
+def build_movers(scorecards: list[Scorecard]) -> list[str]:
+    """Section 7 'Movers & alerts': crosses, RSI extremes, 52w highs/lows, volume."""
+    movers: list[str] = []
+    for sc in scorecards:
+        t = sc.tech
+        if t is None:
+            continue
+        if t.golden_cross_recent:
+            movers.append(f"📈 {sc.ticker}: golden cross (50d crossed above 200d)")
+        if t.death_cross_recent:
+            movers.append(f"📉 {sc.ticker}: death cross (50d crossed below 200d)")
+        if t.rsi14 is not None and t.rsi14 > 70:
+            movers.append(f"{sc.ticker}: RSI {t.rsi14:.0f} — overbought")
+        if t.rsi14 is not None and t.rsi14 < 30:
+            movers.append(f"{sc.ticker}: RSI {t.rsi14:.0f} — oversold")
+        if t.dist_52w_high is not None and t.dist_52w_high >= -0.001:
+            movers.append(f"{sc.ticker}: new 52-week high")
+        elif t.dist_52w_low is not None and t.dist_52w_low <= 0.001:
+            movers.append(f"{sc.ticker}: new 52-week low")
+        if t.vol_ratio is not None and t.vol_ratio > 1.5:
+            movers.append(f"{sc.ticker}: unusual volume ({t.vol_ratio:.1f}× the 100-day average)")
+    return movers
 
 
 def build_context(
@@ -84,6 +146,7 @@ def build_context(
     notes: list[str],
     benchmark_line: str | None = None,
     today: date | None = None,
+    tech_only: list[dict] | None = None,
 ) -> dict:
     scored = sorted(
         (sc for sc in scorecards if sc.score is not None),
@@ -91,7 +154,11 @@ def build_context(
     )
     unscored = [sc for sc in scorecards if sc.score is None]
     strongest = scored[: cfg.top_n]
-    weakest = list(reversed(scored[cfg.top_n :][-cfg.bottom_n :]))  # worst first
+    # weakest: deteriorating names first (plan section 6), then lowest strength
+    remaining = sorted(scored[cfg.top_n :], key=lambda s: (not deteriorating(s), _strength(s)))
+    weakest = remaining[: cfg.bottom_n]
+    for sc in weakest:
+        sc.reason = weakness_reason(sc)
     r40_values = [sc.r40_fcf for sc in scorecards if sc.r40_fcf is not None]
     return {
         "report_date": (today or date.today()).isoformat(),
@@ -101,9 +168,14 @@ def build_context(
         "strongest": strongest,
         "weakest": weakest,
         "unscored": unscored,
+        "movers": build_movers(scorecards),
+        "tech_only": tech_only or [],
         "median_r40": _pts(median(r40_values)) if r40_values else "—",
         "n_total": len(scorecards),
         "flag_labels": flag_labels,
+        "trend_arrows": TREND_ARROWS,
+        "spark_src": {},   # ticker -> img src; run.py injects cid:/data: URIs
+        "deep": False,
     }
 
 
@@ -124,6 +196,8 @@ def write_outputs(outdir: Path, html: str, scorecards: list[Scorecard]) -> dict[
     for sc in scorecards:
         row = asdict(sc)
         row["flags"] = ";".join(sc.flags)
+        for f in TECH_CSV_FIELDS:
+            row[f] = getattr(sc.tech, f) if sc.tech is not None else None
         rows.append({k: row.get(k) for k in CSV_COLUMNS})
     pd.DataFrame(rows, columns=CSV_COLUMNS).to_csv(paths["csv"], index=False)
 

@@ -1,27 +1,33 @@
-{% macro scorecard_table(rows) -%}
+{% macro scorecard_table(rows, show_reason=false) -%}
 <table cellpadding="0" cellspacing="0" border="0" width="100%" style="border-collapse:collapse;font-family:Arial,Helvetica,sans-serif;font-size:13px;">
   <tr style="background-color:#1f2d3d;color:#ffffff;">
     <th align="left" style="padding:8px 10px;">Ticker</th>
-    <th align="right" style="padding:8px 10px;">Score</th>
+    <th align="right" style="padding:8px 10px;">Comp</th>
     <th align="right" style="padding:8px 10px;">R40 FCF</th>
     <th align="right" style="padding:8px 10px;">R40 EBITDA</th>
     <th align="right" style="padding:8px 10px;">R40 SBC-adj</th>
     <th align="right" style="padding:8px 10px;">Growth</th>
     <th align="right" style="padding:8px 10px;">FCF mgn</th>
+    <th align="left" style="padding:8px 10px;">Trend (1y)</th>
     <th align="left" style="padding:8px 10px;">Valuation</th>
-    <th align="left" style="padding:8px 10px;">Flags</th>
+    <th align="left" style="padding:8px 10px;">{{ "Why weakest" if show_reason else "Flags" }}</th>
   </tr>
   {% for sc in rows %}
   <tr style="background-color:{{ '#ffffff' if loop.index is odd else '#f2f5f8' }};border-bottom:1px solid #dde3e9;">
     <td style="padding:7px 10px;white-space:nowrap;"><span style="font-weight:bold;">{{ sc.ticker }}</span>{% if sc.company_name %}<br><span style="font-size:11px;color:#66727f;">{{ sc.company_name }}</span>{% endif %}</td>
-    <td align="right" style="padding:7px 10px;">{{ sc.score|score }}</td>
+    <td align="right" style="padding:7px 10px;white-space:nowrap;"><span style="font-weight:bold;">{{ sc.composite|score }}</span><br><span style="font-size:10px;color:#66727f;">F {{ sc.score|score }} · T {{ sc.technical_score|score }}</span></td>
     <td align="right" style="padding:7px 10px;font-weight:bold;">{{ sc.r40_fcf|pts }}</td>
     <td align="right" style="padding:7px 10px;">{{ sc.r40_ebitda|pts }}</td>
     <td align="right" style="padding:7px 10px;">{{ sc.r40_sbc_adj|pts }}</td>
     <td align="right" style="padding:7px 10px;">{{ sc.growth|pct }}</td>
     <td align="right" style="padding:7px 10px;">{{ sc.fcf_margin|pct }}</td>
+    <td style="padding:7px 10px;white-space:nowrap;">{{ trend_arrows.get(sc.tech.trend_state, "—") if sc.tech else "—" }}{% if spark_src.get(sc.ticker) %}<br><img src="{{ spark_src[sc.ticker] }}" width="120" height="30" alt="1y price" style="display:block;border:0;">{% endif %}</td>
     <td style="padding:7px 10px;">{{ sc.valuation or "—" }}</td>
+    {% if show_reason %}
+    <td style="padding:7px 10px;color:#8a2a2a;">{{ sc.reason or "—" }}</td>
+    {% else %}
     <td style="padding:7px 10px;color:#8a6d00;">{{ flag_labels(sc)|join(" · ") or "—" }}</td>
+    {% endif %}
   </tr>
   {% endfor %}
 </table>
@@ -48,8 +54,39 @@
       </td></tr>
       <tr><td style="padding:12px 24px 6px;font-family:Arial,Helvetica,sans-serif;font-size:16px;font-weight:bold;color:#1f2d3d;">Weakest</td></tr>
       <tr><td style="padding:0 24px 12px;">
-        {% if weakest %}{{ scorecard_table(weakest) }}{% else %}<span style="font-family:Arial,Helvetica,sans-serif;font-size:13px;color:#66727f;">Watchlist smaller than top-N — every scored name already appears above.</span>{% endif %}
+        {% if weakest %}{{ scorecard_table(weakest, show_reason=true) }}{% else %}<span style="font-family:Arial,Helvetica,sans-serif;font-size:13px;color:#66727f;">Watchlist smaller than top-N — every scored name already appears above.</span>{% endif %}
       </td></tr>
+      {% if movers %}
+      <tr><td style="padding:12px 24px 6px;font-family:Arial,Helvetica,sans-serif;font-size:16px;font-weight:bold;color:#1f2d3d;">Movers &amp; alerts</td></tr>
+      <tr><td style="padding:0 24px 12px;font-family:Arial,Helvetica,sans-serif;font-size:13px;color:#33404d;line-height:1.7;">
+        {% for m in movers %}• {{ m }}<br>{% endfor %}
+      </td></tr>
+      {% endif %}
+      {% if tech_only %}
+      <tr><td style="padding:12px 24px 6px;font-family:Arial,Helvetica,sans-serif;font-size:16px;font-weight:bold;color:#1f2d3d;">Technicals only <span style="font-size:12px;font-weight:normal;color:#66727f;">(not tagged r40 — no fundamentals scorecard)</span></td></tr>
+      <tr><td style="padding:0 24px 12px;">
+        <table cellpadding="0" cellspacing="0" border="0" width="100%" style="border-collapse:collapse;font-family:Arial,Helvetica,sans-serif;font-size:13px;">
+          <tr style="background-color:#33404d;color:#ffffff;">
+            <th align="left" style="padding:8px 10px;">Ticker</th>
+            <th align="right" style="padding:8px 10px;">T score</th>
+            <th align="left" style="padding:8px 10px;">Trend (1y)</th>
+            <th align="right" style="padding:8px 10px;">RSI</th>
+            <th align="right" style="padding:8px 10px;">RS 3m</th>
+            <th align="right" style="padding:8px 10px;">vs 52w high</th>
+          </tr>
+          {% for row in tech_only %}
+          <tr style="background-color:{{ '#ffffff' if loop.index is odd else '#f2f5f8' }};border-bottom:1px solid #dde3e9;">
+            <td style="padding:7px 10px;font-weight:bold;">{{ row.ticker }}</td>
+            <td align="right" style="padding:7px 10px;">{{ row.t_score|score }}</td>
+            <td style="padding:7px 10px;white-space:nowrap;">{{ trend_arrows.get(row.tech.trend_state, "—") }}{% if spark_src.get(row.ticker) %}<br><img src="{{ spark_src[row.ticker] }}" width="120" height="30" alt="1y price" style="display:block;border:0;">{% endif %}</td>
+            <td align="right" style="padding:7px 10px;">{{ "%.0f"|format(row.tech.rsi14) if row.tech.rsi14 is not none else "—" }}</td>
+            <td align="right" style="padding:7px 10px;">{{ row.tech.rel_strength_3m|pct }}</td>
+            <td align="right" style="padding:7px 10px;">{{ row.tech.dist_52w_high|pct }}</td>
+          </tr>
+          {% endfor %}
+        </table>
+      </td></tr>
+      {% endif %}
       {% if unscored %}
       <tr><td style="padding:12px 24px 6px;font-family:Arial,Helvetica,sans-serif;font-size:16px;font-weight:bold;color:#1f2d3d;">Not scored</td></tr>
       <tr><td style="padding:0 24px 12px;">
@@ -58,6 +95,41 @@
           <tr style="border-bottom:1px solid #dde3e9;">
             <td style="padding:7px 10px;font-weight:bold;width:80px;">{{ sc.ticker }}</td>
             <td style="padding:7px 10px;color:#8a6d00;">{{ flag_labels(sc)|join(" · ") or "insufficient data" }}</td>
+          </tr>
+          {% endfor %}
+        </table>
+      </td></tr>
+      {% endif %}
+      {% if deep %}
+      <tr><td style="padding:12px 24px 6px;font-family:Arial,Helvetica,sans-serif;font-size:16px;font-weight:bold;color:#1f2d3d;">Deep dive — full metric grid</td></tr>
+      <tr><td style="padding:0 24px 12px;">
+        <table cellpadding="0" cellspacing="0" border="0" width="100%" style="border-collapse:collapse;font-family:Arial,Helvetica,sans-serif;font-size:12px;">
+          <tr style="background-color:#33404d;color:#ffffff;">
+            <th align="left" style="padding:6px 8px;">Ticker</th>
+            <th align="right" style="padding:6px 8px;">Rule of X</th>
+            <th align="right" style="padding:6px 8px;">R40 trend</th>
+            <th align="right" style="padding:6px 8px;">Op mgn</th>
+            <th align="right" style="padding:6px 8px;">Dilution</th>
+            <th align="right" style="padding:6px 8px;">SBC int.</th>
+            <th align="right" style="padding:6px 8px;">EV/Rev</th>
+            <th align="right" style="padding:6px 8px;">FCF yield</th>
+            <th align="right" style="padding:6px 8px;">RSI</th>
+            <th align="right" style="padding:6px 8px;">RS 3m</th>
+            <th align="right" style="padding:6px 8px;">Vol ratio</th>
+          </tr>
+          {% for sc in strongest + weakest %}
+          <tr style="background-color:{{ '#ffffff' if loop.index is odd else '#f2f5f8' }};border-bottom:1px solid #dde3e9;">
+            <td style="padding:5px 8px;font-weight:bold;">{{ sc.ticker }}</td>
+            <td align="right" style="padding:5px 8px;">{{ sc.rule_of_x|pts }}</td>
+            <td align="right" style="padding:5px 8px;">{{ sc.r40_trend|pts }}</td>
+            <td align="right" style="padding:5px 8px;">{{ sc.op_margin|pct }}</td>
+            <td align="right" style="padding:5px 8px;">{{ sc.dilution|pct }}</td>
+            <td align="right" style="padding:5px 8px;">{{ sc.sbc_intensity|pct }}</td>
+            <td align="right" style="padding:5px 8px;">{{ sc.ev_revenue|mult }}</td>
+            <td align="right" style="padding:5px 8px;">{{ sc.fcf_yield|pct }}</td>
+            <td align="right" style="padding:5px 8px;">{{ "%.0f"|format(sc.tech.rsi14) if sc.tech and sc.tech.rsi14 is not none else "—" }}</td>
+            <td align="right" style="padding:5px 8px;">{{ sc.tech.rel_strength_3m|pct if sc.tech else "—" }}</td>
+            <td align="right" style="padding:5px 8px;">{{ "%.1f×"|format(sc.tech.vol_ratio) if sc.tech and sc.tech.vol_ratio is not none else "—" }}</td>
           </tr>
           {% endfor %}
         </table>
@@ -74,7 +146,8 @@
         <b>EBITDA</b> &mdash; earnings before interest, taxes, depreciation &amp; amortization; the stricter accounting-basis margin.<br>
         <b>SBC</b> &mdash; stock-based compensation. The SBC-adj variant treats it as a cash cost &mdash; the &ldquo;honest&rdquo; R40.<br>
         <b>Growth</b> &mdash; trailing-twelve-month revenue vs a year earlier (fiscal-year based when flagged &ldquo;Growth from annual&rdquo;).<br>
-        <b>Score</b> &mdash; 0&ndash;100 fundamental score: driven by R40&nbsp;FCF with bonuses for breadth and improving trend, minus penalties for dilution and heavy SBC.<br>
+        <b>Comp</b> &mdash; composite 0&ndash;100: weighted blend of <b>F</b> (fundamental score: driven by R40&nbsp;FCF with bonuses for breadth and improving trend, minus penalties for dilution and heavy SBC) and <b>T</b> (technical score: trend state, 3-month strength vs SPY, recent crosses, distance from the 52-week high). Fundamentals say <i>what's</i> good; technicals say <i>how it's trading now</i>.<br>
+        <b>Trend (1y)</b> &mdash; &uarr; price above both the 50- and 200-day averages, &darr; below both, &rarr; in between; the sparkline is the 1-year price path (green = up on the year).<br>
         <b>Valuation</b> &mdash; price label only, never part of Score: <i>cheap</i> (FCF yield &gt; 4%), <i>fair</i>, or <i>priced-for-perfection</i> (&gt; 12&times; revenue and &lt; 1% FCF yield).<br>
         <b>Flags</b> &mdash; caveats on data quality (stale/short history) or earnings quality (dilution, high SBC, SBC-inflated R40).
       </td></tr>
