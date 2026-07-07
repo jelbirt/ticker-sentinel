@@ -1,7 +1,9 @@
 name: daily-report
 on:
   schedule:
-    - cron: "45 21 * * 1-5"   # 21:45 UTC ≈ 4:45/5:45pm ET depending on DST
+    # 10:00 UTC = 6:00am EDT / 5:00am EST — pre-market briefing on the prior
+    # session's close. Tue–Sat so Friday's session arrives Saturday morning.
+    - cron: "0 10 * * 2-6"
   workflow_dispatch:
     inputs:
       tickers: {description: "Optional comma-separated override", required: false}
