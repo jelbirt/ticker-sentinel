@@ -39,8 +39,12 @@ def call_claude(prompt: str, model: str, timeout: int = TIMEOUT_SECONDS) -> str 
         log.warning("claude CLI failed: %s", exc)
         return None
     if result.returncode != 0 or not result.stdout.strip():
+        # the CLI prints auth/config errors on stdout, not stderr — log both
         log.warning(
-            "claude CLI exit %s: %s", result.returncode, (result.stderr or "")[:200]
+            "claude CLI exit %s: stderr=%r stdout=%r",
+            result.returncode,
+            (result.stderr or "")[:200],
+            (result.stdout or "")[:200],
         )
         return None
     return result.stdout.strip()
