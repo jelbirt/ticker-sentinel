@@ -9,7 +9,7 @@ import pytest
 
 from sentinel.news import llm
 from sentinel.news.pipeline import NewsDigest, NewsItem, TickerNews
-from sentinel.news.styles import render_news
+from sentinel.news.styles import DEFAULT_TONE, TONES, render_news
 
 NOW = datetime(2026, 7, 6, 22, 0, tzinfo=timezone.utc)
 
@@ -185,3 +185,43 @@ class TestLlmBriefStyle:
         assert "CRWD (CrowdStrike):" in captured["prompt"]
         assert "CRWD beats estimates" in captured["prompt"]
         assert "investment advice" in captured["prompt"]
+
+
+class TestTones:
+    """Phase 3.1: swappable voice presets; structural rules survive every tone."""
+
+    def _capture_prompt(self, digest, monkeypatch, tone):
+        captured = {}
+
+        def fake(prompt, model, **k):
+            captured["prompt"] = prompt
+            return "text"
+
+        monkeypatch.setattr(llm, "call_claude", fake)
+        _, notes = render_news(digest, "llm-brief", model="claude-sonnet-5", tone=tone)
+        return captured["prompt"], notes
+
+    @pytest.mark.parametrize("tone", sorted(TONES))
+    def test_every_tone_keeps_structural_invariants(self, digest, monkeypatch, tone):
+        prompt, notes = self._capture_prompt(digest, monkeypatch, tone)
+        assert notes == []
+        assert TONES[tone] in prompt                                  # voice slot filled
+        assert "must be mentioned exactly once" in prompt             # coverage rule
+        assert "investment advice" in prompt                          # no-advice rule
+        assert "no markdown, no HTML" in prompt                       # render-safety rule
+        assert "RULES (these always override the voice)" in prompt
+
+    def test_tone_lands_in_attribution_footer(self, digest, monkeypatch):
+        monkeypatch.setattr(llm, "call_claude", lambda *a, **k: "narrative text")
+        html, _ = render_news(digest, "llm-brief", model="claude-sonnet-5", tone="barrons")
+        assert "barrons tone" in html
+
+    def test_unknown_tone_falls_back_with_note(self, digest, monkeypatch):
+        prompt, notes = self._capture_prompt(digest, monkeypatch, "sports-desk")
+        assert TONES[DEFAULT_TONE] in prompt
+        assert any("unknown news tone 'sports-desk'" in n for n in notes)
+
+    def test_unknown_tone_silent_for_non_llm_styles(self, digest):
+        html, notes = render_news(digest, "headlines", tone="sports-desk")
+        assert html is not None
+        assert notes == []  # tone is inert here; no config-noise note

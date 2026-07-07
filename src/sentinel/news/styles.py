@@ -50,7 +50,7 @@ def _item_meta(item: NewsItem, as_of: datetime) -> str:
     return _esc(" · ".join(parts))
 
 
-def _headlines(digest: NewsDigest, model: str | None = None) -> str:
+def _headlines(digest: NewsDigest, model: str | None = None, tone: str | None = None) -> str:
     """Per-ticker linked headlines — the full digest, nothing editorialized."""
     rows = []
     for tn in digest.tickers:
@@ -80,7 +80,7 @@ def _headlines(digest: NewsDigest, model: str | None = None) -> str:
     )
 
 
-def _brief(digest: NewsDigest, model: str | None = None) -> str:
+def _brief(digest: NewsDigest, model: str | None = None, tone: str | None = None) -> str:
     """One line per ticker: the top story only — trims the digest (allowed)."""
     lines = []
     for tn in digest.tickers:
@@ -99,19 +99,63 @@ def _brief(digest: NewsDigest, model: str | None = None) -> str:
     )
 
 
+# The prompt is two layers: a swappable VOICE (tone presets below) and the
+# structural RULES, which are invariant and always override the voice — they
+# guarantee coverage, plain-text output, and the no-advice contract no matter
+# which tone is configured.
 _LLM_PROMPT = """You write the "What mattered today" section of a private daily stock-report email.
 Below are today's headlines already matched to the owner's watchlist tickers.
 
-Write a tight synthesis in plain text (no markdown, no HTML, no preamble):
-one short paragraph per ticker that has meaningful news, each starting with
-the ticker symbol; if several tickers only have minor items, group them into
-a single final one-liner. EVERY ticker listed below must be mentioned exactly
-once — either in its own paragraph or in the grouped one-liner; never omit
-one. Factual and analytical in tone — no hype, no investment advice.
-Under 180 words total.
+VOICE:
+{voice}
+
+RULES (these always override the voice):
+Plain text only — no markdown, no HTML, no preamble. One short paragraph per
+ticker that has meaningful news, each starting with the ticker symbol; if
+several tickers only have minor items, group them into a single final
+one-liner. EVERY ticker listed below must be mentioned exactly once — either
+in its own paragraph or in the grouped one-liner; never omit one. Never give
+investment advice or tell the reader what to do. Under 180 words total.
 
 HEADLINES:
 {headlines}"""
+
+# Named tone presets — presentation-layer only (Phase 3.1). A tone may shift
+# emphasis within the digest but never what the pipeline selected.
+TONES = {
+    "neutral-analyst": (
+        "Factual and analytical. State what happened and why it matters; "
+        "no hype, no editorializing beyond what the headlines support."
+    ),
+    "skeptic": (
+        "Lead with what could be wrong or overstated. Treat bullish headlines "
+        "as claims to be tested: flag promotional or vague language, note what "
+        "is unconfirmed, and keep company facts clearly separated from market "
+        "chatter and analyst opinion."
+    ),
+    "brief-wire": (
+        "Terse newswire clips: the shortest accurate sentence per item, minimal "
+        "adjectives, no color, no transitions. Facts and numbers only."
+    ),
+    "morning-brew": (
+        "Conversational and light, like a sharp finance newsletter a friend "
+        "writes over coffee: approachable phrasing and a touch of wit, but "
+        "every fact intact and nothing dumbed down."
+    ),
+    "barrons": (
+        "The voice of a veteran Barron's columnist: fundamentally driven and "
+        "valuation-anchored, written for a sophisticated individual investor "
+        "who reads actively for ideas. Weigh each development against the "
+        "company's investment case — growth, margins, the multiple — and say "
+        "plainly whether the market's reaction looks proportionate, overdone, "
+        "or underappreciated. Crisp declarative sentences, plain language over "
+        "jargon, an occasional dry turn of phrase; skeptical of hype, "
+        "respectful of numbers."
+    ),
+}
+
+DEFAULT_TONE = "neutral-analyst"
+LLM_STYLES = {"llm-brief"}  # styles that consume the tone/model options
 
 
 def _digest_text(digest: NewsDigest) -> str:
@@ -125,7 +169,9 @@ def _digest_text(digest: NewsDigest) -> str:
     return "\n".join(lines)
 
 
-def _llm_brief(digest: NewsDigest, model: str | None = None) -> str | None:
+def _llm_brief(
+    digest: NewsDigest, model: str | None = None, tone: str | None = None
+) -> str | None:
     """LLM-written narrative over the digest; sources rendered deterministically.
 
     The model only ever writes prose (escaped before injection — it can never
@@ -136,7 +182,8 @@ def _llm_brief(digest: NewsDigest, model: str | None = None) -> str | None:
 
     if not model:
         return None
-    prompt = _LLM_PROMPT.format(headlines=_digest_text(digest))
+    tone = tone if tone in TONES else DEFAULT_TONE
+    prompt = _LLM_PROMPT.format(voice=TONES[tone], headlines=_digest_text(digest))
     text = call_claude(prompt, model=model)
     if not text:
         return None
@@ -153,8 +200,8 @@ def _llm_brief(digest: NewsDigest, model: str | None = None) -> str | None:
         f'<div style="{_FONT}font-size:13px;line-height:1.7;color:#33404d;">{narrative}</div>'
         f'<div style="{_FONT}font-size:11px;color:#8a94a0;padding-top:8px;">'
         f"Sources: {' · '.join(source_bits)}<br>"
-        f"Synthesized by {_esc(model)} from {digest.matched} matched headlines; "
-        f"links above are the underlying stories.</div>"
+        f"Synthesized by {_esc(model)} · {_esc(tone)} tone · from {digest.matched} "
+        f"matched headlines; links above are the underlying stories.</div>"
     )
 
 
@@ -168,10 +215,13 @@ DEFAULT_STYLE = "headlines"
 
 
 def render_news(
-    digest: NewsDigest, style_name: str, model: str | None = None
+    digest: NewsDigest,
+    style_name: str,
+    model: str | None = None,
+    tone: str | None = None,
 ) -> tuple[str | None, list[str]]:
-    """Render with the configured style. Unknown names and styles that return
-    None (e.g. the LLM path failing) degrade to the default deterministic style."""
+    """Render with the configured style and tone. Unknown names and styles that
+    return None (e.g. the LLM path failing) degrade to safe defaults."""
     if digest.empty:
         return None, []
     notes: list[str] = []
@@ -182,8 +232,15 @@ def render_news(
             f"(available: {', '.join(sorted(STYLES))})"
         )
         renderer = STYLES[DEFAULT_STYLE]
-    html_fragment = renderer(digest, model)
+    if tone is not None and tone not in TONES:
+        if style_name in LLM_STYLES:  # tone is inert elsewhere; don't note config noise
+            notes.append(
+                f"unknown news tone '{tone}' — using '{DEFAULT_TONE}' "
+                f"(available: {', '.join(sorted(TONES))})"
+            )
+        tone = DEFAULT_TONE
+    html_fragment = renderer(digest, model, tone)
     if html_fragment is None and renderer is not STYLES[DEFAULT_STYLE]:
         notes.append(f"news style '{style_name}' unavailable — fell back to '{DEFAULT_STYLE}'")
-        html_fragment = STYLES[DEFAULT_STYLE](digest, model)
+        html_fragment = STYLES[DEFAULT_STYLE](digest, model, tone)
     return html_fragment, notes
