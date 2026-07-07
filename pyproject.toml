@@ -16,6 +16,7 @@ dependencies = [
     "pyyaml>=6.0",
     "requests>=2.32",
     "tenacity>=8.3",
+    "feedparser>=6.0",
 ]
 
 [project.optional-dependencies]
