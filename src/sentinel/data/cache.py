@@ -17,6 +17,10 @@ import pandas as pd
 from sentinel.config import repo_root
 
 REFRESH_DAYS = 7  # fundamentals change quarterly; refresh at most weekly
+MAX_QUARTERS = 16  # formulas need 12 (TTM windows at offsets 0..8); cap keeps parquet bounded
+
+# every file the cache writes per ticker; prune() recognizes tickers by these
+_SUFFIXES = (".signals.json", ".meta.json", ".parquet")
 
 
 def cache_dir() -> Path:
@@ -59,9 +63,37 @@ def is_fresh(meta: dict[str, Any] | None, max_age_days: int = REFRESH_DAYS) -> b
 
 
 def merge_statements(cached: pd.DataFrame | None, fresh: pd.DataFrame) -> pd.DataFrame:
-    """Union of quarter columns, fresh values winning, sorted newest-first."""
+    """Union of quarter columns, fresh values winning, sorted newest-first.
+
+    Capped at MAX_QUARTERS so the committed parquet never grows unboundedly —
+    quarters older than any formula can use are dropped.
+    """
     if cached is None or cached.empty:
         merged = fresh
     else:
         merged = fresh.combine_first(cached)
-    return merged.sort_index(axis=1, ascending=False)
+    return merged.sort_index(axis=1, ascending=False).iloc[:, :MAX_QUARTERS]
+
+
+def prune(keep_tickers: set[str]) -> list[str]:
+    """Delete cache files for tickers no longer in the watchlist.
+
+    Keeps the committed cache self-cleaning: removing a ticker from
+    watchlist.yaml removes its data on the next run instead of leaving
+    orphaned files forever. Returns the removed filenames.
+    """
+    removed: list[str] = []
+    d = cache_dir()
+    if not d.exists():
+        return removed
+    for path in d.iterdir():
+        if path.is_dir():
+            continue
+        for suffix in _SUFFIXES:
+            if path.name.endswith(suffix):
+                ticker = path.name.removesuffix(suffix)
+                if ticker not in keep_tickers:
+                    path.unlink()
+                    removed.append(path.name)
+                break  # non-cache files (.gitkeep etc.) never match a suffix
+    return sorted(removed)

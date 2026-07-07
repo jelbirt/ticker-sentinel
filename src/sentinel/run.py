@@ -143,6 +143,15 @@ def main(argv: list[str] | None = None) -> int:
     for sc in scorecards:  # between-quarter signals: informational, never scored
         sc.signals = signals.get(sc.ticker)
 
+    # cache hygiene: drop files for tickers no longer on the watchlist —
+    # skipped for --tickers overrides so an ad hoc subset never deletes siblings
+    if not args.dry_run and not args.tickers:
+        from sentinel.data import cache
+
+        removed = cache.prune(set(cfg.all_tickers))
+        if removed:
+            notes.append(f"pruned cache for departed tickers: {', '.join(removed)}")
+
     tech_only = []
     for ticker in tech_only_tickers:
         snap = compute_technicals(_column(close, ticker), _column(volume, ticker), bench_close)
