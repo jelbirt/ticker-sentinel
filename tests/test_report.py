@@ -192,6 +192,21 @@ def test_deep_grid_covers_every_scored_ticker(scored):
         assert ticker in deep_html.split("Deep dive")[1]
 
 
+def test_news_section_renders_when_html_given(scored):
+    cfg = load_config()
+    ctx = build_context(
+        scored, cfg, run_type="dry", notes=[], today=FIXED_TODAY,
+        news_html="<b>ALFA</b> fixture headline",
+    )
+    html = render_report(ctx)
+    assert "What mattered today" in html
+    assert "fixture headline" in html
+
+
+def test_news_section_absent_without_html(html):
+    assert "What mattered today" not in html
+
+
 def test_small_watchlist_weakest_empty(scored):
     cfg = load_config()  # top_n=10 > 3 fixtures
     ctx = build_context(scored, cfg, run_type="dry", notes=[], today=FIXED_TODAY)

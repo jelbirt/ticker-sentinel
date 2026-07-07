@@ -152,6 +152,32 @@ def main(argv: list[str] | None = None) -> int:
         if removed:
             notes.append(f"pruned cache for departed tickers: {', '.join(removed)}")
 
+    # --- news: pipeline builds a neutral digest, the configured style renders it ---
+    news_html = None
+    if args.dry_run or cfg.news.enabled:
+        from sentinel.news.pipeline import build_digest, collect_news
+        from sentinel.news.styles import render_news
+
+        name_map = {sc.ticker: sc.company_name for sc in scorecards}
+        if args.dry_run:
+            from sentinel.data.fixtures import fixture_news
+
+            generic, per_ticker = fixture_news()
+        else:
+            generic, per_ticker, news_notes = collect_news(
+                list(cfg.news.feeds), cfg.news.per_ticker_feed, list(name_map)
+            )
+            notes.extend(news_notes)
+        digest = build_digest(
+            generic,
+            per_ticker,
+            name_map,
+            max_age_hours=cfg.news.max_age_hours,
+            max_per_ticker=cfg.news.max_per_ticker,
+        )
+        news_html, style_notes = render_news(digest, cfg.news.style)
+        notes.extend(style_notes)
+
     tech_only = []
     for ticker in tech_only_tickers:
         snap = compute_technicals(_column(close, ticker), _column(volume, ticker), bench_close)
@@ -166,6 +192,7 @@ def main(argv: list[str] | None = None) -> int:
         notes=notes,
         benchmark_line=_benchmark_line(close, cfg.benchmark),
         tech_only=tech_only,
+        news_html=news_html,
     )
     context["deep"] = args.deep
 

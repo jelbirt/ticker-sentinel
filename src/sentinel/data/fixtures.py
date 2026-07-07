@@ -114,6 +114,49 @@ def fixture_signals() -> dict[str, "SignalSnapshot"]:
     }
 
 
+def fixture_news() -> tuple[list, dict[str, list]]:
+    """Deterministic news entries for --dry-run: (generic feed entries,
+    pre-attributed per-ticker entries) — same shapes collect_news() returns.
+    Timestamps are relative to now so the recency window always passes."""
+    from datetime import datetime, timedelta, timezone
+
+    from sentinel.news.feeds import NewsEntry
+
+    now = datetime.now(timezone.utc)
+    generic = [
+        NewsEntry(
+            title="Alfa Systems announces record quarter",
+            link="https://example.com/alfa-record",
+            source="https://example.com/feed",
+            summary="ALFA revenue up 32% year over year",
+            published=now - timedelta(hours=2),
+        ),
+        NewsEntry(
+            title="Cloud sector roundup: BRVO dilution questions persist",
+            link="https://example.com/cloud-roundup",
+            source="https://example.com/feed",
+            published=now - timedelta(hours=8),
+        ),
+        NewsEntry(
+            title="Unrelated commodities story",
+            link="https://example.com/oil",
+            source="https://example.com/feed",
+            published=now - timedelta(hours=1),
+        ),
+    ]
+    per_ticker = {
+        "CHRL": [
+            NewsEntry(
+                title="Charlie Retail cuts guidance again",
+                link="https://example.com/chrl-guidance",
+                source="https://example.com/feed/CHRL",
+                published=now - timedelta(hours=5),
+            )
+        ]
+    }
+    return generic, per_ticker
+
+
 def load_fixture_inputs(fixtures_dir: Path = FIXTURES_DIR) -> list[FundamentalInputs]:
     inputs = []
     for path in sorted(fixtures_dir.glob("*.json")):

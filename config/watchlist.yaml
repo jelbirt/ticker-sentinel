@@ -27,3 +27,12 @@ report:
 scoring:               # weights, overridable without code changes
   fundamentals_weight: 0.6
   technicals_weight: 0.4
+news:
+  feeds:               # general feeds — every entry text-matched to your tickers
+    - https://www.cnbc.com/id/100003114/device/rss/rss.html          # CNBC Top Business
+    - https://feeds.content.dowjones.io/public/rss/mw_topstories     # MarketWatch Top Stories
+  # per-ticker feed template ({ticker} is expanded per watchlist name; entries pre-attributed)
+  per_ticker_feed: "https://feeds.finance.yahoo.com/rss/2.0/headline?s={ticker}&region=US&lang=en-US"
+  max_age_hours: 36    # ignore anything older
+  max_per_ticker: 3    # pipeline cap; the style may show fewer
+  style: headlines     # presentation: headlines | brief (see src/sentinel/news/styles.py)
