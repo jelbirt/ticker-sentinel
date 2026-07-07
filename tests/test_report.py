@@ -192,18 +192,34 @@ def test_deep_grid_covers_every_scored_ticker(scored):
         assert ticker in deep_html.split("Deep dive")[1]
 
 
-def test_news_section_renders_when_html_given(scored):
+def test_news_section_renders_single_unlabeled(scored):
     cfg = load_config()
     ctx = build_context(
         scored, cfg, run_type="dry", notes=[], today=FIXED_TODAY,
-        news_html="<b>ALFA</b> fixture headline",
+        news_sections=[{"label": None, "html": "<b>ALFA</b> fixture headline"}],
     )
     html = render_report(ctx)
     assert "What mattered today" in html
     assert "fixture headline" in html
+    assert "text-transform:uppercase" not in html  # no tone chip for a single section
 
 
-def test_news_section_absent_without_html(html):
+def test_news_sections_multi_tone_labeled_and_separated(scored):
+    cfg = load_config()
+    ctx = build_context(
+        scored, cfg, run_type="dry", notes=[], today=FIXED_TODAY,
+        news_sections=[
+            {"label": "skeptic", "html": "<i>skeptic voice</i>"},
+            {"label": "barrons", "html": "<i>barrons voice</i>"},
+        ],
+    )
+    html = render_report(ctx)
+    assert "skeptic voice" in html and "barrons voice" in html
+    assert html.count("text-transform:uppercase") == 2      # one chip per tone
+    assert html.index("skeptic") < html.index("barrons")     # config order preserved
+
+
+def test_news_section_absent_without_sections(html):
     assert "What mattered today" not in html
 
 

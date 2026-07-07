@@ -62,9 +62,16 @@
         {% for m in movers %}• {{ m }}<br>{% endfor %}
       </td></tr>
       {% endif %}
-      {% if news_html %}
+      {% if news_sections %}
       <tr><td style="padding:12px 24px 6px;font-family:Arial,Helvetica,sans-serif;font-size:16px;font-weight:bold;color:#1f2d3d;">What mattered today <span style="font-size:12px;font-weight:normal;color:#66727f;">(news matched to your names)</span></td></tr>
-      <tr><td style="padding:0 24px 12px;">{{ news_html|safe }}</td></tr>
+      {% for sec in news_sections %}
+      {% if sec.label %}
+      <tr><td style="padding:{{ '2px' if loop.first else '14px' }} 24px 4px;font-family:Arial,Helvetica,sans-serif;">
+        <span style="display:inline-block;background-color:#1f2d3d;color:#ffffff;padding:2px 10px;font-size:11px;font-weight:bold;letter-spacing:1px;text-transform:uppercase;">{{ sec.label }}</span>
+      </td></tr>
+      {% endif %}
+      <tr><td style="padding:0 24px 12px;{% if not loop.last %}border-bottom:1px solid #eef1f4;{% endif %}">{{ sec.html|safe }}</td></tr>
+      {% endfor %}
       {% endif %}
       {% if signal_rows %}
       <tr><td style="padding:12px 24px 6px;font-family:Arial,Helvetica,sans-serif;font-size:16px;font-weight:bold;color:#1f2d3d;">Between-quarter signals <span style="font-size:12px;font-weight:normal;color:#66727f;">(weekly-or-faster; informational — not scored)</span></td></tr>
@@ -188,8 +195,8 @@
         <b>Est. revisions 30d</b> &mdash; how many analysts raised (▲) vs cut (▼) current-quarter EPS estimates in the last 30 days; the freshest fundamental tell between earnings reports.<br>
         <b>Recs (B/H/S)</b> &mdash; analyst ratings this month: buy-or-better / hold / sell-or-worse, with last month's buy count in parentheses when it changed.<br>
         <b>Short % float / Short &Delta; MoM</b> &mdash; shares sold short (bets the price falls) as % of float &mdash; the shares actually available to trade; &gt; 10% = heavily shorted. &Delta; MoM is the month-over-month change in shares short, per FINRA (the US brokerage regulator, which publishes short-interest data twice monthly).<br>
-        <b>Insider net 6m</b> &mdash; shares bought minus sold by the company's own officers &amp; directors over 6 months; net buying is rare and notable, some selling is normal.{% if news_html %}<br>
-        <b>What mattered today</b> &mdash; recent headlines from your configured feeds, matched to watchlist names by ticker or company name; format and voice follow the configured news style and tone.{% endif %}
+        <b>Insider net 6m</b> &mdash; shares bought minus sold by the company's own officers &amp; directors over 6 months; net buying is rare and notable, some selling is normal.{% if news_sections %}<br>
+        <b>What mattered today</b> &mdash; recent headlines from your configured feeds, matched to watchlist names by ticker or company name; each labeled block is the same news written in a different configured voice.{% endif %}
         {% if deep %}
         <br><br><u>Deep-dive grid</u><br>
         <b>Rule of X</b> &mdash; 2 &times; growth + FCF margin: like R40 but growth counts double; target &ge; 50.<br>

@@ -39,5 +39,6 @@ news:
   # llm-brief needs the CLAUDE_CODE_OAUTH_TOKEN secret; it fails open to headlines
   style: llm-brief
   model: claude-sonnet-5   # only used by LLM styles
-  # LLM voice: neutral-analyst | skeptic | brief-wire | morning-brew | barrons
-  tone: neutral-analyst
+  # LLM voices — one clearly-labeled section per tone, all in the same email:
+  # neutral-analyst | skeptic | brief-wire | morning-brew | barrons
+  tones: [neutral-analyst, skeptic, brief-wire, morning-brew, barrons]

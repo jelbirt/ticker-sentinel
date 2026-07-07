@@ -152,17 +152,22 @@ def main(argv: list[str] | None = None) -> int:
         if removed:
             notes.append(f"pruned cache for departed tickers: {', '.join(removed)}")
 
-    # --- news: pipeline builds a neutral digest, the configured style renders it ---
-    news_html = None
+    # --- news: pipeline builds ONE neutral digest; each configured tone renders
+    # its own labeled section from it (styles may trim, never refetch) ---
+    news_sections = None
     if args.dry_run or cfg.news.enabled:
         from sentinel.news.pipeline import build_digest, collect_news
-        from sentinel.news.styles import render_news
+        from sentinel.news.styles import LLM_STYLES, render_news
 
         name_map = {sc.ticker: sc.company_name for sc in scorecards}
+        style = cfg.news.style
         if args.dry_run:
             from sentinel.data.fixtures import fixture_news
 
             generic, per_ticker = fixture_news()
+            if style in LLM_STYLES:  # dry run means offline — no claude subprocess
+                notes.append("dry run: LLM news style skipped — rendering headlines instead")
+                style = "headlines"
         else:
             generic, per_ticker, news_notes = collect_news(
                 list(cfg.news.feeds), cfg.news.per_ticker_feed, list(name_map)
@@ -175,10 +180,30 @@ def main(argv: list[str] | None = None) -> int:
             max_age_hours=cfg.news.max_age_hours,
             max_per_ticker=cfg.news.max_per_ticker,
         )
-        news_html, style_notes = render_news(
-            digest, cfg.news.style, model=cfg.news.model, tone=cfg.news.tone
-        )
-        notes.extend(style_notes)
+        if style in LLM_STYLES and not digest.empty:
+            sections = []
+            label_tones = len(cfg.news.tones) > 1
+            for tone in cfg.news.tones:
+                fragment, tone_notes = render_news(
+                    digest, style, model=cfg.news.model, tone=tone, fallback=False
+                )
+                notes.extend(tone_notes)
+                if fragment:
+                    sections.append({"label": tone if label_tones else None, "html": fragment})
+                else:
+                    notes.append(f"news tone '{tone}' failed — section skipped")
+            if not sections:  # every tone failed: one deterministic fallback section
+                fragment, fb_notes = render_news(digest, "headlines")
+                notes.extend(fb_notes)
+                notes.append("all news tones failed — fell back to headlines")
+                sections = [{"label": None, "html": fragment}] if fragment else []
+            news_sections = sections or None
+        else:
+            fragment, style_notes = render_news(
+                digest, style, model=cfg.news.model, tone=cfg.news.tones[0]
+            )
+            notes.extend(style_notes)
+            news_sections = [{"label": None, "html": fragment}] if fragment else None
 
     tech_only = []
     for ticker in tech_only_tickers:
@@ -194,7 +219,7 @@ def main(argv: list[str] | None = None) -> int:
         notes=notes,
         benchmark_line=_benchmark_line(close, cfg.benchmark),
         tech_only=tech_only,
-        news_html=news_html,
+        news_sections=news_sections,
     )
     context["deep"] = args.deep
 

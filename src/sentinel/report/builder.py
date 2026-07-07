@@ -176,7 +176,7 @@ def build_context(
     benchmark_line: str | None = None,
     today: date | None = None,
     tech_only: list[dict] | None = None,
-    news_html: str | None = None,
+    news_sections: list[dict] | None = None,
 ) -> dict:
     scored = sorted(
         (sc for sc in scorecards if sc.score is not None),
@@ -201,7 +201,7 @@ def build_context(
         "unscored": unscored,
         "movers": build_movers(scorecards),
         "tech_only": tech_only or [],
-        "news_html": news_html,  # pre-rendered by the configured news style
+        "news_sections": news_sections or [],  # [{label, html}] per configured tone
         "signal_rows": sorted(
             (sc for sc in scorecards if sc.signals is not None), key=lambda s: s.ticker
         ),

@@ -219,9 +219,12 @@ def render_news(
     style_name: str,
     model: str | None = None,
     tone: str | None = None,
+    fallback: bool = True,
 ) -> tuple[str | None, list[str]]:
     """Render with the configured style and tone. Unknown names and styles that
-    return None (e.g. the LLM path failing) degrade to safe defaults."""
+    return None (e.g. the LLM path failing) degrade to safe defaults; pass
+    fallback=False to get (None, notes) instead — used by multi-tone rendering,
+    where a failed tone should be skipped rather than duplicated as headlines."""
     if digest.empty:
         return None, []
     notes: list[str] = []
@@ -240,7 +243,7 @@ def render_news(
             )
         tone = DEFAULT_TONE
     html_fragment = renderer(digest, model, tone)
-    if html_fragment is None and renderer is not STYLES[DEFAULT_STYLE]:
+    if html_fragment is None and fallback and renderer is not STYLES[DEFAULT_STYLE]:
         notes.append(f"news style '{style_name}' unavailable — fell back to '{DEFAULT_STYLE}'")
         html_fragment = STYLES[DEFAULT_STYLE](digest, model, tone)
     return html_fragment, notes

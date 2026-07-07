@@ -225,3 +225,11 @@ class TestTones:
         html, notes = render_news(digest, "headlines", tone="sports-desk")
         assert html is not None
         assert notes == []  # tone is inert here; no config-noise note
+
+    def test_fallback_false_returns_none_for_multi_tone_skipping(self, digest, monkeypatch):
+        monkeypatch.setattr(llm, "call_claude", lambda *a, **k: None)
+        html, notes = render_news(
+            digest, "llm-brief", model="claude-sonnet-5", tone="skeptic", fallback=False
+        )
+        assert html is None
+        assert not any("fell back" in n for n in notes)  # caller decides what to do

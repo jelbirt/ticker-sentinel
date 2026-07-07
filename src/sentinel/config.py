@@ -34,7 +34,9 @@ class NewsCfg:
     max_per_ticker: int = 3
     style: str = "headlines"             # presentation style — see news/styles.py
     model: str = "claude-sonnet-5"       # only used by LLM styles (llm-brief)
-    tone: str = "neutral-analyst"        # LLM voice preset — see TONES in news/styles.py
+    # LLM voice presets (see TONES in news/styles.py); several -> one labeled
+    # section per tone in the same email
+    tones: tuple[str, ...] = ("neutral-analyst",)
 
     @property
     def enabled(self) -> bool:
@@ -79,7 +81,8 @@ def load_config(path: Path | None = None) -> Config:
         max_per_ticker=int(news_raw.get("max_per_ticker", 3)),
         style=str(news_raw.get("style", "headlines")),
         model=str(news_raw.get("model", "claude-sonnet-5")),
-        tone=str(news_raw.get("tone", "neutral-analyst")),
+        # `tones` (list) preferred; singular `tone` accepted for convenience
+        tones=tuple(news_raw.get("tones") or [news_raw.get("tone", "neutral-analyst")]),
     )
     return Config(
         universe=universe,
