@@ -195,7 +195,7 @@ Notes: US market holidays → job runs but detects "no new bar" and sends nothin
 - **Phase 1 (MVP):** config + data layer + fundamentals scorecard + basic HTML email + scheduled workflow. Ship when one real email arrives with correct R40 numbers spot-checked against a public source.
 - **Phase 2:** technical overlay + composite scoring + flags + sparklines + ad hoc dispatch inputs + weakest-buy logic + tests hardened. Quick wins folded in: daily market-cap repricing (valuation label moves daily) and earnings-date-aware cache refresh (new quarters land within ~1 day).
 - **Phase 2.5 (shipped 2026-07-06):** between-quarter fundamental signals — analyst estimate revisions (current-quarter EPS, 7d/30d analyst counts), recommendation trends (month-over-month), short interest (FINRA cycle + MoM delta), insider activity (6-month net shares). Implemented with yfinance as primary for all four (verified richer than expected); Finnhub free tier (`FINNHUB_API_KEY`, optional) as insider-data fallback hedging yfinance scraping breakage. Rendered as a "Between-quarter signals" table + Movers alerts; informational only, never score inputs.
-- **Phase 3 (news module):** RSS ingestion (`feedparser`) from curated feeds + per-ticker news matching; optional LLM summarization pass to produce a personalized "what mattered today for your names" section appended to the same report. Designed as `src/sentinel/news/` feeding the existing report builder.
+- **Phase 3 (news module — headline delivery shipped 2026-07-06):** RSS ingestion (`feedparser`) from config-curated feeds (general feeds text-matched to tickers + a per-ticker feed URL template) producing a personalized "What mattered today" section. Architecture is deliberately two-layer: `news/pipeline.py` (data side — fetch, recency window, attribution, dedupe, rank, cap; emits a neutral `NewsDigest` and owns primary selection) and `news/styles.py` (presentation side — swappable renderers chosen via `news.style` config; a style may trim the digest further but never expands or fetches). The optional LLM summarization pass remains open and slots in as just another registered style; needs a model/cost decision before building.
 ## 12. Risks & Mitigations
 | Risk | Mitigation |
 |---|---|
@@ -204,4 +204,6 @@ Notes: US market holidays → job runs but detects "no new bar" and sends nothin
 | Gmail SMTP blocks | app password + low volume; Resend free tier as alternate path |
 | R40 misapplied to non-software names | `r40` tag gating; sector shown in report |
 | Metric garbage-in (restated quarters, missing SBC) | sanity guards + flags instead of silent numbers |
+| Dead RSS URLs / feeds redirecting to HTML error pages (parse as empty, not as errors) | per-feed degradation notes; feed list lives in config for zero-code swaps; recency window + per-ticker cap bound the blast radius of a noisy feed |
+| Committed cache grows unboundedly | 16-quarter cap on parquet width; watchlist-driven pruning; per-run signals snapshots untracked |
 | Scope creep | phases; news module explicitly Phase 3 |
