@@ -5,6 +5,10 @@
 # run outputs
 reports/
 
+# per-run fallback snapshots — rewritten every run; versioning them would
+# make the CI cache-commit step churn daily instead of weekly
+data/cache/*.signals.json
+
 # python
 __pycache__/
 *.pyc
