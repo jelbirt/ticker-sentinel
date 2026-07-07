@@ -14,11 +14,18 @@ permissions:
 jobs:
   run:
     runs-on: ubuntu-latest
+    env:
+      # subscription auth for the llm-brief news style (claude setup-token);
+      # absent -> the install step is skipped and the style fails open to headlines
+      CLAUDE_CODE_OAUTH_TOKEN: ${{ secrets.CLAUDE_CODE_OAUTH_TOKEN }}
     steps:
       - uses: actions/checkout@v4
       - uses: actions/setup-python@v5
         with: {python-version: "3.12", cache: pip}
       - run: pip install -e .
+      - name: install Claude Code CLI (LLM news style)
+        if: env.CLAUDE_CODE_OAUTH_TOKEN != ''
+        run: npm install -g @anthropic-ai/claude-code
       - run: python -m sentinel.run ${{ inputs.tickers && format('--tickers {0}', inputs.tickers) || '' }} ${{ inputs.send_email == false && '--no-email' || '' }} ${{ inputs.deep && '--deep' || '' }}
         env:
           SMTP_HOST: ${{ secrets.SMTP_HOST }}

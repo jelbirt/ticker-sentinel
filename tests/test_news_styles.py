@@ -40,7 +40,10 @@ def digest():
     )
 
 
-@pytest.mark.parametrize("style", sorted(STYLES))
+DETERMINISTIC_STYLES = sorted(set(STYLES) - {"llm-brief"})  # llm-brief: see test_news_llm.py
+
+
+@pytest.mark.parametrize("style", DETERMINISTIC_STYLES)
 def test_every_style_renders_gmail_safe_escaped_html(style, digest):
     html, notes = render_news(digest, style)
     assert notes == []

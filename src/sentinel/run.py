@@ -175,7 +175,7 @@ def main(argv: list[str] | None = None) -> int:
             max_age_hours=cfg.news.max_age_hours,
             max_per_ticker=cfg.news.max_per_ticker,
         )
-        news_html, style_notes = render_news(digest, cfg.news.style)
+        news_html, style_notes = render_news(digest, cfg.news.style, model=cfg.news.model)
         notes.extend(style_notes)
 
     tech_only = []

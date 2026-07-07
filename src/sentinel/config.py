@@ -33,6 +33,7 @@ class NewsCfg:
     max_age_hours: int = 36
     max_per_ticker: int = 3
     style: str = "headlines"             # presentation style — see news/styles.py
+    model: str = "claude-sonnet-5"       # only used by LLM styles (llm-brief)
 
     @property
     def enabled(self) -> bool:
@@ -76,6 +77,7 @@ def load_config(path: Path | None = None) -> Config:
         max_age_hours=int(news_raw.get("max_age_hours", 36)),
         max_per_ticker=int(news_raw.get("max_per_ticker", 3)),
         style=str(news_raw.get("style", "headlines")),
+        model=str(news_raw.get("model", "claude-sonnet-5")),
     )
     return Config(
         universe=universe,
