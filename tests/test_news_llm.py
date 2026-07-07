@@ -59,20 +59,75 @@ class TestCallClaude:
         )
         assert llm.call_claude("hi", model="claude-sonnet-5") is None
 
+    @staticmethod
+    def _stream(*events) -> str:
+        import json as jsonlib
+
+        return "\n".join(jsonlib.dumps(e) for e in events)
+
+    def _assistant(self, *texts) -> dict:
+        return {
+            "type": "assistant",
+            "message": {"content": [{"type": "text", "text": t} for t in texts]},
+        }
+
     def test_success_returns_text_and_pins_model(self, monkeypatch):
         captured = {}
 
         def fake_run(cmd, **kwargs):
             captured["cmd"] = cmd
             captured["env"] = kwargs.get("env", {})
-            return SimpleNamespace(returncode=0, stdout="  a narrative  ", stderr="")
+            stdout = self._stream(
+                self._assistant("a narrative"), {"type": "result", "is_error": False}
+            )
+            return SimpleNamespace(returncode=0, stdout=stdout, stderr="")
 
         monkeypatch.setattr(subprocess, "run", fake_run)
         out = llm.call_claude("summarize this", model="claude-sonnet-5")
         assert out == "a narrative"
-        assert captured["cmd"][:4] == ["claude", "-p", "--model", "claude-sonnet-5"]
+        assert captured["cmd"][:7] == [
+            "claude", "-p", "--model", "claude-sonnet-5",
+            "--output-format", "stream-json", "--verbose",
+        ]
         assert captured["env"]["CLAUDE_CODE_MAX_OUTPUT_TOKENS"] == llm.MAX_OUTPUT_TOKENS
-        assert len(captured["cmd"]) == 5  # exactly one prompt arg — one call, no extras
+        assert captured["env"]["MAX_THINKING_TOKENS"] == "0"
+        assert len(captured["cmd"]) == 8  # exactly one prompt arg — one call, no extras
+
+    def test_multi_message_answers_are_concatenated(self, monkeypatch):
+        # the front-truncation bug: continuation turns split the answer across
+        # assistant messages; every chunk must survive, joined exactly
+        stdout = self._stream(
+            self._assistant("CRWD had a strong quarter. NET rallied on comparisons to Orac"),
+            self._assistant("le, CoreWeave, and Snowflake."),
+            {"type": "result", "is_error": False},
+        )
+        monkeypatch.setattr(
+            subprocess, "run",
+            lambda *a, **k: SimpleNamespace(returncode=0, stdout=stdout, stderr=""),
+        )
+        out = llm.call_claude("hi", model="claude-sonnet-5")
+        assert out == (
+            "CRWD had a strong quarter. NET rallied on comparisons to "
+            "Oracle, CoreWeave, and Snowflake."
+        )
+
+    def test_error_result_returns_none(self, monkeypatch):
+        stdout = self._stream(
+            {"type": "result", "is_error": True, "result": "usage limit reached"}
+        )
+        monkeypatch.setattr(
+            subprocess, "run",
+            lambda *a, **k: SimpleNamespace(returncode=0, stdout=stdout, stderr=""),
+        )
+        assert llm.call_claude("hi", model="claude-sonnet-5") is None
+
+    def test_plain_text_stdout_tolerated(self, monkeypatch):
+        # if a CLI update changes the output format, degrade to using raw text
+        monkeypatch.setattr(
+            subprocess, "run",
+            lambda *a, **k: SimpleNamespace(returncode=0, stdout="just text", stderr=""),
+        )
+        assert llm.call_claude("hi", model="claude-sonnet-5") == "just text"
 
     def test_prompt_hard_truncated(self, monkeypatch):
         captured = {}

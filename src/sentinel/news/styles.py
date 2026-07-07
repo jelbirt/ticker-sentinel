@@ -105,8 +105,10 @@ Below are today's headlines already matched to the owner's watchlist tickers.
 Write a tight synthesis in plain text (no markdown, no HTML, no preamble):
 one short paragraph per ticker that has meaningful news, each starting with
 the ticker symbol; if several tickers only have minor items, group them into
-a single final one-liner. Factual and analytical in tone — no hype, no
-investment advice. Under 160 words total.
+a single final one-liner. EVERY ticker listed below must be mentioned exactly
+once — either in its own paragraph or in the grouped one-liner; never omit
+one. Factual and analytical in tone — no hype, no investment advice.
+Under 180 words total.
 
 HEADLINES:
 {headlines}"""
