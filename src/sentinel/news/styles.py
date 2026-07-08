@@ -17,6 +17,7 @@ Style contract:
 from __future__ import annotations
 
 import html
+import re
 from datetime import datetime
 from urllib.parse import urlparse
 
@@ -110,15 +111,36 @@ VOICE:
 {voice}
 
 RULES (these always override the voice):
-Plain text only — no markdown, no HTML, no preamble. One short paragraph per
-ticker that has meaningful news, each starting with the ticker symbol; if
-several tickers only have minor items, group them into a single final
-one-liner. EVERY ticker listed below must be mentioned exactly once — either
-in its own paragraph or in the grouped one-liner; never omit one. Never give
-investment advice or tell the reader what to do. Under 180 words total.
+Plain text only — no markdown, no HTML. One short paragraph per ticker that
+has meaningful news, each starting with the ticker symbol; if several tickers
+only have minor items, group them into a single final one-liner. EVERY ticker
+listed below must be mentioned exactly once — either in its own paragraph or
+in the grouped one-liner; never omit one. Never give investment advice or
+tell the reader what to do. Under 180 words total.
+
+OUTPUT FORMAT — this text goes directly into an email a reader sees:
+wrap the finished section between <REPORT> and </REPORT> markers. Everything
+outside the markers is discarded, so put NOTHING else inside them — no
+planning notes, no drafts, no word counts, no commentary about the task, no
+sign-off. If you revise, only the final <REPORT> block counts.
 
 HEADLINES:
 {headlines}"""
+
+_REPORT_RE = re.compile(r"<REPORT>(.*?)</REPORT>", re.DOTALL | re.IGNORECASE)
+
+
+def _extract_report(text: str) -> str | None:
+    """Take the LAST marker-wrapped block — immune to narration and draft passes.
+
+    No markers at all means the model ignored the output contract; returning
+    None skips the tone (with a note) rather than risking meta-commentary
+    leaking into the email.
+    """
+    blocks = _REPORT_RE.findall(text)
+    if not blocks:
+        return None
+    return blocks[-1].strip() or None
 
 # Named tone presets — presentation-layer only (Phase 3.1). A tone may shift
 # emphasis within the digest but never what the pipeline selected.
@@ -184,8 +206,11 @@ def _llm_brief(
         return None
     tone = tone if tone in TONES else DEFAULT_TONE
     prompt = _LLM_PROMPT.format(voice=TONES[tone], headlines=_digest_text(digest))
-    text = call_claude(prompt, model=model)
-    if not text:
+    raw = call_claude(prompt, model=model)
+    if not raw:
+        return None
+    text = _extract_report(raw)
+    if not text:  # model ignored the output contract — skip rather than leak meta-talk
         return None
 
     narrative = _esc(text).replace("\n\n", "<br><br>").replace("\n", "<br>")
