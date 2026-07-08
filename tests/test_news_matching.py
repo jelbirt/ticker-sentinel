@@ -13,12 +13,25 @@ class TestMatchesTicker:
     def test_ticker_in_title(self):
         assert matches_ticker(_entry("CRWD beats on earnings"), "CRWD")
 
-    def test_ticker_case_insensitive(self):
-        assert matches_ticker(_entry("crwd rallies after hours"), "CRWD")
+    def test_lowercase_prose_never_matches_symbol(self):
+        # P0 regression: symbols are case-sensitive — English words must not
+        # misattribute headlines to NET/TEAM/SNOW-style tickers
+        assert not matches_ticker(_entry("Company reports higher net income"), "NET")
+        assert not matches_ticker(_entry("The team behind the new fund"), "TEAM")
+        assert not matches_ticker(_entry("Heavy snow disrupts retail traffic"), "SNOW")
+        assert not matches_ticker(_entry("crwd rallies after hours"), "CRWD")
+
+    def test_uppercase_symbol_still_matches(self):
+        assert matches_ticker(_entry("NET jumped 9% on AI enthusiasm"), "NET")
+        assert matches_ticker(_entry("Cloudflare (NET) beats estimates"), "NET")
+        assert matches_ticker(_entry("Analysts weigh SNOW ahead of earnings"), "SNOW")
+
+    def test_company_name_still_case_insensitive(self):
+        assert matches_ticker(_entry("snowflake expands AI platform"), "SNOW", "Snowflake")
 
     def test_ticker_word_boundary_avoids_false_positive(self):
-        # "NET" must not match inside "internet"
-        assert not matches_ticker(_entry("Internet traffic surges"), "NET")
+        # "NET" must not match inside "INTERNET" either
+        assert not matches_ticker(_entry("INTERNET INFRASTRUCTURE REPORT"), "NET")
 
     def test_ticker_in_summary(self):
         assert matches_ticker(_entry("Cloud stocks rally", summary="DDOG up 5% today"), "DDOG")

@@ -155,7 +155,7 @@ class TestLlmBriefStyle:
 
     def test_model_output_is_escaped_never_live_html(self, digest, monkeypatch):
         monkeypatch.setattr(
-            llm, "call_claude", lambda *a, **k: '<REPORT><script>alert(1)</script> & "quotes"</REPORT>'
+            llm, "call_claude", lambda *a, **k: '<REPORT>CRWD: <script>alert(1)</script> & "quotes"</REPORT>'
         )
         html, _ = render_news(digest, "llm-brief", model="claude-sonnet-5")
         assert "<script>" not in html
@@ -178,7 +178,7 @@ class TestLlmBriefStyle:
 
         def fake(prompt, model, **k):
             captured["prompt"] = prompt
-            return "<REPORT>text</REPORT>"
+            return "<REPORT>CRWD text</REPORT>"
 
         monkeypatch.setattr(llm, "call_claude", fake)
         render_news(digest, "llm-brief", model="claude-sonnet-5")
@@ -212,11 +212,11 @@ class TestReportExtraction:
             lambda *a, **k: (
                 "<REPORT>first draft, too wordy</REPORT>\n"
                 "Word count is high — let me tighten.\n"
-                "<REPORT>final tight version</REPORT>"
+                "<REPORT>CRWD final tight version</REPORT>"
             ),
         )
         html, _ = render_news(digest, "llm-brief", model="claude-sonnet-5")
-        assert "final tight version" in html
+        assert "CRWD final tight version" in html
         assert "first draft" not in html
         assert "let me tighten" not in html
 
@@ -234,12 +234,67 @@ class TestReportExtraction:
 
         def fake(prompt, model, **k):
             captured["prompt"] = prompt
-            return "<REPORT>text</REPORT>"
+            return "<REPORT>CRWD text</REPORT>"
 
         monkeypatch.setattr(llm, "call_claude", fake)
         render_news(digest, "llm-brief", model="claude-sonnet-5")
         assert "<REPORT>" in captured["prompt"]
         assert "planning notes" in captured["prompt"]  # (line-wraps preclude longer match)
+
+
+class TestNarrativeValidation:
+    """P1 guard: hallucinated or dropped coverage never ships under source links."""
+
+    def test_unbalanced_stray_close_marker_fails_open(self, digest, monkeypatch):
+        # P2: a stray </REPORT> would make the non-greedy regex ship a fragment
+        monkeypatch.setattr(
+            llm, "call_claude",
+            lambda *a, **k: "<REPORT>CRWD beat.</REPORT> stray tail </REPORT>",
+        )
+        html, notes = render_news(digest, "llm-brief", model="claude-sonnet-5")
+        assert any("fell back to 'headlines'" in n for n in notes)
+
+    def test_dropped_digest_ticker_fails_open(self, digest, monkeypatch):
+        monkeypatch.setattr(
+            llm, "call_claude", lambda *a, **k: "<REPORT>Markets were quiet today.</REPORT>"
+        )
+        html, notes = render_news(digest, "llm-brief", model="claude-sonnet-5")
+        assert "Markets were quiet" not in html
+        assert any("fell back to 'headlines'" in n for n in notes)
+
+    def test_company_name_coverage_accepted(self, digest, monkeypatch):
+        monkeypatch.setattr(
+            llm, "call_claude",
+            lambda *a, **k: "<REPORT>CrowdStrike delivered a clean beat.</REPORT>",
+        )
+        html, notes = render_news(digest, "llm-brief", model="claude-sonnet-5")
+        assert notes == []
+        assert "CrowdStrike delivered a clean beat." in html
+
+    def test_fabricated_watchlist_ticker_fails_open(self, digest, monkeypatch):
+        # DDOG is on the watchlist but NOT in today's digest — the model had no
+        # headlines for it, so any claim about it is fabricated
+        monkeypatch.setattr(
+            llm, "call_claude",
+            lambda *a, **k: "<REPORT>CRWD beat estimates. DDOG collapsed 20%.</REPORT>",
+        )
+        html, notes = render_news(
+            digest, "llm-brief", model="claude-sonnet-5",
+            known_tickers={"CRWD", "DDOG"},
+        )
+        assert "DDOG collapsed" not in html
+        assert any("fell back to 'headlines'" in n for n in notes)
+
+    def test_peer_mention_by_company_name_is_legitimate(self, digest, monkeypatch):
+        monkeypatch.setattr(
+            llm, "call_claude",
+            lambda *a, **k: "<REPORT>CRWD rallied, echoing Fortinet and Oracle moves.</REPORT>",
+        )
+        html, notes = render_news(
+            digest, "llm-brief", model="claude-sonnet-5", known_tickers={"CRWD", "DDOG"}
+        )
+        assert notes == []
+        assert "echoing Fortinet and Oracle" in html
 
 
 class TestTones:
@@ -250,7 +305,7 @@ class TestTones:
 
         def fake(prompt, model, **k):
             captured["prompt"] = prompt
-            return "<REPORT>text</REPORT>"
+            return "<REPORT>CRWD text</REPORT>"
 
         monkeypatch.setattr(llm, "call_claude", fake)
         _, notes = render_news(digest, "llm-brief", model="claude-sonnet-5", tone=tone)
@@ -267,7 +322,7 @@ class TestTones:
         assert "RULES (these always override the voice)" in prompt
 
     def test_tone_lands_in_attribution_footer(self, digest, monkeypatch):
-        monkeypatch.setattr(llm, "call_claude", lambda *a, **k: "<REPORT>narrative text</REPORT>")
+        monkeypatch.setattr(llm, "call_claude", lambda *a, **k: "<REPORT>CRWD narrative text</REPORT>")
         html, _ = render_news(digest, "llm-brief", model="claude-sonnet-5", tone="barrons")
         assert "barrons tone" in html
 

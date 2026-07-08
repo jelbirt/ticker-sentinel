@@ -1,9 +1,9 @@
 """Per-ticker news matching — pure logic, no I/O (Phase 3).
 
-Matches by ticker symbol (word-boundary, case-insensitive) or company name
-appearing in an entry's title/summary. Simple substring matching to start;
-the plan doesn't specify anything fancier and this keeps false positives
-low without needing an NLP dependency.
+Matches by ticker symbol (word-boundary, case-SENSITIVE — prose words like
+"net"/"team"/"snow" must never match NET/TEAM/SNOW) or company name
+(case-insensitive; names are natural language) appearing in an entry's
+title/summary.
 """
 from __future__ import annotations
 
@@ -20,8 +20,11 @@ class TickerMatch:
 
 
 def _ticker_pattern(ticker: str) -> re.Pattern:
-    """Word-boundary match so 'NET' doesn't match inside 'internet'."""
-    return re.compile(rf"\b{re.escape(ticker)}\b", re.IGNORECASE)
+    """Word-boundary AND case-sensitive: symbols are written uppercase, so this
+    matches "NET jumped 9%" but not the English words in "net income", "the
+    team", or "snow fell" — which otherwise misattribute constantly for
+    watchlist symbols like NET/TEAM/SNOW on general business feeds."""
+    return re.compile(rf"\b{re.escape(ticker)}\b")
 
 
 def matches_ticker(entry: NewsEntry, ticker: str, company_name: str | None = None) -> bool:

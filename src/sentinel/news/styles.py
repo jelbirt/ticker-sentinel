@@ -51,7 +51,12 @@ def _item_meta(item: NewsItem, as_of: datetime) -> str:
     return _esc(" · ".join(parts))
 
 
-def _headlines(digest: NewsDigest, model: str | None = None, tone: str | None = None) -> str:
+def _headlines(
+    digest: NewsDigest,
+    model: str | None = None,
+    tone: str | None = None,
+    known_tickers: set[str] | None = None,
+) -> str:
     """Per-ticker linked headlines — the full digest, nothing editorialized."""
     rows = []
     for tn in digest.tickers:
@@ -81,7 +86,12 @@ def _headlines(digest: NewsDigest, model: str | None = None, tone: str | None = 
     )
 
 
-def _brief(digest: NewsDigest, model: str | None = None, tone: str | None = None) -> str:
+def _brief(
+    digest: NewsDigest,
+    model: str | None = None,
+    tone: str | None = None,
+    known_tickers: set[str] | None = None,
+) -> str:
     """One line per ticker: the top story only — trims the digest (allowed)."""
     lines = []
     for tn in digest.tickers:
@@ -115,8 +125,10 @@ Plain text only — no markdown, no HTML. One short paragraph per ticker that
 has meaningful news, each starting with the ticker symbol; if several tickers
 only have minor items, group them into a single final one-liner. EVERY ticker
 listed below must be mentioned exactly once — either in its own paragraph or
-in the grouped one-liner; never omit one. Never give investment advice or
-tell the reader what to do. Under 180 words total.
+in the grouped one-liner; never omit one, and never discuss a ticker that is
+not listed below. Only state what the headlines support — no outside
+knowledge, numbers, or events. Never give investment advice or tell the
+reader what to do. Under 180 words total.
 
 OUTPUT FORMAT — this text goes directly into an email a reader sees:
 wrap the finished section between <REPORT> and </REPORT> markers. Everything
@@ -128,19 +140,49 @@ HEADLINES:
 {headlines}"""
 
 _REPORT_RE = re.compile(r"<REPORT>(.*?)</REPORT>", re.DOTALL | re.IGNORECASE)
+_OPEN_RE = re.compile(r"<REPORT>", re.IGNORECASE)
+_CLOSE_RE = re.compile(r"</REPORT>", re.IGNORECASE)
 
 
 def _extract_report(text: str) -> str | None:
     """Take the LAST marker-wrapped block — immune to narration and draft passes.
 
-    No markers at all means the model ignored the output contract; returning
-    None skips the tone (with a note) rather than risking meta-commentary
-    leaking into the email.
+    No markers, or UNBALANCED markers (a stray close mid-narrative would make
+    the non-greedy match silently truncate the block), mean the output contract
+    wasn't honored: return None so the tone skips rather than shipping a
+    fragment or meta-commentary.
     """
+    if len(_OPEN_RE.findall(text)) != len(_CLOSE_RE.findall(text)):
+        return None
     blocks = _REPORT_RE.findall(text)
     if not blocks:
         return None
     return blocks[-1].strip() or None
+
+
+def _narrative_valid(
+    text: str, digest: NewsDigest, known_tickers: set[str] | None = None
+) -> bool:
+    """Guard against hallucination shipping under authoritative source links.
+
+    Rejects a narrative that (a) drops a digest ticker entirely (neither its
+    symbol nor company name appears — the sources footer would then point at
+    stories the prose never covered), or (b) mentions the SYMBOL of a known
+    watchlist ticker that is NOT in today's digest — the model had no headlines
+    for it, so any claim about it is fabricated. Peer mentions by company name
+    (Oracle, Fortinet, ...) remain legitimate editorial comparison.
+    """
+    for tn in digest.tickers:
+        symbol_present = re.search(rf"\b{re.escape(tn.ticker)}\b", text)
+        name_present = tn.company_name and tn.company_name.lower() in text.lower()
+        if not symbol_present and not name_present:
+            return False
+    if known_tickers:
+        in_digest = {tn.ticker for tn in digest.tickers}
+        for ticker in known_tickers - in_digest:
+            if re.search(rf"\b{re.escape(ticker)}\b", text):
+                return False
+    return True
 
 # Named tone presets — presentation-layer only (Phase 3.1). A tone may shift
 # emphasis within the digest but never what the pipeline selected.
@@ -192,7 +234,10 @@ def _digest_text(digest: NewsDigest) -> str:
 
 
 def _llm_brief(
-    digest: NewsDigest, model: str | None = None, tone: str | None = None
+    digest: NewsDigest,
+    model: str | None = None,
+    tone: str | None = None,
+    known_tickers: set[str] | None = None,
 ) -> str | None:
     """LLM-written narrative over the digest; sources rendered deterministically.
 
@@ -212,6 +257,8 @@ def _llm_brief(
     text = _extract_report(raw)
     if not text:  # model ignored the output contract — skip rather than leak meta-talk
         return None
+    if not _narrative_valid(text, digest, known_tickers):
+        return None  # dropped or fabricated ticker coverage — skip rather than mislead
 
     narrative = _esc(text).replace("\n\n", "<br><br>").replace("\n", "<br>")
     source_bits = []
@@ -245,6 +292,7 @@ def render_news(
     model: str | None = None,
     tone: str | None = None,
     fallback: bool = True,
+    known_tickers: set[str] | None = None,
 ) -> tuple[str | None, list[str]]:
     """Render with the configured style and tone. Unknown names and styles that
     return None (e.g. the LLM path failing) degrade to safe defaults; pass
@@ -267,8 +315,8 @@ def render_news(
                 f"(available: {', '.join(sorted(TONES))})"
             )
         tone = DEFAULT_TONE
-    html_fragment = renderer(digest, model, tone)
+    html_fragment = renderer(digest, model, tone, known_tickers)
     if html_fragment is None and fallback and renderer is not STYLES[DEFAULT_STYLE]:
         notes.append(f"news style '{style_name}' unavailable — fell back to '{DEFAULT_STYLE}'")
-        html_fragment = STYLES[DEFAULT_STYLE](digest, model, tone)
+        html_fragment = STYLES[DEFAULT_STYLE](digest, model, tone, known_tickers)
     return html_fragment, notes
