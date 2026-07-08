@@ -40,7 +40,7 @@ class NewsDigest:
     as_of: datetime
     tickers: list[TickerNews]       # only tickers that matched something
     scanned: int                    # entries seen across all feeds
-    matched: int                    # entries attributed to a ticker (pre-cap)
+    matched: int                    # UNIQUE entries attributed to ≥1 ticker (pre-cap)
     max_age_hours: int = 36
 
     @property
@@ -90,7 +90,7 @@ def build_digest(
 
     generic = [e for e in generic_entries if _within_window(e, now, max_age_hours)]
     ticker_news: list[TickerNews] = []
-    matched_total = 0
+    matched_keys: set[str] = set()  # unique entries — one story hitting 2 tickers counts once
     for ticker, company_name in tickers.items():
         candidates = [
             e
@@ -99,7 +99,7 @@ def build_digest(
         ]
         candidates += [e for e in generic if matches_ticker(e, ticker, company_name)]
         candidates = _dedupe(candidates)
-        matched_total += len(candidates)
+        matched_keys.update(e.link or e.title for e in candidates)
         if not candidates:
             continue
         # newest first; undated entries rank last
@@ -118,7 +118,7 @@ def build_digest(
         as_of=now,
         tickers=ticker_news,
         scanned=scanned,
-        matched=matched_total,
+        matched=len(matched_keys),
         max_age_hours=max_age_hours,
     )
 

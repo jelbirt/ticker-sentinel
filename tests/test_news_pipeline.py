@@ -59,7 +59,7 @@ class TestAttribution:
             [_entry("CRWD and DDOG both rallied")], {}, TICKERS, now=NOW
         )
         assert sorted(tn.ticker for tn in digest.tickers) == ["CRWD", "DDOG"]
-        assert digest.matched == 2
+        assert digest.matched == 1  # one unique story, even though two tickers show it
 
     def test_dedupe_by_link_across_sources(self):
         dupe_link = "https://example.com/same-story"
