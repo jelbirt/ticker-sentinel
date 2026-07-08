@@ -64,19 +64,26 @@ def _column(frame: pd.DataFrame | None, ticker: str) -> pd.Series | None:
     return frame[ticker]
 
 
-def _reprice_market_cap(inputs_list: list[FundamentalInputs], close: pd.DataFrame | None) -> None:
+def _reprice_market_cap(
+    inputs_list: list[FundamentalInputs], close: pd.DataFrame | None
+) -> list[str]:
     """Daily market-cap repricing: latest close × TTM-average diluted shares.
 
     Keeps the valuation label moving with the market instead of the weekly cache.
-    Approximation (TTM-average shares, not today's count); cached value is the fallback.
+    Approximation (TTM-average shares, not today's count); cached value is the
+    fallback. Returns the tickers whose valuation is still riding a cached (up
+    to week-old) market cap so the report can disclose it.
     """
+    stale: list[str] = []
     for inp in inputs_list:
         series = _column(close, inp.ticker)
-        if series is None or inp.diluted_shares_now is None:
+        prices = series.dropna() if series is not None else None
+        if prices is None or prices.empty or inp.diluted_shares_now is None:
+            if inp.market_cap is not None:
+                stale.append(inp.ticker)
             continue
-        prices = series.dropna()
-        if not prices.empty:
-            inp.market_cap = float(prices.iloc[-1]) * inp.diluted_shares_now
+        inp.market_cap = float(prices.iloc[-1]) * inp.diluted_shares_now
+    return stale
 
 
 def main(argv: list[str] | None = None) -> int:
@@ -131,7 +138,11 @@ def main(argv: list[str] | None = None) -> int:
         )
         for inp in inputs_list
     }
-    _reprice_market_cap(inputs_list, close)
+    stale_mcap = _reprice_market_cap(inputs_list, close)
+    if stale_mcap:
+        notes.append(
+            f"valuation from cached market cap (no fresh price): {', '.join(stale_mcap)}"
+        )
 
     # --- score ------------------------------------------------------------------------
     scorecards = apply_scores(
@@ -185,7 +196,8 @@ def main(argv: list[str] | None = None) -> int:
             label_tones = len(cfg.news.tones) > 1
             for tone in cfg.news.tones:
                 fragment, tone_notes = render_news(
-                    digest, style, model=cfg.news.model, tone=tone, fallback=False
+                    digest, style, model=cfg.news.model, tone=tone, fallback=False,
+                    known_tickers=set(name_map),
                 )
                 notes.extend(tone_notes)
                 if fragment:
