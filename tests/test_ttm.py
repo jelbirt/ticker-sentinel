@@ -71,3 +71,35 @@ def test_reported_ebitda_wins_over_fallback():
 
 def test_none_frame():
     assert build_ttm(None, 0) is None
+
+
+class TestPairedShares:
+    """Dilution windows must always span a true year from one anchor quarter."""
+
+    def _inputs(self, shares):
+        from sentinel.data.fundamentals import inputs_from_canonical
+
+        df = make_canonical({"revenue": [100.0] * len(shares), "diluted_shares": shares})
+        return inputs_from_canonical("X", df, market_cap=None)
+
+    def test_plain_case_uses_columns_0_and_4(self):
+        inp = self._inputs([108, 106, 104, 102, 100, 99])
+        assert inp.diluted_shares_now == approx(108)
+        assert inp.diluted_shares_1y_ago == approx(100)
+
+    def test_missing_newest_quarter_shifts_both_ends(self):
+        # anchor moves to col 1; the prior must move to col 5 — never a
+        # mixed window (col 1 vs col 4 would be only 3 quarters apart)
+        inp = self._inputs([np.nan, 106, 104, 102, 100, 99])
+        assert inp.diluted_shares_now == approx(106)
+        assert inp.diluted_shares_1y_ago == approx(99)
+
+    def test_prior_beyond_history_is_none(self):
+        inp = self._inputs([108, 106, 104, 102])
+        assert inp.diluted_shares_now == approx(108)
+        assert inp.diluted_shares_1y_ago is None
+
+    def test_all_nan_row(self):
+        inp = self._inputs([np.nan, np.nan, np.nan, np.nan, np.nan])
+        assert inp.diluted_shares_now is None
+        assert inp.diluted_shares_1y_ago is None

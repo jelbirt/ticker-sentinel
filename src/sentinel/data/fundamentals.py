@@ -127,11 +127,24 @@ def _first_valid(stmts: pd.DataFrame, field: str, start: int = 0) -> float | Non
     return None
 
 
-def _column_at(stmts: pd.DataFrame, field: str, col: int) -> float | None:
-    if field not in stmts.index or stmts.shape[1] <= col:
-        return None
-    val = stmts.loc[field].iloc[col]
-    return float(val) if pd.notna(val) else None
+def _paired_shares(stmts: pd.DataFrame) -> tuple[float | None, float | None]:
+    """Diluted shares "now" and exactly 4 quarters earlier, from one anchor.
+
+    If the newest quarter lacks the row, anchor on the first quarter that has
+    it and take the prior reading 4 quarters behind THAT — the dilution ratio
+    must always span a true year, never a mixed 3-quarter window.
+    """
+    if "diluted_shares" not in stmts.index:
+        return None, None
+    row = stmts.loc["diluted_shares"]
+    for i in range(len(row)):
+        if pd.notna(row.iloc[i]):
+            prior = row.iloc[i + 4] if len(row) > i + 4 else None
+            return (
+                float(row.iloc[i]),
+                float(prior) if prior is not None and pd.notna(prior) else None,
+            )
+    return None, None
 
 
 def inputs_from_canonical(
@@ -150,6 +163,7 @@ def inputs_from_canonical(
         if not valid.empty:
             statement_date = valid.index.max().date()
 
+    shares_now, shares_1y = _paired_shares(stmts)
     return FundamentalInputs(
         ticker=ticker,
         company_name=company_name,
@@ -158,9 +172,8 @@ def inputs_from_canonical(
         ttm_minus_4q=build_ttm(stmts, 4),
         ttm_minus_6q=build_ttm(stmts, 6),
         ttm_minus_8q=build_ttm(stmts, 8),
-        diluted_shares_now=_column_at(stmts, "diluted_shares", 0)
-        or _first_valid(stmts, "diluted_shares"),
-        diluted_shares_1y_ago=_column_at(stmts, "diluted_shares", 4),
+        diluted_shares_now=shares_now,
+        diluted_shares_1y_ago=shares_1y,
         market_cap=market_cap,
         total_debt=_first_valid(stmts, "total_debt"),
         cash=_first_valid(stmts, "cash"),
