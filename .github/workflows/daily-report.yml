@@ -28,7 +28,7 @@ jobs:
       - name: install Claude Code CLI (LLM news style)
         if: env.CLAUDE_CODE_OAUTH_TOKEN != ''
         run: npm install -g @anthropic-ai/claude-code
-      - run: python -m sentinel.run ${{ inputs.tickers && format('--tickers {0}', inputs.tickers) || '' }} ${{ inputs.send_email == false && '--no-email' || '' }} ${{ inputs.deep && '--deep' || '' }}
+      - run: python -m sentinel.run ${{ inputs.tickers && format('--tickers {0}', inputs.tickers) || '' }} ${{ github.event_name == 'workflow_dispatch' && inputs.send_email == false && '--no-email' || '' }} ${{ inputs.deep && '--deep' || '' }}
         env:
           SMTP_HOST: ${{ secrets.SMTP_HOST }}
           SMTP_PORT: ${{ secrets.SMTP_PORT }}
