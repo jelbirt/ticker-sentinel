@@ -50,25 +50,25 @@ SIGNAL_CSV_FIELDS = [
 
 
 def _pts(v: float | None) -> str:
-    return "—" if v is None else f"{v * 100:.1f}"
+    return "n/a" if v is None else f"{v * 100:.1f}"
 
 
 def _pct(v: float | None) -> str:
-    return "—" if v is None else f"{v * 100:.1f}%"
+    return "n/a" if v is None else f"{v * 100:.1f}%"
 
 
 def _mult(v: float | None) -> str:
-    return "—" if v is None else f"{v:.1f}×"
+    return "n/a" if v is None else f"{v:.1f}×"
 
 
 def _score(v: float | None) -> str:
-    return "—" if v is None else f"{v:.1f}"
+    return "n/a" if v is None else f"{v:.1f}"
 
 
 def _shares(v: float | None) -> str:
     """Signed share counts humanized: +733k, −1.2M."""
     if v is None:
-        return "—"
+        return "n/a"
     sign = "+" if v > 0 else "−" if v < 0 else ""
     a = abs(v)
     if a >= 1e6:
@@ -80,7 +80,7 @@ def _shares(v: float | None) -> str:
 
 def _spct(v: float | None) -> str:
     """Signed percent for deltas: +33%, −6%."""
-    return "—" if v is None else f"{v * 100:+.0f}%"
+    return "n/a" if v is None else f"{v * 100:+.0f}%"
 
 
 def _env() -> Environment:
@@ -152,9 +152,9 @@ def build_movers(scorecards: list[Scorecard]) -> list[str]:
             if t.death_cross_recent:
                 movers.append(f"📉 {sc.ticker}: death cross")
             if t.rsi14 is not None and t.rsi14 > 70:
-                movers.append(f"{sc.ticker}: RSI {t.rsi14:.0f} — overbought")
+                movers.append(f"{sc.ticker}: RSI {t.rsi14:.0f} (overbought)")
             if t.rsi14 is not None and t.rsi14 < 30:
-                movers.append(f"{sc.ticker}: RSI {t.rsi14:.0f} — oversold")
+                movers.append(f"{sc.ticker}: RSI {t.rsi14:.0f} (oversold)")
             if t.dist_52w_high is not None and t.dist_52w_high >= -0.001:
                 movers.append(f"{sc.ticker}: new 52-week high")
             elif t.dist_52w_low is not None and t.dist_52w_low <= 0.001:
@@ -211,7 +211,7 @@ def build_context(
             (sc for sc in scorecards if sc.signals is not None), key=lambda s: s.ticker
         ),
         "short_change_mom": short_change_mom,
-        "median_r40": _pts(median(r40_values)) if r40_values else "—",
+        "median_r40": _pts(median(r40_values)) if r40_values else "n/a",
         "n_total": len(scorecards),
         "flag_labels": flag_labels,
         "trend_arrows": TREND_ARROWS,

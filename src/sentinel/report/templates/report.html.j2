@@ -1,16 +1,16 @@
 {% macro scorecard_table(rows, show_reason=false) -%}
 <table cellpadding="0" cellspacing="0" border="0" width="100%" style="border-collapse:collapse;font-family:Arial,Helvetica,sans-serif;font-size:13px;">
   <tr style="background-color:#1f2d3d;color:#ffffff;">
-    <th align="left" style="padding:8px 10px;">Ticker</th>
-    <th align="right" style="padding:8px 10px;">Comp</th>
-    <th align="right" style="padding:8px 10px;">R40 FCF</th>
-    <th align="right" style="padding:8px 10px;">R40 EBITDA</th>
-    <th align="right" style="padding:8px 10px;">R40 SBC-adj</th>
-    <th align="right" style="padding:8px 10px;">Growth</th>
-    <th align="right" style="padding:8px 10px;">FCF mgn</th>
-    <th align="left" style="padding:8px 10px;">Trend</th>
-    <th align="left" style="padding:8px 10px;">Valuation</th>
-    <th align="left" style="padding:8px 10px;">{{ "Why weakest" if show_reason else "Flags" }}</th>
+    <th align="left" width="9%" style="padding:8px 10px;">Ticker</th>
+    <th align="right" width="7%" style="padding:8px 10px;">Comp</th>
+    <th align="right" width="7%" style="padding:8px 10px;">R40 FCF</th>
+    <th align="right" width="7%" style="padding:8px 10px;">R40 EBITDA</th>
+    <th align="right" width="7%" style="padding:8px 10px;">R40 SBC-adj</th>
+    <th align="right" width="6%" style="padding:8px 10px;">Growth</th>
+    <th align="right" width="6%" style="padding:8px 10px;">FCF mgn</th>
+    <th align="left" width="14%" style="padding:8px 10px;">Trend</th>
+    <th align="left" width="9%" style="padding:8px 10px;">Valuation</th>
+    <th align="left" width="28%" style="padding:8px 10px;">{{ "Why weakest" if show_reason else "Flags" }}</th>
   </tr>
   {% for sc in rows %}
   <tr style="background-color:{{ '#ffffff' if loop.index is odd else '#f2f5f8' }};border-bottom:1px solid #dde3e9;">
@@ -21,12 +21,12 @@
     <td align="right" style="padding:7px 10px;{% if sc.r40_sbc_adj is not none and sc.r40_sbc_adj >= 0.40 %}font-weight:bold;{% endif %}">{{ sc.r40_sbc_adj|pts }}</td>
     <td align="right" style="padding:7px 10px;">{{ sc.growth|pct }}</td>
     <td align="right" style="padding:7px 10px;">{{ sc.fcf_margin|pct }}</td>
-    <td style="padding:7px 10px;white-space:nowrap;">{{ trend_arrows.get(sc.tech.trend_state, "—") if sc.tech else "—" }}{% if spark_src.get(sc.ticker) %}<br><img src="{{ spark_src[sc.ticker] }}" width="120" height="30" alt="1y price" style="display:block;border:0;">{% endif %}</td>
-    <td style="padding:7px 10px;">{{ sc.valuation or "—" }}</td>
+    <td style="padding:7px 10px;white-space:nowrap;">{{ trend_arrows.get(sc.tech.trend_state, "n/a") if sc.tech else "n/a" }}{% if spark_src.get(sc.ticker) %}<br><img src="{{ spark_src[sc.ticker] }}" width="120" height="30" alt="1y price" style="display:block;border:0;">{% endif %}</td>
+    <td style="padding:7px 10px;">{{ sc.valuation or "n/a" }}</td>
     {% if show_reason %}
-    <td style="padding:7px 10px;color:#8a2a2a;">{{ sc.reason or "—" }}{% if sc.flags %}<br><span style="font-size:11px;color:#8a6d00;">{{ flag_labels(sc)|join(" · ") }}</span>{% endif %}</td>
+    <td style="padding:7px 10px;color:#8a2a2a;">{{ sc.reason or "n/a" }}{% if sc.flags %}<br><span style="font-size:11px;color:#8a6d00;">{{ flag_labels(sc)|join(" · ") }}</span>{% endif %}</td>
     {% else %}
-    <td style="padding:7px 10px;color:#8a6d00;">{{ flag_labels(sc)|join(" · ") or "—" }}</td>
+    <td style="padding:7px 10px;color:#8a6d00;">{{ flag_labels(sc)|join(" · ") or "none" }}</td>
     {% endif %}
   </tr>
   {% endfor %}
@@ -34,7 +34,7 @@
 {%- endmacro %}
 <table cellpadding="0" cellspacing="0" border="0" width="100%" style="background-color:#eef1f4;padding:0;margin:0;">
   <tr><td align="center" style="padding:20px 8px;">
-    <table cellpadding="0" cellspacing="0" border="0" width="760" style="background-color:#ffffff;border:1px solid #d8dee5;">
+    <table cellpadding="0" cellspacing="0" border="0" width="920" style="width:920px;max-width:98%;background-color:#ffffff;border:1px solid #d8dee5;">
       <tr><td style="padding:18px 24px;border-bottom:3px solid #1f2d3d;font-family:Arial,Helvetica,sans-serif;">
         <span style="font-size:20px;font-weight:bold;color:#1f2d3d;">Ticker Sentinel</span>
         <span style="font-size:13px;color:#66727f;">&nbsp;&nbsp;{{ report_date }} · {{ run_type }} run · {{ n_total }} tickers · watchlist median R40 (FCF): {{ median_r40 }}</span>
@@ -74,7 +74,7 @@
       {% endfor %}
       {% endif %}
       {% if signal_rows %}
-      <tr><td style="padding:12px 24px 6px;font-family:Arial,Helvetica,sans-serif;font-size:16px;font-weight:bold;color:#1f2d3d;">Between-quarter signals <span style="font-size:12px;font-weight:normal;color:#66727f;">(weekly-or-faster; informational — not scored)</span></td></tr>
+      <tr><td style="padding:12px 24px 6px;font-family:Arial,Helvetica,sans-serif;font-size:16px;font-weight:bold;color:#1f2d3d;">Between-quarter signals <span style="font-size:12px;font-weight:normal;color:#66727f;">(weekly-or-faster; informational, not scored)</span></td></tr>
       <tr><td style="padding:0 24px 12px;">
         <table cellpadding="0" cellspacing="0" border="0" width="100%" style="border-collapse:collapse;font-family:Arial,Helvetica,sans-serif;font-size:13px;">
           <tr style="background-color:#33404d;color:#ffffff;">
@@ -88,8 +88,8 @@
           {% for sc in signal_rows %}{% set s = sc.signals %}
           <tr style="background-color:{{ '#ffffff' if loop.index is odd else '#f2f5f8' }};border-bottom:1px solid #dde3e9;">
             <td style="padding:7px 10px;font-weight:bold;">{{ sc.ticker }}</td>
-            <td align="center" style="padding:7px 10px;">{% if s.eps_rev_up_30d is not none or s.eps_rev_down_30d is not none %}<span style="color:#1a7f37;">▲{{ s.eps_rev_up_30d if s.eps_rev_up_30d is not none else "?" }}</span>&nbsp;/&nbsp;<span style="color:#c0392b;">▼{{ s.eps_rev_down_30d if s.eps_rev_down_30d is not none else "?" }}</span>{% else %}—{% endif %}</td>
-            <td align="center" style="padding:7px 10px;">{% if s.rec_bullish is not none %}{{ s.rec_bullish }} / {{ s.rec_neutral if s.rec_neutral is not none else "?" }} / {{ s.rec_bearish if s.rec_bearish is not none else "?" }}{% if s.rec_bullish_prior is not none and s.rec_bullish != s.rec_bullish_prior %} <span style="font-size:11px;color:{{ '#1a7f37' if s.rec_bullish > s.rec_bullish_prior else '#c0392b' }};">({{ s.rec_bullish_prior }}→{{ s.rec_bullish }})</span>{% endif %}{% else %}—{% endif %}</td>
+            <td align="center" style="padding:7px 10px;">{% if s.eps_rev_up_30d is not none or s.eps_rev_down_30d is not none %}<span style="color:#1a7f37;">▲{{ s.eps_rev_up_30d if s.eps_rev_up_30d is not none else "?" }}</span>&nbsp;/&nbsp;<span style="color:#c0392b;">▼{{ s.eps_rev_down_30d if s.eps_rev_down_30d is not none else "?" }}</span>{% else %}n/a{% endif %}</td>
+            <td align="center" style="padding:7px 10px;">{% if s.rec_bullish is not none %}{{ s.rec_bullish }} / {{ s.rec_neutral if s.rec_neutral is not none else "?" }} / {{ s.rec_bearish if s.rec_bearish is not none else "?" }}{% if s.rec_bullish_prior is not none and s.rec_bullish != s.rec_bullish_prior %} <span style="font-size:11px;color:{{ '#1a7f37' if s.rec_bullish > s.rec_bullish_prior else '#c0392b' }};">({{ s.rec_bullish_prior }}→{{ s.rec_bullish }})</span>{% endif %}{% else %}n/a{% endif %}</td>
             <td align="right" style="padding:7px 10px;">{{ s.short_pct_float|pct }}</td>
             <td align="right" style="padding:7px 10px;">{{ short_change_mom(s.shares_short, s.shares_short_prior)|spct }}</td>
             <td align="right" style="padding:7px 10px;color:{{ '#1a7f37' if s.insider_net_shares_6m and s.insider_net_shares_6m > 0 else '#c0392b' if s.insider_net_shares_6m and s.insider_net_shares_6m < 0 else '#33404d' }};">{{ s.insider_net_shares_6m|shares }}</td>
@@ -99,7 +99,7 @@
       </td></tr>
       {% endif %}
       {% if tech_only %}
-      <tr><td style="padding:12px 24px 6px;font-family:Arial,Helvetica,sans-serif;font-size:16px;font-weight:bold;color:#1f2d3d;">Technicals only <span style="font-size:12px;font-weight:normal;color:#66727f;">(not tagged r40 — no fundamentals scorecard)</span></td></tr>
+      <tr><td style="padding:12px 24px 6px;font-family:Arial,Helvetica,sans-serif;font-size:16px;font-weight:bold;color:#1f2d3d;">Technicals only <span style="font-size:12px;font-weight:normal;color:#66727f;">(not tagged r40, so no fundamentals scorecard)</span></td></tr>
       <tr><td style="padding:0 24px 12px;">
         <table cellpadding="0" cellspacing="0" border="0" width="100%" style="border-collapse:collapse;font-family:Arial,Helvetica,sans-serif;font-size:13px;">
           <tr style="background-color:#33404d;color:#ffffff;">
@@ -114,8 +114,8 @@
           <tr style="background-color:{{ '#ffffff' if loop.index is odd else '#f2f5f8' }};border-bottom:1px solid #dde3e9;">
             <td style="padding:7px 10px;font-weight:bold;">{{ row.ticker }}</td>
             <td align="right" style="padding:7px 10px;">{{ row.t_score|score }}</td>
-            <td style="padding:7px 10px;white-space:nowrap;">{{ trend_arrows.get(row.tech.trend_state, "—") }}{% if spark_src.get(row.ticker) %}<br><img src="{{ spark_src[row.ticker] }}" width="120" height="30" alt="1y price" style="display:block;border:0;">{% endif %}</td>
-            <td align="right" style="padding:7px 10px;">{{ "%.0f"|format(row.tech.rsi14) if row.tech.rsi14 is not none else "—" }}</td>
+            <td style="padding:7px 10px;white-space:nowrap;">{{ trend_arrows.get(row.tech.trend_state, "n/a") }}{% if spark_src.get(row.ticker) %}<br><img src="{{ spark_src[row.ticker] }}" width="120" height="30" alt="1y price" style="display:block;border:0;">{% endif %}</td>
+            <td align="right" style="padding:7px 10px;">{{ "%.0f"|format(row.tech.rsi14) if row.tech.rsi14 is not none else "n/a" }}</td>
             <td align="right" style="padding:7px 10px;">{{ row.tech.rel_strength_3m|pct }}</td>
             <td align="right" style="padding:7px 10px;">{{ row.tech.dist_52w_high|pct }}</td>
           </tr>
@@ -137,7 +137,7 @@
       </td></tr>
       {% endif %}
       {% if deep %}
-      <tr><td style="padding:12px 24px 6px;font-family:Arial,Helvetica,sans-serif;font-size:16px;font-weight:bold;color:#1f2d3d;">Deep dive — full metric grid</td></tr>
+      <tr><td style="padding:12px 24px 6px;font-family:Arial,Helvetica,sans-serif;font-size:16px;font-weight:bold;color:#1f2d3d;">Deep dive: full metric grid</td></tr>
       <tr><td style="padding:0 24px 12px;">
         <table cellpadding="0" cellspacing="0" border="0" width="100%" style="border-collapse:collapse;font-family:Arial,Helvetica,sans-serif;font-size:12px;">
           <tr style="background-color:#33404d;color:#ffffff;">
@@ -163,9 +163,9 @@
             <td align="right" style="padding:5px 8px;">{{ sc.sbc_intensity|pct }}</td>
             <td align="right" style="padding:5px 8px;">{{ sc.ev_revenue|mult }}</td>
             <td align="right" style="padding:5px 8px;">{{ sc.fcf_yield|pct }}</td>
-            <td align="right" style="padding:5px 8px;">{{ "%.0f"|format(sc.tech.rsi14) if sc.tech and sc.tech.rsi14 is not none else "—" }}</td>
-            <td align="right" style="padding:5px 8px;">{{ sc.tech.rel_strength_3m|pct if sc.tech else "—" }}</td>
-            <td align="right" style="padding:5px 8px;">{{ "%.1f×"|format(sc.tech.vol_ratio) if sc.tech and sc.tech.vol_ratio is not none else "—" }}</td>
+            <td align="right" style="padding:5px 8px;">{{ "%.0f"|format(sc.tech.rsi14) if sc.tech and sc.tech.rsi14 is not none else "n/a" }}</td>
+            <td align="right" style="padding:5px 8px;">{{ sc.tech.rel_strength_3m|pct if sc.tech else "n/a" }}</td>
+            <td align="right" style="padding:5px 8px;">{{ "%.1f×"|format(sc.tech.vol_ratio) if sc.tech and sc.tech.vol_ratio is not none else "n/a" }}</td>
           </tr>
           {% endfor %}
         </table>
@@ -174,43 +174,43 @@
       <tr><td style="padding:14px 24px 4px;border-top:1px solid #d8dee5;font-family:Arial,Helvetica,sans-serif;font-size:13px;font-weight:bold;color:#1f2d3d;">How to read this report</td></tr>
       <tr><td style="padding:2px 24px 12px;font-family:Arial,Helvetica,sans-serif;font-size:11px;color:#55606c;line-height:1.6;">
         Each row is one stock's quality check: did revenue growth plus profitability clear the &ldquo;Rule of 40&rdquo; bar?
-        Rows are ranked by how many R40 variants clear 40 (those cells are shown <b>bold</b> &mdash; more bold cells, higher rank), then by Comp. The three variants use the same growth number but
-        different profit margins &mdash; when they agree, the quality is real; when only R40&nbsp;FCF passes, stock comp is usually doing the heavy lifting.
+        Rows are ranked by how many R40 variants clear 40 (those cells are shown <b>bold</b>; more bold cells, higher rank), then by Comp. The three variants use the same growth number but
+        different profit margins: when they agree, the quality is real; when only R40&nbsp;FCF passes, stock comp is usually doing the heavy lifting.
         <br><br>
-        <b>R40 (Rule of 40)</b> &mdash; revenue growth % + profit margin %; &ge; 40 points suggests a healthy growth/profitability balance.<br>
-        <b>FCF</b> &mdash; free cash flow: operating cash flow minus capital expenditure. <b>FCF mgn</b> is FCF as a % of revenue.<br>
-        <b>EBITDA</b> &mdash; earnings before interest, taxes, depreciation &amp; amortization; the stricter accounting-basis margin.<br>
-        <b>SBC</b> &mdash; stock-based compensation. The SBC-adj variant treats it as a cash cost &mdash; the &ldquo;honest&rdquo; R40.<br>
-        <b>Growth</b> &mdash; trailing-twelve-month revenue vs a year earlier (fiscal-year based when flagged &ldquo;Growth from annual&rdquo;).<br>
-        <b>Comp</b> &mdash; the ranking number: a 0&ndash;100 composite blending <b>F</b> and <b>T</b> below. Fundamentals say <i>what's</i> good; technicals say <i>how it's trading now</i>.<br>
-        <b>F</b> &mdash; fundamental score: driven by R40&nbsp;FCF, with bonuses for passing more variants and an improving trend, penalties for dilution and heavy SBC.<br>
-        <b>T</b> &mdash; technical score: trend state, 3-month strength vs SPY, recent crosses, and distance from the 52-week high.<br>
-        <b>Trend</b> &mdash; &uarr; price above both the 50- and 200-day averages, &darr; below both, &rarr; in between; the sparkline is the 1-year price path (green = up on the year).<br>
-        <b>Valuation</b> &mdash; price label only, never part of Comp: <i>cheap</i> (FCF yield &gt; 4%), <i>fair</i>, or <i>priced-for-perfection</i> (&gt; 12&times; revenue and &lt; 1% FCF yield).<br>
-        <b>Flags</b> &mdash; caveats on data quality (stale/short history) or earnings quality (dilution, high SBC, SBC-inflated R40).<br>
-        <b>RSI</b> &mdash; 14-day relative strength index, 0&ndash;100 momentum gauge: &gt; 70 overbought, &lt; 30 oversold.<br>
-        <b>RS 3m</b> &mdash; 3-month return relative to SPY; positive means beating the market, negative means lagging it.<br>
-        <b>Golden / death cross</b> &mdash; the 50-day average crossing above (📈 golden, bullish) or below (📉 death, bearish) the 200-day average within the last 10 sessions; classic trend-shift markers.<br>
-        <b>EPS</b> &mdash; earnings per share: quarterly profit divided by share count; the number analysts publish estimates for.<br>
-        <b>Est. revisions 30d</b> &mdash; how many analysts raised (▲) vs cut (▼) current-quarter EPS estimates in the last 30 days; the freshest fundamental tell between earnings reports.<br>
-        <b>Recs (B/H/S)</b> &mdash; analyst ratings this month: buy-or-better / hold / sell-or-worse, with last month's buy count in parentheses when it changed.<br>
-        <b>Short % float / Short &Delta; MoM</b> &mdash; shares sold short (bets the price falls) as % of float &mdash; the shares actually available to trade; &gt; 10% = heavily shorted. &Delta; MoM is the month-over-month change in shares short, per FINRA (the US brokerage regulator, which publishes short-interest data twice monthly).<br>
-        <b>Insider net 6m</b> &mdash; shares bought minus sold by the company's own officers &amp; directors over 6 months; net buying is rare and notable, some selling is normal.{% if news_sections %}<br>
-        <b>What mattered today</b> &mdash; recent headlines from your configured feeds, matched to watchlist names by ticker or company name; each labeled block is the same news written in a different configured voice.{% endif %}
+        <b>R40 (Rule of 40)</b>: revenue growth % + profit margin %; &ge; 40 points suggests a healthy growth/profitability balance.<br>
+        <b>FCF</b>: free cash flow, meaning operating cash flow minus capital expenditure. <b>FCF mgn</b> is FCF as a % of revenue.<br>
+        <b>EBITDA</b>: earnings before interest, taxes, depreciation &amp; amortization; the stricter accounting-basis margin.<br>
+        <b>SBC</b>: stock-based compensation. The SBC-adj variant treats it as a cash cost, the &ldquo;honest&rdquo; R40.<br>
+        <b>Growth</b>: trailing-twelve-month revenue vs a year earlier (fiscal-year based when flagged &ldquo;Growth from annual&rdquo;).<br>
+        <b>Comp</b>: the ranking number, a 0 to 100 composite blending <b>F</b> and <b>T</b> below. Fundamentals say <i>what's</i> good; technicals say <i>how it's trading now</i>.<br>
+        <b>F</b>: fundamental score, driven by R40&nbsp;FCF, with bonuses for passing more variants and an improving trend, penalties for dilution and heavy SBC.<br>
+        <b>T</b>: technical score, from trend state, 3-month strength vs SPY, recent crosses, and distance from the 52-week high.<br>
+        <b>Trend</b>: &uarr; price above both the 50- and 200-day averages, &darr; below both, &rarr; in between; the sparkline is the 1-year price path (green = up on the year).<br>
+        <b>Valuation</b>: price label only, never part of Comp: <i>cheap</i> (FCF yield &gt; 4%), <i>fair</i>, or <i>priced-for-perfection</i> (&gt; 12&times; revenue and &lt; 1% FCF yield).<br>
+        <b>Flags</b>: caveats on data quality (stale/short history) or earnings quality (dilution, high SBC, SBC-inflated R40).<br>
+        <b>RSI</b>: 14-day relative strength index, a 0 to 100 momentum gauge: &gt; 70 overbought, &lt; 30 oversold.<br>
+        <b>RS 3m</b>: 3-month return relative to SPY; positive means beating the market, negative means lagging it.<br>
+        <b>Golden / death cross</b>: the 50-day average crossing above (📈 golden, bullish) or below (📉 death, bearish) the 200-day average within the last 10 sessions; classic trend-shift markers.<br>
+        <b>EPS</b>: earnings per share, quarterly profit divided by share count; the number analysts publish estimates for.<br>
+        <b>Est. revisions 30d</b>: how many analysts raised (▲) vs cut (▼) current-quarter EPS estimates in the last 30 days; the freshest fundamental tell between earnings reports.<br>
+        <b>Recs (B/H/S)</b>: analyst ratings this month: buy-or-better / hold / sell-or-worse, with last month's buy count in parentheses when it changed.<br>
+        <b>Short % float / Short &Delta; MoM</b>: shares sold short (bets the price falls) as % of float, the shares actually available to trade; &gt; 10% = heavily shorted. &Delta; MoM is the month-over-month change in shares short, per FINRA (the US brokerage regulator, which publishes short-interest data twice monthly).<br>
+        <b>Insider net 6m</b>: shares bought minus sold by the company's own officers &amp; directors over 6 months; net buying is rare and notable, some selling is normal.{% if news_sections %}<br>
+        <b>What mattered today</b>: recent headlines from your configured feeds, matched to watchlist names by ticker or company name; each labeled block is the same news written in a different configured voice.{% endif %}
         {% if deep %}
         <br><br><u>Deep-dive grid</u><br>
-        <b>Rule of X</b> &mdash; 2 &times; growth + FCF margin: like R40 but growth counts double; target &ge; 50.<br>
-        <b>R40 trend</b> &mdash; change in R40&nbsp;FCF vs one year ago, in points; positive = improving trajectory, &lt; &minus;10 is a weakest-list trigger.<br>
-        <b>Op mgn</b> &mdash; operating income as % of TTM revenue (classic accounting profitability).<br>
-        <b>Dilution</b> &mdash; 1-year growth in diluted share count; your ownership shrinks by this much per year, &gt; 3% is flagged.<br>
-        <b>SBC int.</b> &mdash; stock-based compensation as % of TTM revenue; &gt; 15% is flagged.<br>
-        <b>EV/Rev</b> &mdash; enterprise value (market cap + debt &minus; cash) &divide; TTM revenue; the size-adjusted price tag.<br>
-        <b>FCF yield</b> &mdash; TTM free cash flow &divide; market cap; the cash return you'd earn at today's price &mdash; higher = cheaper.<br>
-        <b>Vol ratio</b> &mdash; 20-day vs 100-day average trading volume; &gt; 1.5&times; = unusual activity.
+        <b>Rule of X</b>: 2 &times; growth + FCF margin: like R40 but growth counts double; target &ge; 50.<br>
+        <b>R40 trend</b>: change in R40&nbsp;FCF vs one year ago, in points; positive = improving trajectory, &lt; &minus;10 is a weak-list trigger.<br>
+        <b>Op mgn</b>: operating income as % of TTM revenue (classic accounting profitability).<br>
+        <b>Dilution</b>: 1-year growth in diluted share count; your ownership shrinks by this much per year, &gt; 3% is flagged.<br>
+        <b>SBC int.</b>: stock-based compensation as % of TTM revenue; &gt; 15% is flagged.<br>
+        <b>EV/Rev</b>: enterprise value (market cap + debt &minus; cash) &divide; TTM revenue; the size-adjusted price tag.<br>
+        <b>FCF yield</b>: TTM free cash flow &divide; market cap; the cash return you'd earn at today's price (higher = cheaper).<br>
+        <b>Vol ratio</b>: 20-day vs 100-day average trading volume; &gt; 1.5&times; = unusual activity.
         {% endif %}
       </td></tr>
       <tr><td style="padding:10px 24px 16px;font-family:Arial,Helvetica,sans-serif;font-size:11px;color:#8a94a0;">
-        Personal research heuristics — <b>not financial advice</b>. Generated by ticker-sentinel.
+        Personal research heuristics, <b>not financial advice</b>. Generated by ticker-sentinel.
       </td></tr>
     </table>
   </td></tr>

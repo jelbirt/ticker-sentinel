@@ -96,7 +96,7 @@ def test_deep_legend_and_grid(scored):
     ctx = build_context(scored, cfg, run_type="dry", notes=[], today=FIXED_TODAY)
     ctx["deep"] = True
     deep_html = render_report(ctx)
-    assert "Deep dive — full metric grid" in deep_html
+    assert "Deep dive: full metric grid" in deep_html
     assert "Deep-dive grid" in deep_html
     assert "Rule of X" in deep_html
     assert "enterprise value" in deep_html
@@ -234,3 +234,9 @@ def test_small_watchlist_still_splits_strong_and_weak(scored):
     strong = {sc.ticker for sc in ctx["strongest"]}
     weak = {sc.ticker for sc in ctx["weakest"]}
     assert not strong & weak
+
+
+def test_no_em_or_en_dashes_in_report(html):
+    assert "—" not in html and "–" not in html
+    assert "&mdash;" not in html and "&#8212;" not in html
+    assert "&ndash;" not in html and "&#8211;" not in html

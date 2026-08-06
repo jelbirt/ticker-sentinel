@@ -121,6 +121,7 @@ Applies fully only to tickers tagged `r40`; others get technicals-only rows in a
 6. **Technicals-only table** for non-r40 tickers.
 7. **Appendix/footer:** methodology one-liner, disclaimer, link to repo run.
 Email must render in Gmail/Apple Mail: inline CSS only, tables not flexbox, images embedded as CID attachments. Also write `report.html` + `scores.csv` as workflow artifacts.
+**Style rules (owner preference, 2026-08-06):** no em or en dashes anywhere the reader can see — email body, subject line, data notes, and LLM prose (enforced by prompt rule + post-scrub in `news/styles.py`; use commas, colons, parentheses, or hyphens). Missing values render as `n/a`, never a dash. Multi-tone news sections render in `news.tones` config order; `barrons` leads.
 ---
 ## 8. Repository Layout
 ```

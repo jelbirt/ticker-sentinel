@@ -177,7 +177,7 @@ def main(argv: list[str] | None = None) -> int:
 
             generic, per_ticker = fixture_news()
             if style in LLM_STYLES:  # dry run means offline — no claude subprocess
-                notes.append("dry run: LLM news style skipped — rendering headlines instead")
+                notes.append("dry run: LLM news style skipped; rendering headlines instead")
                 style = "headlines"
         else:
             generic, per_ticker, news_notes = collect_news(
@@ -203,11 +203,11 @@ def main(argv: list[str] | None = None) -> int:
                 if fragment:
                     sections.append({"label": tone if label_tones else None, "html": fragment})
                 else:
-                    notes.append(f"news tone '{tone}' failed — section skipped")
+                    notes.append(f"news tone '{tone}' failed; section skipped")
             if not sections:  # every tone failed: one deterministic fallback section
                 fragment, fb_notes = render_news(digest, "headlines")
                 notes.extend(fb_notes)
-                notes.append("all news tones failed — fell back to headlines")
+                notes.append("all news tones failed; fell back to headlines")
                 sections = [{"label": None, "html": fragment}] if fragment else []
             news_sections = sections or None
         else:
@@ -256,8 +256,8 @@ def main(argv: list[str] | None = None) -> int:
         f"{'r40_ebitda':>12}{'r40_sbc_adj':>13}  trend/flags"
     )
     for sc in sorted(scorecards, key=lambda s: (s.composite is None, -(s.composite or 0))):
-        fmt = lambda v, m=100: "—" if v is None else f"{v * m:.1f}"
-        trend = sc.tech.trend_state if sc.tech else "—"
+        fmt = lambda v, m=100: "n/a" if v is None else f"{v * m:.1f}"
+        trend = sc.tech.trend_state if sc.tech else "n/a"
         print(
             f"{sc.ticker:<8}{fmt(sc.composite, 1):>8}{fmt(sc.score, 1):>7}"
             f"{fmt(sc.technical_score, 1):>7}{fmt(sc.r40_fcf):>10}"
@@ -272,7 +272,7 @@ def main(argv: list[str] | None = None) -> int:
 
         sent, status = send_report(
             html_email,
-            subject=f"Ticker Sentinel — {date.today().isoformat()}",
+            subject=f"Ticker Sentinel · {date.today().isoformat()}",
             images={f"spark_{t}": png for t, png in sparks.items()},
         )
         log.info(status)

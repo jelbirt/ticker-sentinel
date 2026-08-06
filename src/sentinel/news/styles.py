@@ -98,7 +98,7 @@ def _brief(
         top = tn.items[0]
         more = f" · +{len(tn.items) - 1} more" if len(tn.items) > 1 else ""
         lines.append(
-            f"<b>{_esc(tn.ticker)}</b> — "
+            f"<b>{_esc(tn.ticker)}</b>: "
             f'<a href="{_esc(top.link)}" style="color:#1f5fa8;text-decoration:none;">'
             f"{_esc(top.title)}</a> "
             f'<span style="font-size:11px;color:#8a94a0;">({_item_meta(top, digest.as_of)}){_esc(more)}</span>'
@@ -121,18 +121,20 @@ VOICE:
 {voice}
 
 RULES (these always override the voice):
-Plain text only — no markdown, no HTML. One short paragraph per ticker that
+Plain text only: no markdown, no HTML. One short paragraph per ticker that
 has meaningful news, each starting with the ticker symbol; if several tickers
 only have minor items, group them into a single final one-liner. EVERY ticker
 listed below must be mentioned exactly once — either in its own paragraph or
 in the grouped one-liner; never omit one, and never discuss a ticker that is
-not listed below. Only state what the headlines support — no outside
+not listed below. Only state what the headlines support: no outside
 knowledge, numbers, or events. Never give investment advice or tell the
-reader what to do. Under 180 words total.
+reader what to do. Under 180 words total. Never use em dashes or en dashes
+anywhere in the text; use commas, colons, parentheses, or separate
+sentences instead.
 
-OUTPUT FORMAT — this text goes directly into an email a reader sees:
+OUTPUT FORMAT (this text goes directly into an email a reader sees):
 wrap the finished section between <REPORT> and </REPORT> markers. Everything
-outside the markers is discarded, so put NOTHING else inside them — no
+outside the markers is discarded, so put NOTHING else inside them: no
 planning notes, no drafts, no word counts, no commentary about the task, no
 sign-off. If you revise, only the final <REPORT> block counts.
 
@@ -257,6 +259,9 @@ def _llm_brief(
     text = _extract_report(raw)
     if not text:  # model ignored the output contract — skip rather than leak meta-talk
         return None
+    # Belt-and-braces on the prompt's no-dash rule: the reader must never see
+    # an em/en dash, whatever the model does.
+    text = re.sub(r"[ \t]*[—–][ \t]*", " - ", text)
     if not _narrative_valid(text, digest, known_tickers):
         return None  # dropped or fabricated ticker coverage — skip rather than mislead
 
@@ -304,19 +309,19 @@ def render_news(
     renderer = STYLES.get(style_name)
     if renderer is None:
         notes.append(
-            f"unknown news style '{style_name}' — using '{DEFAULT_STYLE}' "
+            f"unknown news style '{style_name}'; using '{DEFAULT_STYLE}' "
             f"(available: {', '.join(sorted(STYLES))})"
         )
         renderer = STYLES[DEFAULT_STYLE]
     if tone is not None and tone not in TONES:
         if style_name in LLM_STYLES:  # tone is inert elsewhere; don't note config noise
             notes.append(
-                f"unknown news tone '{tone}' — using '{DEFAULT_TONE}' "
+                f"unknown news tone '{tone}'; using '{DEFAULT_TONE}' "
                 f"(available: {', '.join(sorted(TONES))})"
             )
         tone = DEFAULT_TONE
     html_fragment = renderer(digest, model, tone, known_tickers)
     if html_fragment is None and fallback and renderer is not STYLES[DEFAULT_STYLE]:
-        notes.append(f"news style '{style_name}' unavailable — fell back to '{DEFAULT_STYLE}'")
+        notes.append(f"news style '{style_name}' unavailable; fell back to '{DEFAULT_STYLE}'")
         html_fragment = STYLES[DEFAULT_STYLE](digest, model, tone, known_tickers)
     return html_fragment, notes

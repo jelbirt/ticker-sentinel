@@ -10,6 +10,7 @@ PROJECT_PLAN.md is the authoritative spec — read it before making changes.
 - Tests: `pytest -q` (tests must never hit the network)
 
 ## Conventions
+- Never emit em dashes (or en dashes) in any user-visible output: email HTML, subject lines, data notes, CLI summaries, LLM prompts/prose. Use commas, colons, parentheses, or hyphens. Missing values render as `n/a`.
 - Python 3.12, type hints everywhere, small pure functions for all metric formulas (src/sentinel/indicators/) so they're unit-testable in isolation.
 - All external I/O (yfinance, Twelve Data, SMTP) lives in src/sentinel/data/ and deliver.py only. Indicator and scoring code takes plain DataFrames/dataclasses in, values out.
 - Every metric formula must match PROJECT_PLAN.md section 5 exactly; scoring weights come from config, never hardcoded.

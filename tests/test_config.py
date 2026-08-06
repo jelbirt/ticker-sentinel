@@ -30,4 +30,4 @@ def test_tone_default(tmp_path):
 def test_repo_config_ships_all_five_tones():
     cfg = load_config()
     assert len(cfg.news.tones) == 5
-    assert cfg.news.tones[0] == "neutral-analyst"
+    assert cfg.news.tones[0] == "barrons"  # owner preference: barrons section leads the email
