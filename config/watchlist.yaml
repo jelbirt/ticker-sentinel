@@ -27,6 +27,17 @@ report:
 scoring:               # weights, overridable without code changes
   fundamentals_weight: 0.6
   technicals_weight: 0.4
+changes:                 # day-over-day change detection (defaults shown; all optional)
+  retention_runs: 12     # runs kept in data/cache/run_history.json (bot-committed)
+  week_window_runs: 5    # "week" lookback in runs (Tue-Sat cadence)
+  score_delta_pts: 3.0   # composite move worth reporting (0-100 scale)
+  rank_delta: 2          # rank move worth reporting
+  revision_swing: 3      # net 30d analyst-revision swing worth reporting
+  short_delta: 0.05      # short-interest fractional change worth reporting
+  week_drop_pts: 5.0     # week-window composite drop counting as deterioration
+  revision_cut: 2        # net downward revisions counting as deterioration
+  min_signals: 2         # negative signals needed for the Deterioration watch
+  deteriorating_r40_trend: -0.10  # R40 trend below this = deteriorating (plan section 6)
 news:
   feeds:               # general feeds — every entry text-matched to your tickers
     - https://www.cnbc.com/id/100003114/device/rss/rss.html          # CNBC Top Business

@@ -31,3 +31,26 @@ def test_repo_config_ships_all_five_tones():
     cfg = load_config()
     assert len(cfg.news.tones) == 5
     assert cfg.news.tones[0] == "barrons"  # owner preference: barrons section leads the email
+
+
+def test_changes_defaults_when_block_absent(tmp_path):
+    path = _write_cfg(tmp_path, "")
+    ch = load_config(path).changes
+    assert ch.retention_runs == 12
+    assert ch.week_window_runs == 5
+    assert ch.score_delta_pts == 3.0
+    assert ch.rank_delta == 2
+    assert ch.revision_swing == 3
+    assert ch.short_delta == 0.05
+    assert ch.week_drop_pts == 5.0
+    assert ch.revision_cut == 2
+    assert ch.min_signals == 2
+    assert ch.deteriorating_r40_trend == -0.10
+
+
+def test_changes_partial_block_overrides_only_given_keys(tmp_path):
+    path = _write_cfg(tmp_path, "changes:\n  score_delta_pts: 5.5\n  retention_runs: 20\n")
+    ch = load_config(path).changes
+    assert ch.score_delta_pts == 5.5
+    assert ch.retention_runs == 20
+    assert ch.rank_delta == 2  # untouched default
