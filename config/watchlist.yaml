@@ -18,6 +18,33 @@ universe:
     tags: [software, r40]
   - ticker: PANW
     tags: [software, r40]
+  # expansion approved 2026-08-06 (12 adds; bench held in reserve: FTNT, ESTC,
+  # WDAY, SHOP, TWLO, ZM). Rotation: roughly weekly owner-initiated candidate
+  # refresh; every edit here stays owner-gated.
+  - ticker: S
+    tags: [software, r40]
+  - ticker: RBRK
+    tags: [software, r40]
+  - ticker: CYBR
+    tags: [software, r40]
+  - ticker: OKTA
+    tags: [software, r40]
+  - ticker: DT
+    tags: [software, r40]
+  - ticker: CFLT
+    tags: [software, r40]
+  - ticker: GTLB
+    tags: [software, r40]
+  - ticker: IOT
+    tags: [software, r40]
+  - ticker: MNDY
+    tags: [software, r40]
+  - ticker: HUBS
+    tags: [software, r40]
+  - ticker: NOW
+    tags: [software, r40]
+  - ticker: PLTR
+    tags: [software, r40]
 benchmark: SPY
 report:
   top_n: 10
