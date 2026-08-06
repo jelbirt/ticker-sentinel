@@ -21,7 +21,7 @@ universe:
 benchmark: SPY
 report:
   top_n: 10
-  bottom_n: 5
+  bottom_n: 4   # weak-performers table always gets this many names; with 8 tickers that's a 4/4 split
   timezone: America/New_York
   ranking: breadth   # breadth = most R40 variants ≥ 40 first, score as tiebreak; or: score
 scoring:               # weights, overridable without code changes

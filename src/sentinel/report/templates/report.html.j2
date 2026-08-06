@@ -48,13 +48,13 @@
         {% for note in notes %}<br>• {{ note }}{% endfor %}
       </td></tr>
       {% endif %}
-      <tr><td style="padding:18px 24px 6px;font-family:Arial,Helvetica,sans-serif;font-size:16px;font-weight:bold;color:#1f2d3d;">Strongest</td></tr>
+      <tr><td style="padding:18px 24px 6px;font-family:Arial,Helvetica,sans-serif;font-size:16px;font-weight:bold;color:#1f2d3d;">Strong performers</td></tr>
       <tr><td style="padding:0 24px 12px;">
         {% if strongest %}{{ scorecard_table(strongest) }}{% else %}<span style="font-family:Arial,Helvetica,sans-serif;font-size:13px;color:#66727f;">No scorable tickers this run.</span>{% endif %}
       </td></tr>
-      <tr><td style="padding:12px 24px 6px;font-family:Arial,Helvetica,sans-serif;font-size:16px;font-weight:bold;color:#1f2d3d;">Weakest</td></tr>
+      <tr><td style="padding:12px 24px 6px;font-family:Arial,Helvetica,sans-serif;font-size:16px;font-weight:bold;color:#1f2d3d;">Weak performers</td></tr>
       <tr><td style="padding:0 24px 12px;">
-        {% if weakest %}{{ scorecard_table(weakest, show_reason=true) }}{% else %}<span style="font-family:Arial,Helvetica,sans-serif;font-size:13px;color:#66727f;">Watchlist smaller than top-N — every scored name already appears above.</span>{% endif %}
+        {% if weakest %}{{ scorecard_table(weakest, show_reason=true) }}{% else %}<span style="font-family:Arial,Helvetica,sans-serif;font-size:13px;color:#66727f;">Not enough scored names this run to split out a weak-performers table.</span>{% endif %}
       </td></tr>
       {% if movers %}
       <tr><td style="padding:12px 24px 6px;font-family:Arial,Helvetica,sans-serif;font-size:16px;font-weight:bold;color:#1f2d3d;">Movers &amp; alerts</td></tr>

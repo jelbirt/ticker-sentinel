@@ -115,8 +115,8 @@ Applies fully only to tickers tagged `r40`; others get technicals-only rows in a
 ## 7. Report Design (HTML email)
 1. **Header:** date, run type (scheduled/ad hoc), data freshness notes.
 2. **Market context strip:** SPY 1d/1m change, watchlist median R40.
-3. **Strongest (top N):** table — ticker, composite, r40_fcf / r40_ebitda / r40_sbc_adj, growth, fcf margin, valuation tag, trend sparkline (inline PNG), flags.
-4. **Weakest (bottom N):** same columns + one-line reason string (template-generated, e.g., "R40 fell 18pts YoY; broke below 200-day").
+3. **Strong performers (top N):** table — ticker, composite, r40_fcf / r40_ebitda / r40_sbc_adj, growth, fcf margin, valuation tag, trend sparkline (inline PNG), flags.
+4. **Weak performers (bottom N):** same columns + one-line reason string (template-generated, e.g., "R40 fell 18pts YoY; broke below 200-day"). The two tables never overlap: `bottom_n` names are reserved for the weak table before the strong table takes its share (changed 2026-08-06 — previously strongest took `top_n` first, so a watchlist smaller than `top_n` rendered an empty weakest table every day).
 5. **Movers & alerts:** any golden/death cross, RSI extremes, new 52-week highs/lows, unusual volume.
 6. **Technicals-only table** for non-r40 tickers.
 7. **Appendix/footer:** methodology one-liner, disclaimer, link to repo run.

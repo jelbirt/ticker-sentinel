@@ -35,8 +35,8 @@ def html(scored):
 def test_report_contains_expected_content(html):
     for ticker in ("ALFA", "BRVO", "CHRL"):
         assert ticker in html
-    assert "Strongest" in html
-    assert "Weakest" in html
+    assert "Strong performers" in html
+    assert "Weak performers" in html
     assert "62.0" in html   # ALFA r40_fcf in points
     assert "not financial advice" in html
     assert "fixture note" in html
@@ -223,8 +223,14 @@ def test_news_section_absent_without_sections(html):
     assert "What mattered today" not in html
 
 
-def test_small_watchlist_weakest_empty(scored):
-    cfg = load_config()  # top_n=10 > 3 fixtures
+def test_small_watchlist_still_splits_strong_and_weak(scored):
+    """The weak table is never starved: bottom_n names are carved out of the
+    ranked list before strongest takes its share, so the two tables never
+    overlap and the weak table is empty only with a single scored name."""
+    cfg = load_config()  # top_n=10 > 3 fixtures; bottom_n=4
     ctx = build_context(scored, cfg, run_type="dry", notes=[], today=FIXED_TODAY)
-    assert len(ctx["strongest"]) == 3
-    assert ctx["weakest"] == []
+    assert len(ctx["strongest"]) == 1
+    assert len(ctx["weakest"]) == 2
+    strong = {sc.ticker for sc in ctx["strongest"]}
+    weak = {sc.ticker for sc in ctx["weakest"]}
+    assert not strong & weak

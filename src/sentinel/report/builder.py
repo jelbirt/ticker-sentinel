@@ -183,9 +183,14 @@ def build_context(
         key=lambda s: rank_key(s, cfg.ranking),
     )
     unscored = [sc for sc in scorecards if sc.score is None]
-    strongest = scored[: cfg.top_n]
+    # Strong/weak never overlap: weakest always gets its bottom_n names (when the
+    # watchlist has them), so small watchlists split instead of all landing in
+    # "Strong performers" with an empty weak table.
+    strongest = scored[: min(cfg.top_n, max(len(scored) - cfg.bottom_n, 1))]
     # weakest: deteriorating names first (plan section 6), then lowest strength
-    remaining = sorted(scored[cfg.top_n :], key=lambda s: (not deteriorating(s), _strength(s)))
+    remaining = sorted(
+        scored[len(strongest) :], key=lambda s: (not deteriorating(s), _strength(s))
+    )
     weakest = remaining[: cfg.bottom_n]
     for sc in weakest:
         sc.reason = weakness_reason(sc)
