@@ -13,6 +13,7 @@ from jinja2 import Environment, FileSystemLoader, select_autoescape
 from sentinel.config import Config
 from sentinel.indicators.fundamentals import Scorecard
 from sentinel.indicators.signals import short_change_mom, signal_alerts
+from sentinel.report.changes import ChangeSet, DeteriorationRow, deteriorating
 
 TEMPLATES_DIR = Path(__file__).resolve().parent / "templates"
 
@@ -30,6 +31,13 @@ FLAG_LABELS = {
 }
 
 TREND_ARROWS = {"uptrend": "↑ up", "downtrend": "↓ down", "mixed": "→ mixed"}
+
+# What-changed direction glyphs: direction is a quality signal (up = improving)
+CHANGE_ARROWS = {
+    "up": ("▲", "#1a7f37"),
+    "down": ("▼", "#c0392b"),
+    "info": ("•", "#66727f"),
+}
 
 CSV_COLUMNS = [
     "ticker", "company_name", "composite", "score", "technical_score",
@@ -83,12 +91,20 @@ def _spct(v: float | None) -> str:
     return "n/a" if v is None else f"{v * 100:+.0f}%"
 
 
+def _sdelta(v: float | None) -> str:
+    """Signed score delta on the 0-100 scale: +3.4, -6.2."""
+    return "n/a" if v is None else f"{v:+.1f}"
+
+
 def _env() -> Environment:
     env = Environment(
         loader=FileSystemLoader(TEMPLATES_DIR),
         autoescape=select_autoescape(["html", "j2"]),
     )
-    env.filters.update(pts=_pts, pct=_pct, mult=_mult, score=_score, shares=_shares, spct=_spct)
+    env.filters.update(
+        pts=_pts, pct=_pct, mult=_mult, score=_score, shares=_shares, spct=_spct,
+        sdelta=_sdelta,
+    )
     return env
 
 
@@ -117,18 +133,9 @@ def rank_key(sc: Scorecard, ranking: str):
     return (-_strength(sc),)
 
 
-def deteriorating(sc: Scorecard) -> bool:
-    """Section 6 weakest-buy priority: R40 fell >10pts AND technical confirmation."""
-    fell = sc.r40_trend is not None and sc.r40_trend < -0.10
-    tech_confirms = sc.tech is not None and (
-        sc.tech.trend_state == "downtrend" or sc.tech.death_cross_recent
-    )
-    return fell and tech_confirms
-
-
-def weakness_reason(sc: Scorecard) -> str:
+def weakness_reason(sc: Scorecard, threshold: float = -0.10) -> str:
     parts: list[str] = []
-    if sc.r40_trend is not None and sc.r40_trend < -0.10:
+    if sc.r40_trend is not None and sc.r40_trend < threshold:
         parts.append(f"R40 fell {abs(sc.r40_trend) * 100:.0f}pts YoY")
     if sc.tech is not None:
         if sc.tech.death_cross_recent:
@@ -177,6 +184,9 @@ def build_context(
     today: date | None = None,
     tech_only: list[dict] | None = None,
     news_sections: list[dict] | None = None,
+    change_set: ChangeSet | None = None,
+    deterioration: list[DeteriorationRow] | None = None,
+    week_span: int = 0,
 ) -> dict:
     scored = sorted(
         (sc for sc in scorecards if sc.score is not None),
@@ -188,12 +198,14 @@ def build_context(
     # "Strong performers" with an empty weak table.
     strongest = scored[: min(cfg.top_n, max(len(scored) - cfg.bottom_n, 1))]
     # weakest: deteriorating names first (plan section 6), then lowest strength
+    r40_threshold = cfg.changes.deteriorating_r40_trend
     remaining = sorted(
-        scored[len(strongest) :], key=lambda s: (not deteriorating(s), _strength(s))
+        scored[len(strongest) :],
+        key=lambda s: (not deteriorating(s, r40_threshold), _strength(s)),
     )
     weakest = remaining[: cfg.bottom_n]
     for sc in weakest:
-        sc.reason = weakness_reason(sc)
+        sc.reason = weakness_reason(sc, r40_threshold)
     r40_values = [sc.r40_fcf for sc in scorecards if sc.r40_fcf is not None]
     return {
         "report_date": (today or date.today()).isoformat(),
@@ -205,6 +217,12 @@ def build_context(
         "all_scored": scored,   # deep grid covers every ranked name, not just top/bottom
         "unscored": unscored,
         "movers": build_movers(scorecards),
+        # None = change detection skipped (no section); ChangeSet with prior_date
+        # None = first run; quiet=True = one-line quiet day
+        "change_set": change_set,
+        "deterioration": deterioration or [],
+        "week_span": week_span,
+        "change_arrows": CHANGE_ARROWS,
         "tech_only": tech_only or [],
         "news_sections": news_sections or [],  # [{label, html}] per configured tone
         "signal_rows": sorted(

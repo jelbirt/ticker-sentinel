@@ -12,6 +12,19 @@ from sentinel.indicators.fundamentals import FundamentalInputs
 
 FIXTURES_DIR = Path(__file__).resolve().parents[1] / "fixtures"
 
+
+def fixture_history_path() -> Path:
+    """Committed prior-run state for --dry-run change detection. Engineered so
+    the fixture set fires every change type the fixtures can express: ALFA
+    improves (score up, rank 3 -> 1, flag set + cleared, R40 sign flip), CHRL
+    decays (score/rank drops, mixed -> downtrend, revision swing, short-interest
+    reading, five deterioration signals), BRVO stays quiet, ZZZZ departs
+    (universe_removed). Not expressible from current fixtures (unit-tested
+    instead): new_cross and universe_added (no recent synthetic cross; every
+    fixture ticker already exists), and the R40-level deterioration signal
+    (CHRL's r40_trend is -0.06, above the -0.10 threshold)."""
+    return FIXTURES_DIR / "state" / "run_history.json"
+
 FIXTURE_BENCHMARK = "SPY"
 _PRICE_BARS = 300
 _PRICE_END = pd.Timestamp("2026-07-02")

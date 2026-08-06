@@ -1,0 +1,381 @@
+{
+  "runs": [
+    {
+      "date": "2026-07-28",
+      "run_type": "scheduled",
+      "tickers": {
+        "ALFA": {
+          "composite": 67.0,
+          "death_cross": false,
+          "flags": [
+            "high_sbc"
+          ],
+          "golden_cross": false,
+          "net_revisions_30d": 6,
+          "r40_fcf": 0.61,
+          "r40_trend": -0.01,
+          "rank": 3,
+          "score": 72.0,
+          "shares_short": 2000000.0,
+          "short_pct_float": 0.02,
+          "technical_score": 63.0,
+          "trend_state": "uptrend",
+          "valuation": "fair"
+        },
+        "BRVO": {
+          "composite": 25.5,
+          "death_cross": false,
+          "flags": [
+            "dilution",
+            "high_sbc",
+            "sbc_inflated"
+          ],
+          "golden_cross": false,
+          "net_revisions_30d": 0,
+          "r40_fcf": 0.35,
+          "r40_trend": 0.115,
+          "rank": 2,
+          "score": 13.0,
+          "shares_short": 12000000.0,
+          "short_pct_float": 0.12,
+          "technical_score": 44.5,
+          "trend_state": "uptrend",
+          "valuation": "fair"
+        },
+        "CHRL": {
+          "composite": 14.0,
+          "death_cross": false,
+          "flags": [],
+          "golden_cross": false,
+          "net_revisions_30d": 1,
+          "r40_fcf": -0.15,
+          "r40_trend": 0.02,
+          "rank": 1,
+          "score": 14.0,
+          "shares_short": 6500000.0,
+          "short_pct_float": 0.074,
+          "technical_score": 14.0,
+          "trend_state": "mixed",
+          "valuation": "fair"
+        }
+      }
+    },
+    {
+      "date": "2026-07-29",
+      "run_type": "scheduled",
+      "tickers": {
+        "ALFA": {
+          "composite": 67.3,
+          "death_cross": false,
+          "flags": [
+            "high_sbc"
+          ],
+          "golden_cross": false,
+          "net_revisions_30d": 6,
+          "r40_fcf": 0.61,
+          "r40_trend": -0.01,
+          "rank": 3,
+          "score": 72.0,
+          "shares_short": 2000000.0,
+          "short_pct_float": 0.02,
+          "technical_score": 63.0,
+          "trend_state": "uptrend",
+          "valuation": "fair"
+        },
+        "BRVO": {
+          "composite": 25.5,
+          "death_cross": false,
+          "flags": [
+            "dilution",
+            "high_sbc",
+            "sbc_inflated"
+          ],
+          "golden_cross": false,
+          "net_revisions_30d": 0,
+          "r40_fcf": 0.35,
+          "r40_trend": 0.115,
+          "rank": 2,
+          "score": 13.0,
+          "shares_short": 12000000.0,
+          "short_pct_float": 0.12,
+          "technical_score": 44.5,
+          "trend_state": "uptrend",
+          "valuation": "fair"
+        },
+        "CHRL": {
+          "composite": 13.0,
+          "death_cross": false,
+          "flags": [],
+          "golden_cross": false,
+          "net_revisions_30d": 1,
+          "r40_fcf": -0.16,
+          "r40_trend": 0.02,
+          "rank": 1,
+          "score": 13.0,
+          "shares_short": 6500000.0,
+          "short_pct_float": 0.074,
+          "technical_score": 13.0,
+          "trend_state": "mixed",
+          "valuation": "fair"
+        }
+      }
+    },
+    {
+      "date": "2026-07-30",
+      "run_type": "scheduled",
+      "tickers": {
+        "ALFA": {
+          "composite": 67.6,
+          "death_cross": false,
+          "flags": [
+            "high_sbc"
+          ],
+          "golden_cross": false,
+          "net_revisions_30d": 6,
+          "r40_fcf": 0.61,
+          "r40_trend": -0.01,
+          "rank": 3,
+          "score": 72.0,
+          "shares_short": 2000000.0,
+          "short_pct_float": 0.02,
+          "technical_score": 63.0,
+          "trend_state": "uptrend",
+          "valuation": "fair"
+        },
+        "BRVO": {
+          "composite": 25.5,
+          "death_cross": false,
+          "flags": [
+            "dilution",
+            "high_sbc",
+            "sbc_inflated"
+          ],
+          "golden_cross": false,
+          "net_revisions_30d": 0,
+          "r40_fcf": 0.35,
+          "r40_trend": 0.115,
+          "rank": 2,
+          "score": 13.0,
+          "shares_short": 12000000.0,
+          "short_pct_float": 0.12,
+          "technical_score": 44.5,
+          "trend_state": "uptrend",
+          "valuation": "fair"
+        },
+        "CHRL": {
+          "composite": 12.0,
+          "death_cross": false,
+          "flags": [],
+          "golden_cross": false,
+          "net_revisions_30d": 1,
+          "r40_fcf": -0.16999999999999998,
+          "r40_trend": 0.02,
+          "rank": 1,
+          "score": 12.0,
+          "shares_short": 6500000.0,
+          "short_pct_float": 0.074,
+          "technical_score": 12.0,
+          "trend_state": "mixed",
+          "valuation": "fair"
+        }
+      }
+    },
+    {
+      "date": "2026-07-31",
+      "run_type": "scheduled",
+      "tickers": {
+        "ALFA": {
+          "composite": 67.9,
+          "death_cross": false,
+          "flags": [
+            "high_sbc"
+          ],
+          "golden_cross": false,
+          "net_revisions_30d": 6,
+          "r40_fcf": 0.61,
+          "r40_trend": -0.01,
+          "rank": 3,
+          "score": 72.0,
+          "shares_short": 2000000.0,
+          "short_pct_float": 0.02,
+          "technical_score": 63.0,
+          "trend_state": "uptrend",
+          "valuation": "fair"
+        },
+        "BRVO": {
+          "composite": 25.5,
+          "death_cross": false,
+          "flags": [
+            "dilution",
+            "high_sbc",
+            "sbc_inflated"
+          ],
+          "golden_cross": false,
+          "net_revisions_30d": 0,
+          "r40_fcf": 0.35,
+          "r40_trend": 0.115,
+          "rank": 2,
+          "score": 13.0,
+          "shares_short": 12000000.0,
+          "short_pct_float": 0.12,
+          "technical_score": 44.5,
+          "trend_state": "uptrend",
+          "valuation": "fair"
+        },
+        "CHRL": {
+          "composite": 11.0,
+          "death_cross": false,
+          "flags": [],
+          "golden_cross": false,
+          "net_revisions_30d": 1,
+          "r40_fcf": -0.18,
+          "r40_trend": 0.02,
+          "rank": 1,
+          "score": 11.0,
+          "shares_short": 6500000.0,
+          "short_pct_float": 0.074,
+          "technical_score": 11.0,
+          "trend_state": "mixed",
+          "valuation": "fair"
+        }
+      }
+    },
+    {
+      "date": "2026-08-01",
+      "run_type": "scheduled",
+      "tickers": {
+        "ALFA": {
+          "composite": 68.2,
+          "death_cross": false,
+          "flags": [
+            "high_sbc"
+          ],
+          "golden_cross": false,
+          "net_revisions_30d": 6,
+          "r40_fcf": 0.61,
+          "r40_trend": -0.01,
+          "rank": 3,
+          "score": 72.0,
+          "shares_short": 2000000.0,
+          "short_pct_float": 0.02,
+          "technical_score": 63.0,
+          "trend_state": "uptrend",
+          "valuation": "fair"
+        },
+        "BRVO": {
+          "composite": 25.5,
+          "death_cross": false,
+          "flags": [
+            "dilution",
+            "high_sbc",
+            "sbc_inflated"
+          ],
+          "golden_cross": false,
+          "net_revisions_30d": 0,
+          "r40_fcf": 0.35,
+          "r40_trend": 0.115,
+          "rank": 2,
+          "score": 13.0,
+          "shares_short": 12000000.0,
+          "short_pct_float": 0.12,
+          "technical_score": 44.5,
+          "trend_state": "uptrend",
+          "valuation": "fair"
+        },
+        "CHRL": {
+          "composite": 10.0,
+          "death_cross": false,
+          "flags": [],
+          "golden_cross": false,
+          "net_revisions_30d": 1,
+          "r40_fcf": -0.19,
+          "r40_trend": 0.02,
+          "rank": 1,
+          "score": 10.0,
+          "shares_short": 6500000.0,
+          "short_pct_float": 0.074,
+          "technical_score": 10.0,
+          "trend_state": "mixed",
+          "valuation": "fair"
+        }
+      }
+    },
+    {
+      "date": "2026-08-04",
+      "run_type": "scheduled",
+      "tickers": {
+        "ALFA": {
+          "composite": 68.5,
+          "death_cross": false,
+          "flags": [
+            "high_sbc"
+          ],
+          "golden_cross": false,
+          "net_revisions_30d": 6,
+          "r40_fcf": 0.61,
+          "r40_trend": -0.01,
+          "rank": 3,
+          "score": 72.0,
+          "shares_short": 2000000.0,
+          "short_pct_float": 0.02,
+          "technical_score": 63.0,
+          "trend_state": "uptrend",
+          "valuation": "fair"
+        },
+        "BRVO": {
+          "composite": 25.5,
+          "death_cross": false,
+          "flags": [
+            "dilution",
+            "high_sbc",
+            "sbc_inflated"
+          ],
+          "golden_cross": false,
+          "net_revisions_30d": 0,
+          "r40_fcf": 0.35,
+          "r40_trend": 0.115,
+          "rank": 2,
+          "score": 13.0,
+          "shares_short": 12000000.0,
+          "short_pct_float": 0.12,
+          "technical_score": 44.5,
+          "trend_state": "uptrend",
+          "valuation": "fair"
+        },
+        "CHRL": {
+          "composite": 8.0,
+          "death_cross": false,
+          "flags": [],
+          "golden_cross": false,
+          "net_revisions_30d": 1,
+          "r40_fcf": -0.2,
+          "r40_trend": 0.02,
+          "rank": 1,
+          "score": 8.0,
+          "shares_short": 6500000.0,
+          "short_pct_float": 0.074,
+          "technical_score": 8.0,
+          "trend_state": "mixed",
+          "valuation": "fair"
+        },
+        "ZZZZ": {
+          "composite": 40.0,
+          "death_cross": false,
+          "flags": [],
+          "golden_cross": false,
+          "net_revisions_30d": null,
+          "r40_fcf": null,
+          "r40_trend": null,
+          "rank": 4,
+          "score": 40.0,
+          "shares_short": null,
+          "short_pct_float": null,
+          "technical_score": null,
+          "trend_state": "mixed",
+          "valuation": "fair"
+        }
+      }
+    }
+  ],
+  "version": 1
+}

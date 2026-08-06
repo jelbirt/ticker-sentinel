@@ -240,3 +240,126 @@ def test_no_em_or_en_dashes_in_report(html):
     assert "—" not in html and "–" not in html
     assert "&mdash;" not in html and "&#8212;" not in html
     assert "&ndash;" not in html and "&#8211;" not in html
+
+
+# --- What changed today + Deterioration watch (phase 4) -------------------------
+
+
+def _change_ctx(scored, **kw):
+    cfg = load_config()
+    return build_context(scored, cfg, run_type="dry", notes=[], today=FIXED_TODAY, **kw)
+
+
+def _changeset(changes=(), prior_date="2026-07-04"):
+    from sentinel.report.changes import ChangeSet
+
+    return ChangeSet(prior_date=prior_date, changes=list(changes))
+
+
+def test_what_changed_table_renders(scored):
+    from sentinel.report.changes import Change
+
+    ctx = _change_ctx(
+        scored,
+        change_set=_changeset([
+            Change("CHRL", "score", "composite 31.0 (-6.2)", "down"),
+            Change("ALFA", "rank", "rank 3 -> 1", "up"),
+            Change("BRVO", "short_interest", "short interest +33% (new reading)", "down"),
+        ]),
+    )
+    html = render_report(ctx)
+    assert "What changed today" in html
+    assert "composite 31.0 (-6.2)" in html
+    assert "rank 3 -&gt; 1" in html or "rank 3 -> 1" in html
+    assert "▲" in html and "▼" in html
+    assert "2026-07-04" in html  # baseline date shown
+
+
+def test_quiet_day_is_one_line(scored):
+    ctx = _change_ctx(scored, change_set=_changeset())
+    html = render_report(ctx)
+    assert "Quiet day: no material changes vs the prior run (2026-07-04)." in html
+
+
+def test_no_prior_state_line(scored):
+    ctx = _change_ctx(scored, change_set=_changeset(prior_date=None))
+    html = render_report(ctx)
+    assert "What changed today" in html
+    assert "No prior run state yet" in html
+
+
+def test_what_changed_absent_when_detection_skipped(html):
+    assert "What changed today" not in html
+    assert "Deterioration watch" not in html
+
+
+def test_deterioration_watch_renders(scored):
+    from sentinel.report.changes import DeteriorationRow
+
+    ctx = _change_ctx(
+        scored,
+        change_set=_changeset(),
+        deterioration=[
+            DeteriorationRow(
+                ticker="CHRL", composite=31.0, delta_1run=-6.2, delta_week=-9.8,
+                reasons=["composite fell 6.2 since prior run", "estimates cut (4 down vs 0 up, 30d)"],
+            )
+        ],
+        week_span=5,
+    )
+    html = render_report(ctx)
+    assert "Deterioration watch" in html
+    assert "estimates cut (4 down vs 0 up, 30d)" in html
+    assert "-6.2" in html and "-9.8" in html
+    assert "week window = 5 runs" in html
+
+
+def test_deterioration_absent_when_empty(scored):
+    ctx = _change_ctx(scored, change_set=_changeset(), deterioration=[])
+    html = render_report(ctx)
+    assert "Deterioration watch" not in html
+
+
+def test_dry_run_renders_change_sections_from_fixture_state(tmp_path):
+    from sentinel.config import repo_root
+    from sentinel.run import main
+
+    # dry runs must not touch the live state file, whether or not it exists yet
+    # (the bot commits one to main after the first scheduled run post-merge)
+    state = repo_root() / "data" / "cache" / "run_history.json"
+    before = state.read_bytes() if state.exists() else None
+
+    assert main(["--dry-run", "--no-email", "--out-dir", str(tmp_path)]) == 0
+    html = (tmp_path / "report.html").read_text()
+
+    assert "What changed today" in html
+    assert "(vs 2026-08-04)" in html                       # fixture prior run date
+    assert "rank 3 -&gt; 1" in html                        # ALFA rank improvement
+    assert "flag cleared: high sbc" in html                # ALFA flag transition
+    assert "trend mixed -&gt; downtrend" in html           # CHRL trend break
+    assert "net 30d revisions +1 -&gt; -4" in html         # CHRL estimate swing
+    assert "short interest +8% (new reading)" in html      # CHRL new short reading
+    assert "dropped from scored universe" in html          # ZZZZ departed
+
+    assert "Deterioration watch" in html
+    assert "week window = 5 runs" in html
+    det = html.split("Deterioration watch")[1].split("Strong performers")[0]
+    assert "CHRL" in det and "BRVO" not in det             # multi-signal gate holds
+    assert "broke into downtrend" in det
+    assert "estimates cut (4 down vs 0 up, 30d)" in det
+    assert "composite fell 8.0 since prior run" in det
+    assert "composite fell 13.0 over the week window" in det
+    assert "short float up to 8.0%" in det
+
+    after = state.read_bytes() if state.exists() else None
+    assert after == before
+
+
+def test_dry_run_subset_skips_change_detection(tmp_path):
+    from sentinel.run import main
+
+    assert main(["--dry-run", "--tickers", "ALFA", "--no-email", "--out-dir", str(tmp_path)]) == 0
+    html = (tmp_path / "report.html").read_text()
+    assert "What changed today" not in html
+    assert "Deterioration watch" not in html
+    assert "change detection skipped (ticker subset)" in html

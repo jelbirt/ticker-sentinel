@@ -2,7 +2,7 @@
 from __future__ import annotations
 
 import os
-from dataclasses import dataclass, field
+from dataclasses import dataclass, field, fields
 from pathlib import Path
 
 import yaml
@@ -44,6 +44,22 @@ class NewsCfg:
 
 
 @dataclass(frozen=True)
+class ChangesCfg:
+    """Day-over-day change detection thresholds (SPEC.md sections 3, 4)."""
+
+    retention_runs: int = 12        # history entries kept in data/cache/run_history.json
+    week_window_runs: int = 5       # "week" lookback in runs (Tue-Sat cadence)
+    score_delta_pts: float = 3.0    # composite move worth reporting (0-100 scale)
+    rank_delta: int = 2             # rank move worth reporting
+    revision_swing: int = 3         # net 30d analyst-revision swing worth reporting
+    short_delta: float = 0.05       # short-interest fractional change worth reporting
+    week_drop_pts: float = 5.0      # week-window composite drop counting as deterioration
+    revision_cut: int = 2           # net downward revisions counting as deterioration
+    min_signals: int = 2            # negative signals needed for Deterioration watch
+    deteriorating_r40_trend: float = -0.10  # plan section 6 weakest-buy threshold
+
+
+@dataclass(frozen=True)
 class Config:
     universe: tuple[TickerCfg, ...]
     benchmark: str = "SPY"
@@ -54,6 +70,7 @@ class Config:
     fundamentals_weight: float = 0.6
     technicals_weight: float = 0.4
     news: NewsCfg = NewsCfg()
+    changes: ChangesCfg = ChangesCfg()
 
     @property
     def r40_tickers(self) -> list[str]:
@@ -74,6 +91,9 @@ def load_config(path: Path | None = None) -> Config:
     report = raw.get("report", {}) or {}
     scoring = raw.get("scoring", {}) or {}
     news_raw = raw.get("news", {}) or {}
+    changes_raw = raw.get("changes", {}) or {}
+    known = {f.name for f in fields(ChangesCfg)}
+    changes = ChangesCfg(**{k: v for k, v in changes_raw.items() if k in known})
     news = NewsCfg(
         feeds=tuple(news_raw.get("feeds", []) or []),
         per_ticker_feed=news_raw.get("per_ticker_feed"),
@@ -94,4 +114,5 @@ def load_config(path: Path | None = None) -> Config:
         fundamentals_weight=float(scoring.get("fundamentals_weight", 0.6)),
         technicals_weight=float(scoring.get("technicals_weight", 0.4)),
         news=news,
+        changes=changes,
     )

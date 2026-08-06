@@ -7,6 +7,7 @@ from __future__ import annotations
 
 import logging
 import os
+import time
 
 import pandas as pd
 import requests
@@ -15,6 +16,7 @@ from tenacity import retry, stop_after_attempt, wait_exponential
 log = logging.getLogger(__name__)
 
 TWELVEDATA_URL = "https://api.twelvedata.com/time_series"
+TWELVEDATA_FREE_PER_MIN = 8  # free-tier request cap; pacing kicks in above this
 
 
 @retry(stop=stop_after_attempt(3), wait=wait_exponential(multiplier=1, max=20), reraise=True)
@@ -82,7 +84,13 @@ def fetch_prices(
             notes.append(f"prices missing for {', '.join(missing)} (no TWELVEDATA_API_KEY set)")
         else:
             recovered = []
-            for t in missing:
+            # a full-Yahoo outage on a larger watchlist would blow the free
+            # tier's per-minute cap; pace only then (a paced 26-name sweep
+            # takes ~3 minutes, still well inside the job timeout)
+            pace = len(missing) > TWELVEDATA_FREE_PER_MIN
+            for i, t in enumerate(missing):
+                if pace and i:
+                    time.sleep(60 / TWELVEDATA_FREE_PER_MIN)
                 series = _twelvedata_series(t, api_key)
                 if series is not None:
                     c, v = series
