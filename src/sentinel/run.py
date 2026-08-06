@@ -14,9 +14,17 @@ from pathlib import Path
 import pandas as pd
 
 from sentinel.config import Config, load_config, repo_root
+from sentinel.data import history
 from sentinel.indicators.fundamentals import FundamentalInputs, compute_scorecard
 from sentinel.indicators.technicals import TechnicalSnapshot, compute_technicals
-from sentinel.report.builder import build_context, render_report, write_outputs
+from sentinel.report.builder import build_context, rank_key, render_report, write_outputs
+from sentinel.report.changes import (
+    RunSnapshot,
+    deterioration_rows,
+    diff_runs,
+    select_baselines,
+    snapshot_from_scorecards,
+)
 from sentinel.report.charts import data_uri, sparkline_png
 from sentinel.scoring import apply_scores, technical_score
 
@@ -154,6 +162,35 @@ def main(argv: list[str] | None = None) -> int:
     for sc in scorecards:  # between-quarter signals: informational, never scored
         sc.signals = signals.get(sc.ticker)
 
+    # --- day-over-day change detection vs committed run history ----------------------
+    today = date.today()
+    change_set = None
+    det_rows = []
+    week_span = 0
+    current_run = None
+    if args.tickers:
+        # partial-universe ranks and deltas are not comparable; skip and say so
+        notes.append("change detection skipped (ticker subset)")
+    else:
+        if args.dry_run:
+            from sentinel.data.fixtures import fixture_history_path
+
+            runs_raw, h_notes = history.load_history(fixture_history_path())
+        else:
+            runs_raw, h_notes = history.load_history()
+        notes.extend(h_notes)
+        prior_runs = [RunSnapshot.from_dict(r) for r in runs_raw]
+        ranked = sorted(
+            (sc for sc in scorecards if sc.score is not None),
+            key=lambda s: rank_key(s, cfg.ranking),
+        )
+        current_run = snapshot_from_scorecards(ranked, today=today, run_type=_run_type(args))
+        prior, week_ago, week_span = select_baselines(
+            prior_runs, current_run.date, cfg.changes.week_window_runs
+        )
+        change_set = diff_runs(current_run, prior, cfg.changes)
+        det_rows = deterioration_rows(ranked, prior, week_ago, cfg.changes)
+
     # cache hygiene: drop files for tickers no longer on the watchlist —
     # skipped for --tickers overrides so an ad hoc subset never deletes siblings
     if not args.dry_run and not args.tickers:
@@ -232,6 +269,9 @@ def main(argv: list[str] | None = None) -> int:
         benchmark_line=_benchmark_line(close, cfg.benchmark),
         tech_only=tech_only,
         news_sections=news_sections,
+        change_set=change_set,
+        deterioration=det_rows,
+        week_span=week_span,
     )
     context["deep"] = args.deep
 
@@ -246,9 +286,16 @@ def main(argv: list[str] | None = None) -> int:
     context["spark_src"] = {t: data_uri(png) for t, png in sparks.items()}
     html_file = render_report(context)
 
-    outdir = args.out_dir or repo_root() / "reports" / date.today().isoformat()
+    outdir = args.out_dir or repo_root() / "reports" / today.isoformat()
     paths = write_outputs(outdir, html_file, scorecards)
     log.info("report written: %s", paths["html"])
+
+    # persist state for tomorrow's diff only after a report actually landed;
+    # real full-universe runs only (dry runs read fixture state and never write,
+    # subset runs were skipped above). The scheduled workflow commits the file.
+    if current_run is not None and not args.dry_run:
+        history.save_run(current_run.to_dict(), cfg.changes.retention_runs)
+        log.info("run history updated: %s", history.history_path())
 
     # stdout spot-check table (points)
     print(

@@ -268,11 +268,17 @@ owner-gated. Cache pruning already cleans up dropped tickers automatically.
 
 ## 8. Dry-run and fixtures
 
-- New committed fixture `src/sentinel/fixtures/state/run_history.json` with 6+
-  entries for ALFA/BRVO/CHRL, engineered so every change type and every
-  deterioration signal fires at least once: CHRL decays across runs (score drops,
-  death cross appears, estimate cuts, rising shorts), ALFA improves (rank swap with
-  BRVO, flag cleared), BRVO stays quiet (proves selective reporting).
+- New committed fixture `src/sentinel/fixtures/state/run_history.json` with 6
+  entries, engineered so the dry run fires every change type the existing
+  fixtures can express: CHRL decays across runs (score/rank drops, trend break,
+  estimate cuts, rising shorts; five deterioration signals), ALFA improves (rank
+  3 to 1, flag set and cleared, R40 sign flip), BRVO stays quiet (proves
+  selective reporting), ZZZZ departs (universe change). Three cases are
+  unit-tested instead of fixture-rendered, because current price/statement
+  fixtures cannot produce them without invalidating pinned metric tests:
+  new_cross, universe_added, and the R40-level deterioration signal (CHRL's
+  r40_trend is -0.06, above the -0.10 threshold). (Amended at build time,
+  2026-08-06.)
 - `--dry-run` loads fixture state, renders both new sections, writes nothing to
   `data/cache/`.
 - Fixture dates are fixed (relative to the fixture price end date), fully

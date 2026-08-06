@@ -318,3 +318,43 @@ def test_deterioration_absent_when_empty(scored):
     ctx = _change_ctx(scored, change_set=_changeset(), deterioration=[])
     html = render_report(ctx)
     assert "Deterioration watch" not in html
+
+
+def test_dry_run_renders_change_sections_from_fixture_state(tmp_path):
+    from sentinel.config import repo_root
+    from sentinel.run import main
+
+    assert main(["--dry-run", "--no-email", "--out-dir", str(tmp_path)]) == 0
+    html = (tmp_path / "report.html").read_text()
+
+    assert "What changed today" in html
+    assert "(vs 2026-08-04)" in html                       # fixture prior run date
+    assert "rank 3 -&gt; 1" in html                        # ALFA rank improvement
+    assert "flag cleared: high sbc" in html                # ALFA flag transition
+    assert "trend mixed -&gt; downtrend" in html           # CHRL trend break
+    assert "net 30d revisions +1 -&gt; -4" in html         # CHRL estimate swing
+    assert "short interest +8% (new reading)" in html      # CHRL new short reading
+    assert "dropped from scored universe" in html          # ZZZZ departed
+
+    assert "Deterioration watch" in html
+    assert "week window = 6 runs" in html
+    det = html.split("Deterioration watch")[1].split("Strong performers")[0]
+    assert "CHRL" in det and "BRVO" not in det             # multi-signal gate holds
+    assert "broke into downtrend" in det
+    assert "estimates cut (4 down vs 0 up, 30d)" in det
+    assert "composite fell 8.0 since prior run" in det
+    assert "composite fell 14.0 over the week window" in det
+    assert "short float up to 8.0%" in det
+
+    # dry runs read fixture state and never write the live file
+    assert not (repo_root() / "data" / "cache" / "run_history.json").exists()
+
+
+def test_dry_run_subset_skips_change_detection(tmp_path):
+    from sentinel.run import main
+
+    assert main(["--dry-run", "--tickers", "ALFA", "--no-email", "--out-dir", str(tmp_path)]) == 0
+    html = (tmp_path / "report.html").read_text()
+    assert "What changed today" not in html
+    assert "Deterioration watch" not in html
+    assert "change detection skipped (ticker subset)" in html
