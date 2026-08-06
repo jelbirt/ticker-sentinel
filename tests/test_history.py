@@ -79,6 +79,19 @@ class TestDegradation:
         runs, notes = history.load_history()
         assert runs == [] and len(notes) == 1
 
+    def test_ticker_payload_wrong_shape_degrades(self, isolated_root):
+        history.history_path().write_text(
+            json.dumps({"version": 1, "runs": [{"date": "d", "tickers": {"AAA": "oops"}}]})
+        )
+        runs, notes = history.load_history()
+        assert runs == [] and len(notes) == 1
+
+    def test_retention_floor_of_one(self, isolated_root):
+        history.save_run(_run("2026-08-05"), retention=0)
+        history.save_run(_run("2026-08-06"), retention=0)
+        runs, _ = history.load_history()
+        assert [r["date"] for r in runs] == ["2026-08-06"]
+
     def test_save_over_corrupt_starts_fresh(self, isolated_root):
         history.history_path().write_text("{not json")
         history.save_run(_run("2026-08-06"), retention=12)

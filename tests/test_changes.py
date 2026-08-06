@@ -234,8 +234,8 @@ class TestDiffUniverseAndShape:
         ]  # 8 runs, dates 07-01 .. 07-08
         prior, week_ago, span = select_baselines(runs, today="2026-07-09", week_window=5)
         assert prior.date == "2026-07-08"
-        assert week_ago.date == "2026-07-03"  # 5 positions before the prior
-        assert span == 6
+        assert week_ago.date == "2026-07-04"  # today vs week_ago = exactly 5 run-steps
+        assert span == 5
 
     def test_baseline_selection_same_day_rerun_skips_today(self):
         runs = [RunSnapshot("2026-08-05", "s", {}), RunSnapshot("2026-08-06", "s", {})]
@@ -303,6 +303,23 @@ class TestDeteriorationSignals:
         ))
         rows = deterioration_rows([sc], _prior_run(), None, ONE_SIGNAL)
         assert len(rows) == 1 and any("short interest" in r for r in rows[0].reasons)
+
+    def test_week_baseline_same_as_prior_never_double_counts(self):
+        # short history: select_baselines returns the same run as prior and
+        # week_ago; one composite drop must yield exactly one reason
+        prior = _prior_run(composite=50.0)
+        rows = deterioration_rows([_det_sc(composite=44.0)], prior, prior, ONE_SIGNAL)
+        assert len(rows) == 1
+        assert sum("fell" in r for r in rows[0].reasons) == 1
+        assert rows[0].delta_week is None
+
+    def test_flags_null_in_stored_snapshot_tolerated(self):
+        run = RunSnapshot.from_dict(
+            {"date": "2026-08-05", "run_type": "s", "tickers": {"AAA": {"flags": None}}}
+        )
+        assert run.tickers["AAA"].flags == []
+        cur = RunSnapshot("2026-08-06", "s", {"AAA": TickerSnapshot(flags=["dilution"])})
+        assert _kinds(diff_runs(cur, run, CFG)) == ["flag_set"]
 
     def test_healthy_ticker_absent(self):
         rows = deterioration_rows(

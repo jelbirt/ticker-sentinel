@@ -58,10 +58,12 @@ class RunSnapshot:
     @classmethod
     def from_dict(cls, raw: dict) -> "RunSnapshot":
         known = {f.name for f in fields(TickerSnapshot)}
-        tickers = {
-            t: TickerSnapshot(**{k: v for k, v in snap.items() if k in known})
-            for t, snap in (raw.get("tickers") or {}).items()
-        }
+        tickers = {}
+        for t, snap in (raw.get("tickers") or {}).items():
+            kw = {k: v for k, v in snap.items() if k in known}
+            if not isinstance(kw.get("flags"), list):  # null/garbage never crashes a diff
+                kw["flags"] = []
+            tickers[t] = TickerSnapshot(**kw)
         return cls(
             date=str(raw.get("date", "")),
             run_type=str(raw.get("run_type", "")),
@@ -251,13 +253,14 @@ def select_baselines(
 ) -> tuple[RunSnapshot | None, RunSnapshot | None, int]:
     """Pick (prior run, week-ago run, actual span in runs) from oldest-first
     history. Entries dated today are skipped so a same-day re-run compares
-    against yesterday, not itself. Short history falls back to the oldest entry;
-    the span tells the report what window it actually got."""
+    against yesterday, not itself. Today vs week-ago spans exactly `week_window`
+    run-steps (one Tue-Sat week at the default 5). Short history falls back to
+    the oldest entry; the span tells the report what window it actually got."""
     eligible = [r for r in runs if r.date < today]
     if not eligible:
         return None, None, 0
     prior_idx = len(eligible) - 1
-    week_idx = max(prior_idx - week_window, 0)
+    week_idx = max(prior_idx - (week_window - 1), 0)
     return eligible[prior_idx], eligible[week_idx], prior_idx - week_idx + 1
 
 
@@ -351,6 +354,10 @@ def deterioration_rows(
     """Confirmed multi-signal decay: a ticker is listed with >= cfg.min_signals
     negative signals, or with the plan-section-6 deteriorating() combination
     alone. Sorted most signals first, then weakest composite."""
+    if week_ago is prior:
+        # short history: one composite drop must not double-count as both the
+        # 1-run and week-window signals and clear the gate by itself
+        week_ago = None
     rows: list[DeteriorationRow] = []
     for sc in scorecards:
         prior_snap = prior.tickers.get(sc.ticker) if prior is not None else None

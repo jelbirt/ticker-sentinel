@@ -324,6 +324,11 @@ def test_dry_run_renders_change_sections_from_fixture_state(tmp_path):
     from sentinel.config import repo_root
     from sentinel.run import main
 
+    # dry runs must not touch the live state file, whether or not it exists yet
+    # (the bot commits one to main after the first scheduled run post-merge)
+    state = repo_root() / "data" / "cache" / "run_history.json"
+    before = state.read_bytes() if state.exists() else None
+
     assert main(["--dry-run", "--no-email", "--out-dir", str(tmp_path)]) == 0
     html = (tmp_path / "report.html").read_text()
 
@@ -337,17 +342,17 @@ def test_dry_run_renders_change_sections_from_fixture_state(tmp_path):
     assert "dropped from scored universe" in html          # ZZZZ departed
 
     assert "Deterioration watch" in html
-    assert "week window = 6 runs" in html
+    assert "week window = 5 runs" in html
     det = html.split("Deterioration watch")[1].split("Strong performers")[0]
     assert "CHRL" in det and "BRVO" not in det             # multi-signal gate holds
     assert "broke into downtrend" in det
     assert "estimates cut (4 down vs 0 up, 30d)" in det
     assert "composite fell 8.0 since prior run" in det
-    assert "composite fell 14.0 over the week window" in det
+    assert "composite fell 13.0 over the week window" in det
     assert "short float up to 8.0%" in det
 
-    # dry runs read fixture state and never write the live file
-    assert not (repo_root() / "data" / "cache" / "run_history.json").exists()
+    after = state.read_bytes() if state.exists() else None
+    assert after == before
 
 
 def test_dry_run_subset_skips_change_detection(tmp_path):

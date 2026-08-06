@@ -34,6 +34,12 @@ def load_history(path: Path | None = None) -> tuple[list[dict], list[str]]:
         runs = raw["runs"]
         if not isinstance(runs, list) or not all(isinstance(r, dict) for r in runs):
             raise ValueError("runs is not a list of objects")
+        for r in runs:  # a committed file humans and bots both touch: validate
+            tickers = r.get("tickers", {})
+            if not isinstance(tickers, dict) or not all(
+                isinstance(snap, dict) for snap in tickers.values()
+            ):
+                raise ValueError("tickers is not a mapping of objects")
     except Exception as exc:
         return [], [f"run history unreadable, change detection reset ({exc})"]
     return sorted(runs, key=lambda r: str(r.get("date", ""))), []
@@ -46,7 +52,7 @@ def save_run(run: dict, retention: int, path: Path | None = None) -> None:
     p = path or history_path()
     runs, _ = load_history(p)
     runs = [r for r in runs if r.get("date") != run.get("date")] + [run]
-    runs = sorted(runs, key=lambda r: str(r.get("date", "")))[-retention:]
+    runs = sorted(runs, key=lambda r: str(r.get("date", "")))[-max(retention, 1):]
     p.parent.mkdir(parents=True, exist_ok=True)
     p.write_text(json.dumps({"version": SCHEMA_VERSION, "runs": runs},
                             indent=2, sort_keys=True))

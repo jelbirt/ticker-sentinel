@@ -179,17 +179,23 @@ def main(argv: list[str] | None = None) -> int:
         else:
             runs_raw, h_notes = history.load_history()
         notes.extend(h_notes)
-        prior_runs = [RunSnapshot.from_dict(r) for r in runs_raw]
-        ranked = sorted(
-            (sc for sc in scorecards if sc.score is not None),
-            key=lambda s: rank_key(s, cfg.ranking),
-        )
-        current_run = snapshot_from_scorecards(ranked, today=today, run_type=_run_type(args))
-        prior, week_ago, week_span = select_baselines(
-            prior_runs, current_run.date, cfg.changes.week_window_runs
-        )
-        change_set = diff_runs(current_run, prior, cfg.changes)
-        det_rows = deterioration_rows(ranked, prior, week_ago, cfg.changes)
+        try:
+            prior_runs = [RunSnapshot.from_dict(r) for r in runs_raw]
+            ranked = sorted(
+                (sc for sc in scorecards if sc.score is not None),
+                key=lambda s: rank_key(s, cfg.ranking),
+            )
+            current_run = snapshot_from_scorecards(
+                ranked, today=today, run_type=_run_type(args)
+            )
+            prior, week_ago, week_span = select_baselines(
+                prior_runs, current_run.date, cfg.changes.week_window_runs
+            )
+            change_set = diff_runs(current_run, prior, cfg.changes)
+            det_rows = deterioration_rows(ranked, prior, week_ago, cfg.changes)
+        except Exception as exc:  # degrade, never lose the report to a bad state file
+            notes.append(f"change detection failed, sections skipped ({exc})")
+            change_set, det_rows, week_span, current_run = None, [], 0, None
 
     # cache hygiene: drop files for tickers no longer on the watchlist —
     # skipped for --tickers overrides so an ad hoc subset never deletes siblings
