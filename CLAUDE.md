@@ -1,6 +1,6 @@
 # ticker-sentinel
 
-Personal, private stock-analysis report service. Single user. Not financial advice.
+Personal stock-analysis report service (public repo; credentials and recipients live only in Actions secrets). Single user. Not financial advice.
 PROJECT_PLAN.md is the authoritative spec — read it before making changes.
 
 ## Commands

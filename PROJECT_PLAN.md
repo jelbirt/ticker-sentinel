@@ -1,6 +1,6 @@
 # Ticker Sentinel — Personal Stock Analysis & Daily Report Service
 **Version:** 1.0 (planning spec) · **Date:** 2026-07-05
-**Purpose:** A small private service that pulls end-of-day stock/fundamentals data from free sources, computes a Rule-of-40-centered fundamental scorecard plus a technical/momentum overlay, ranks strongest/weakest candidates, and emails a daily HTML report to a couple of personal addresses. Runs on GitHub Actions (scheduled + ad hoc). Designed to later grow a personalized finance-news digest module.
+**Purpose:** A small personal service that pulls end-of-day stock/fundamentals data from free sources, computes a Rule-of-40-centered fundamental scorecard plus a technical/momentum overlay, ranks strongest/weakest candidates, and emails a daily HTML report to a couple of personal addresses. Runs on GitHub Actions (scheduled + ad hoc). Designed to later grow a personalized finance-news digest module.
 > ⚠️ Personal research tool only. Not financial advice; outputs are heuristics, not recommendations.
 ---
 ## 1. Goals & Non-Goals
@@ -187,7 +187,7 @@ jobs:
           git config user.name sentinel-bot && git config user.email bot@users.noreply.github.com
           git add data/cache && git diff --cached --quiet || git commit -m "cache: refresh fundamentals" && git push
 ```
-Notes: US market holidays → job runs but detects "no new bar" and sends nothing (or a one-line "market closed" email — config option). Keep repo private (watchlist + cache are personal data).
+Notes: US market holidays → job runs but detects "no new bar" and sends nothing (or a one-line "market closed" email — config option). Repo is public (2026-08-06): the watchlist and bot-committed cache are deliberately published; recipient addresses and all credentials live only in Actions secrets.
 ---
 ## 10. Testing & Quality
 - Unit tests for every formula in section 5 against hand-computed fixtures (incl. edge cases: negative margins, <4 quarters, missing SBC line, ticker with no EBITDA reported).

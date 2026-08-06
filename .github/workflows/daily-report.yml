@@ -11,7 +11,7 @@ on:
       deep: {description: "Deep-dive mode (more history/detail)", type: boolean, default: false}
 
 permissions:
-  contents: write   # weekly fundamentals-cache commit
+  contents: write   # scheduled cache + run-history commit
 
 jobs:
   run:
@@ -39,7 +39,7 @@ jobs:
           FINNHUB_API_KEY: ${{ secrets.FINNHUB_API_KEY }}
       - uses: actions/upload-artifact@v4
         with: {name: report, path: reports/}
-      - name: refresh fundamentals cache commit (weekly)
+      - name: refresh fundamentals cache commit (state-changing runs)
         if: github.event_name == 'schedule'
         run: |
           git config user.name sentinel-bot && git config user.email bot@users.noreply.github.com
