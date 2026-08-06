@@ -209,7 +209,7 @@ def _ticker_changes(
             out.append(Change(
                 ticker, "short_interest",
                 f"short interest {frac * 100:+.0f}% (new reading)",
-                "up" if frac > 0 else "down",   # up = shorts rising
+                "down" if frac > 0 else "up",   # rising shorts = worsening
             ))
 
     return out

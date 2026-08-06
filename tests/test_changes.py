@@ -184,7 +184,8 @@ class TestDiffSignals:
         )
         cs = diff_runs(cur, prior, CFG)
         assert _kinds(cs) == ["short_interest"]
-        assert cs.changes[0].direction == "up"  # shorts rising
+        # direction is a quality signal: shorts rising = worsening = "down"
+        assert cs.changes[0].direction == "down"
         assert "33" in cs.changes[0].detail
 
     def test_short_interest_tiny_change_silent(self):

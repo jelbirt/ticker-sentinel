@@ -240,3 +240,81 @@ def test_no_em_or_en_dashes_in_report(html):
     assert "—" not in html and "–" not in html
     assert "&mdash;" not in html and "&#8212;" not in html
     assert "&ndash;" not in html and "&#8211;" not in html
+
+
+# --- What changed today + Deterioration watch (phase 4) -------------------------
+
+
+def _change_ctx(scored, **kw):
+    cfg = load_config()
+    return build_context(scored, cfg, run_type="dry", notes=[], today=FIXED_TODAY, **kw)
+
+
+def _changeset(changes=(), prior_date="2026-07-04"):
+    from sentinel.report.changes import ChangeSet
+
+    return ChangeSet(prior_date=prior_date, changes=list(changes))
+
+
+def test_what_changed_table_renders(scored):
+    from sentinel.report.changes import Change
+
+    ctx = _change_ctx(
+        scored,
+        change_set=_changeset([
+            Change("CHRL", "score", "composite 31.0 (-6.2)", "down"),
+            Change("ALFA", "rank", "rank 3 -> 1", "up"),
+            Change("BRVO", "short_interest", "short interest +33% (new reading)", "down"),
+        ]),
+    )
+    html = render_report(ctx)
+    assert "What changed today" in html
+    assert "composite 31.0 (-6.2)" in html
+    assert "rank 3 -&gt; 1" in html or "rank 3 -> 1" in html
+    assert "▲" in html and "▼" in html
+    assert "2026-07-04" in html  # baseline date shown
+
+
+def test_quiet_day_is_one_line(scored):
+    ctx = _change_ctx(scored, change_set=_changeset())
+    html = render_report(ctx)
+    assert "Quiet day: no material changes vs the prior run (2026-07-04)." in html
+
+
+def test_no_prior_state_line(scored):
+    ctx = _change_ctx(scored, change_set=_changeset(prior_date=None))
+    html = render_report(ctx)
+    assert "What changed today" in html
+    assert "No prior run state yet" in html
+
+
+def test_what_changed_absent_when_detection_skipped(html):
+    assert "What changed today" not in html
+    assert "Deterioration watch" not in html
+
+
+def test_deterioration_watch_renders(scored):
+    from sentinel.report.changes import DeteriorationRow
+
+    ctx = _change_ctx(
+        scored,
+        change_set=_changeset(),
+        deterioration=[
+            DeteriorationRow(
+                ticker="CHRL", composite=31.0, delta_1run=-6.2, delta_week=-9.8,
+                reasons=["composite fell 6.2 since prior run", "estimates cut (4 down vs 0 up, 30d)"],
+            )
+        ],
+        week_span=5,
+    )
+    html = render_report(ctx)
+    assert "Deterioration watch" in html
+    assert "estimates cut (4 down vs 0 up, 30d)" in html
+    assert "-6.2" in html and "-9.8" in html
+    assert "week window = 5 runs" in html
+
+
+def test_deterioration_absent_when_empty(scored):
+    ctx = _change_ctx(scored, change_set=_changeset(), deterioration=[])
+    html = render_report(ctx)
+    assert "Deterioration watch" not in html

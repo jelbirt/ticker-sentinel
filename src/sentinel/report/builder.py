@@ -13,7 +13,7 @@ from jinja2 import Environment, FileSystemLoader, select_autoescape
 from sentinel.config import Config
 from sentinel.indicators.fundamentals import Scorecard
 from sentinel.indicators.signals import short_change_mom, signal_alerts
-from sentinel.report.changes import deteriorating
+from sentinel.report.changes import ChangeSet, DeteriorationRow, deteriorating
 
 TEMPLATES_DIR = Path(__file__).resolve().parent / "templates"
 
@@ -31,6 +31,13 @@ FLAG_LABELS = {
 }
 
 TREND_ARROWS = {"uptrend": "↑ up", "downtrend": "↓ down", "mixed": "→ mixed"}
+
+# What-changed direction glyphs: direction is a quality signal (up = improving)
+CHANGE_ARROWS = {
+    "up": ("▲", "#1a7f37"),
+    "down": ("▼", "#c0392b"),
+    "info": ("•", "#66727f"),
+}
 
 CSV_COLUMNS = [
     "ticker", "company_name", "composite", "score", "technical_score",
@@ -84,12 +91,20 @@ def _spct(v: float | None) -> str:
     return "n/a" if v is None else f"{v * 100:+.0f}%"
 
 
+def _sdelta(v: float | None) -> str:
+    """Signed score delta on the 0-100 scale: +3.4, -6.2."""
+    return "n/a" if v is None else f"{v:+.1f}"
+
+
 def _env() -> Environment:
     env = Environment(
         loader=FileSystemLoader(TEMPLATES_DIR),
         autoescape=select_autoescape(["html", "j2"]),
     )
-    env.filters.update(pts=_pts, pct=_pct, mult=_mult, score=_score, shares=_shares, spct=_spct)
+    env.filters.update(
+        pts=_pts, pct=_pct, mult=_mult, score=_score, shares=_shares, spct=_spct,
+        sdelta=_sdelta,
+    )
     return env
 
 
@@ -169,6 +184,9 @@ def build_context(
     today: date | None = None,
     tech_only: list[dict] | None = None,
     news_sections: list[dict] | None = None,
+    change_set: ChangeSet | None = None,
+    deterioration: list[DeteriorationRow] | None = None,
+    week_span: int = 0,
 ) -> dict:
     scored = sorted(
         (sc for sc in scorecards if sc.score is not None),
@@ -199,6 +217,12 @@ def build_context(
         "all_scored": scored,   # deep grid covers every ranked name, not just top/bottom
         "unscored": unscored,
         "movers": build_movers(scorecards),
+        # None = change detection skipped (no section); ChangeSet with prior_date
+        # None = first run; quiet=True = one-line quiet day
+        "change_set": change_set,
+        "deterioration": deterioration or [],
+        "week_span": week_span,
+        "change_arrows": CHANGE_ARROWS,
         "tech_only": tech_only or [],
         "news_sections": news_sections or [],  # [{label, html}] per configured tone
         "signal_rows": sorted(
