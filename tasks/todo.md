@@ -30,7 +30,11 @@ review inbox; merge back via PR.
 - [x] T8 Twelve Data fallback pacing (8/min free-tier cap)
 - [x] T9 watchlist +12 (owner-approved 2026-08-06)
 - [x] T10 docs: PROJECT_PLAN.md sections 7/11/12, pen wording
-- [ ] T11 real-run verification, two-run state round-trip (no commit)
+- [x] T11 real-run verification, two-run state round-trip (verified 2026-08-06
+      in an isolated SENTINEL_ROOT: no-prior line on run 1, quiet-day diff vs
+      backdated baseline on run 2, 2-entry state file, sections render, no
+      dashes. Finding: CFLT and CYBR return "possibly delisted" from Yahoo and
+      degrade to insufficient_data rows; owner should approve bench swaps.)
 - [ ] T12 PR + post-open review pass (owner merges)
 
 ## Next gates (owner)
