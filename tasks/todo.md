@@ -37,11 +37,11 @@ review inbox; merge back via PR.
       degrade to insufficient_data rows; owner should approve bench swaps.)
 - [x] T12 PR #1 open; review pass done, 4 findings fixed in follow-up commit
       (state-file resilience, week-window off-by-one, double-counted signal,
-      future-proofed dry-run test). OPEN ITEM for owner: the ci workflow never
-      receives pull_request events in this repo (0 such runs ever; push-to-main
-      CI works; close/reopen re-delivery tried). Local bar green with the same
-      script CI runs. Fix likely needs a ci.yml trigger edit, which is
-      owner-gated. Also pending owner: CFLT/CYBR bench swaps (delisted).
+      future-proofed dry-run test). CI checks missing on PR #1: root cause was
+      the 2026-08-06 GitHub Actions major outage (confirmed on githubstatus);
+      no ci.yml change needed, re-trigger after the incident resolves. CFLT and
+      CYBR (delisted post-acquisition) swapped for bench names FTNT and ESTC,
+      owner-approved 2026-08-06.
 
 ## Next gates (owner)
 - Variety + deterioration feature: spec APPROVED 2026-08-06; plan approval
