@@ -35,7 +35,13 @@ review inbox; merge back via PR.
       backdated baseline on run 2, 2-entry state file, sections render, no
       dashes. Finding: CFLT and CYBR return "possibly delisted" from Yahoo and
       degrade to insufficient_data rows; owner should approve bench swaps.)
-- [ ] T12 PR + post-open review pass (owner merges)
+- [x] T12 PR #1 open; review pass done, 4 findings fixed in follow-up commit
+      (state-file resilience, week-window off-by-one, double-counted signal,
+      future-proofed dry-run test). OPEN ITEM for owner: the ci workflow never
+      receives pull_request events in this repo (0 such runs ever; push-to-main
+      CI works; close/reopen re-delivery tried). Local bar green with the same
+      script CI runs. Fix likely needs a ci.yml trigger edit, which is
+      owner-gated. Also pending owner: CFLT/CYBR bench swaps (delisted).
 
 ## Next gates (owner)
 - Variety + deterioration feature: spec APPROVED 2026-08-06; plan approval
