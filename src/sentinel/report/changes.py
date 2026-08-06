@@ -11,7 +11,11 @@ from datetime import date
 
 from sentinel.config import ChangesCfg
 from sentinel.indicators.fundamentals import Scorecard
-from sentinel.indicators.signals import net_revisions_30d
+from sentinel.indicators.signals import (
+    SHORT_MOM_ALERT,
+    net_revisions_30d,
+    short_change_mom,
+)
 
 
 @dataclass(frozen=True)
@@ -240,3 +244,144 @@ def diff_runs(
 
     changes.sort(key=lambda c: (-_move(c.ticker), c.ticker))
     return ChangeSet(prior_date=prior.date, changes=changes)
+
+
+def select_baselines(
+    runs: list[RunSnapshot], today: str, week_window: int
+) -> tuple[RunSnapshot | None, RunSnapshot | None, int]:
+    """Pick (prior run, week-ago run, actual span in runs) from oldest-first
+    history. Entries dated today are skipped so a same-day re-run compares
+    against yesterday, not itself. Short history falls back to the oldest entry;
+    the span tells the report what window it actually got."""
+    eligible = [r for r in runs if r.date < today]
+    if not eligible:
+        return None, None, 0
+    prior_idx = len(eligible) - 1
+    week_idx = max(prior_idx - week_window, 0)
+    return eligible[prior_idx], eligible[week_idx], prior_idx - week_idx + 1
+
+
+def deteriorating(sc: Scorecard, threshold: float) -> bool:
+    """Plan section 6 weakest-buy priority: R40 fell past `threshold` AND
+    technical confirmation (downtrend or recent death cross)."""
+    fell = sc.r40_trend is not None and sc.r40_trend < threshold
+    tech_confirms = sc.tech is not None and (
+        sc.tech.trend_state == "downtrend" or sc.tech.death_cross_recent
+    )
+    return fell and tech_confirms
+
+
+@dataclass(frozen=True)
+class DeteriorationRow:
+    ticker: str
+    composite: float | None
+    delta_1run: float | None       # composite change vs the prior run
+    delta_week: float | None       # composite change vs the week-ago run
+    reasons: list[str]             # one clause per triggered signal, dash-free
+
+
+def _negative_signals(
+    sc: Scorecard,
+    prior: TickerSnapshot | None,
+    week_ago: TickerSnapshot | None,
+    cfg: ChangesCfg,
+) -> list[str]:
+    reasons: list[str] = []
+
+    if (
+        sc.composite is not None and prior is not None and prior.composite is not None
+        and prior.composite - sc.composite >= cfg.score_delta_pts
+    ):
+        reasons.append(f"composite fell {prior.composite - sc.composite:.1f} since prior run")
+
+    if (
+        sc.composite is not None and week_ago is not None
+        and week_ago.composite is not None
+        and week_ago.composite - sc.composite >= cfg.week_drop_pts
+    ):
+        reasons.append(
+            f"composite fell {week_ago.composite - sc.composite:.1f} over the week window"
+        )
+
+    if sc.r40_trend is not None and sc.r40_trend < cfg.deteriorating_r40_trend:
+        reasons.append(f"R40 fell {abs(sc.r40_trend) * 100:.0f}pts YoY")
+
+    if sc.tech is not None and prior is not None:
+        if sc.tech.death_cross_recent and not prior.death_cross:
+            reasons.append("new death cross")
+        elif (
+            sc.tech.trend_state == "downtrend"
+            and prior.trend_state is not None
+            and prior.trend_state != "downtrend"
+        ):
+            reasons.append("broke into downtrend")
+
+    sig = sc.signals
+    if sig is not None:
+        net = net_revisions_30d(sig)
+        cut = net is not None and net <= -cfg.revision_cut
+        down_beats_up = (
+            sig.eps_rev_down_30d is not None and sig.eps_rev_up_30d is not None
+            and sig.eps_rev_down_30d > sig.eps_rev_up_30d
+        )
+        if cut or down_beats_up:
+            reasons.append(
+                f"estimates cut ({sig.eps_rev_down_30d} down vs {sig.eps_rev_up_30d} up, 30d)"
+            )
+
+        mom = short_change_mom(sig.shares_short, sig.shares_short_prior)
+        if mom is not None and mom > SHORT_MOM_ALERT:
+            reasons.append(f"short interest up {mom * 100:.0f}% MoM")
+        elif (
+            sig.short_pct_float is not None and prior is not None
+            and prior.short_pct_float is not None and prior.short_pct_float > 0
+            and sig.short_pct_float / prior.short_pct_float - 1 >= cfg.short_delta
+        ):
+            reasons.append(f"short float up to {sig.short_pct_float * 100:.1f}%")
+
+    return reasons
+
+
+def deterioration_rows(
+    scorecards: list[Scorecard],
+    prior: RunSnapshot | None,
+    week_ago: RunSnapshot | None,
+    cfg: ChangesCfg,
+) -> list[DeteriorationRow]:
+    """Confirmed multi-signal decay: a ticker is listed with >= cfg.min_signals
+    negative signals, or with the plan-section-6 deteriorating() combination
+    alone. Sorted most signals first, then weakest composite."""
+    rows: list[DeteriorationRow] = []
+    for sc in scorecards:
+        prior_snap = prior.tickers.get(sc.ticker) if prior is not None else None
+        week_snap = week_ago.tickers.get(sc.ticker) if week_ago is not None else None
+        reasons = _negative_signals(sc, prior_snap, week_snap, cfg)
+        plan6 = deteriorating(sc, cfg.deteriorating_r40_trend)
+        if len(reasons) < cfg.min_signals and not plan6:
+            continue
+        if plan6:  # name the technical confirmation even without a baseline
+            confirm = (
+                "death cross" if sc.tech is not None and sc.tech.death_cross_recent
+                else "below 50/200-day"
+            )
+            if not any(confirm in r or "downtrend" in r for r in reasons):
+                reasons.append(confirm)
+        delta_1run = (
+            sc.composite - prior_snap.composite
+            if sc.composite is not None and prior_snap is not None
+            and prior_snap.composite is not None else None
+        )
+        delta_week = (
+            sc.composite - week_snap.composite
+            if sc.composite is not None and week_snap is not None
+            and week_snap.composite is not None else None
+        )
+        rows.append(DeteriorationRow(
+            ticker=sc.ticker,
+            composite=sc.composite,
+            delta_1run=delta_1run,
+            delta_week=delta_week,
+            reasons=reasons,
+        ))
+    rows.sort(key=lambda r: (-len(r.reasons), r.composite if r.composite is not None else 0.0))
+    return rows
