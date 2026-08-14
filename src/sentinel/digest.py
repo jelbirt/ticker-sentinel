@@ -99,11 +99,10 @@ def build_digest(
             run.tickers[ticker] for run in window if ticker in run.tickers
         ]
         earliest, latest = appearances[0], appearances[-1]
-        delta = (
-            latest.composite - earliest.composite
-            if latest.composite is not None and earliest.composite is not None
-            and len(appearances) > 1 else None
-        )
+        # delta anchors on observed composites only: a rate-limited run that
+        # degraded to None must not null the week-scale evidence around it
+        valued = [a.composite for a in appearances if a.composite is not None]
+        delta = valued[-1] - valued[0] if len(valued) > 1 else None
         weeks.append(TickerWeek(
             ticker=ticker,
             runs_seen=len(appearances),
@@ -175,11 +174,14 @@ def render_markdown(
     digest: WeeklyDigest, refresh_number: int, today: date
 ) -> str:
     """GitHub-issue body. Plain ASCII, no em or en dashes (repo rule)."""
+    calibration = (
+        f" (calibration round {refresh_number} of {CALIBRATION_REFRESHES})"
+        if refresh_number <= CALIBRATION_REFRESHES else ""
+    )
     lines = [
         f"# Watchlist candidate refresh #{refresh_number}",
         "",
-        f"Manual refresh (calibration round {min(refresh_number, CALIBRATION_REFRESHES)}"
-        f" of {CALIBRATION_REFRESHES}) generated {today.isoformat()}. Evidence window: "
+        f"Manual refresh{calibration} generated {today.isoformat()}. Evidence window: "
         f"{digest.runs_in_window} run(s), {digest.window_start} to {digest.window_end}.",
         "",
     ]

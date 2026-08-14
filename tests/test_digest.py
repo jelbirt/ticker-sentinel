@@ -6,7 +6,7 @@ import re
 from datetime import date
 from pathlib import Path
 
-from sentinel.config import ChangesCfg
+from sentinel.config import ChangesCfg, load_config
 from sentinel.digest import (
     CALIBRATION_REFRESHES,
     build_digest,
@@ -82,6 +82,18 @@ class TestAttentionList:
         digest = build_digest(runs, ["CCC"], [], CFG)
         assert [w.ticker for w in digest.attention] == ["CCC"]
 
+    def test_degraded_none_composite_run_does_not_null_week_drop_evidence(self):
+        # a rate-limited run persists composite=None; the week delta must
+        # anchor on the observed values around it, not go silent
+        runs = [
+            _run(10, {"DDD": TickerSnapshot(composite=None, rank=1)}),
+            _run(11, {"DDD": _healthy(composite=70.0)}),
+            _run(12, {"DDD": _healthy(composite=70.0 - CFG.week_drop_pts - 1.0)}),
+        ]
+        digest = build_digest(runs, ["DDD"], [], CFG)
+        assert [w.ticker for w in digest.attention] == ["DDD"]
+        assert digest.attention[0].composite_delta is not None
+
     def test_window_bounded_by_config(self):
         cfg = ChangesCfg(week_window_runs=2)
         runs = [
@@ -153,6 +165,12 @@ class TestRendering:
         assert "decide whether to automate" not in early
         assert "decide whether to automate" in due
 
+    def test_calibration_label_drops_after_the_calibration_rounds(self):
+        during = render_markdown(self._digest(), CALIBRATION_REFRESHES, date(2026, 8, 15))
+        after = render_markdown(self._digest(), CALIBRATION_REFRESHES + 2, date(2026, 8, 15))
+        assert f"calibration round {CALIBRATION_REFRESHES} of" in during
+        assert "calibration round" not in after
+
     def test_quiet_window_states_no_changes_is_valid(self):
         runs = [_run(11, {"AAA": _healthy()}), _run(12, {"AAA": _healthy()})]
         digest = build_digest(runs, ["AAA"], [], CFG)
@@ -186,6 +204,7 @@ class TestCli:
         text = out.read_text()
         assert "Watchlist candidate refresh #1" in text
         assert "| CRWD | 2 of 2 |" in text
-        # real config: bench key is wired through
-        assert "WDAY, SHOP, TWLO, ZM." in text
+        # real config: the bench key is wired through, whatever it currently holds
+        cfg = load_config()
+        assert cfg.bench and ", ".join(cfg.bench) + "." in text
         assert not re.search(r"[–—]", text)

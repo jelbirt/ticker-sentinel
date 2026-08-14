@@ -10,6 +10,12 @@ permissions:
   contents: read
   issues: write
 
+# serialize runs: an overlapping dispatch + cron pair would both count the
+# label before either issue exists and mint the same refresh number twice
+concurrency:
+  group: weekly-refresh
+  cancel-in-progress: false
+
 jobs:
   digest:
     runs-on: ubuntu-latest
@@ -20,6 +26,9 @@ jobs:
       - uses: actions/setup-python@v5
         with: {python-version: "3.12", cache: pip}
       - run: pip install -e .
+      # known limitation: the count drifts if a digest issue is deleted or the
+      # label is applied elsewhere; the number is cosmetic except that the
+      # calibration checklist keys off it (see sentinel/digest.py)
       - name: refresh number (prior digest issues + 1)
         id: seq
         run: |
