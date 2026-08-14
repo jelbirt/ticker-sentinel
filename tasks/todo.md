@@ -10,8 +10,13 @@
   `run_history.json`; discard that change rather than committing it.
 
 ## Active workstreams
-- (none). One branch per workstream via `scripts/new-worktree.sh <branch>`;
-  main is the review inbox; merge back via PR.
+- `audit-fixes` (opened 2026-08-14, worktree `../ticker-sentinel.audit-fixes`):
+  top-5 findings from the 2026-08-14 project audit: partial-quarter TTM
+  anchoring, r40_trend warm-up disclosure, degraded-run diff/baseline guards,
+  short-ticker news matching, email-failure exit code + run-failure alerting.
+  Code/tests/docs only; no data/cache changes (bot keeps the pen). Registry
+  entry rides this branch (direct-to-main registry commit was not available
+  this session).
 
 ## Done
 - `weekly-refresh-digest` (2026-08-14, merged as PR #2, worktree torn down):
