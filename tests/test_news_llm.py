@@ -343,3 +343,36 @@ class TestTones:
         )
         assert html is None
         assert not any("fell back" in n for n in notes)  # caller decides what to do
+
+
+class TestShortTickerFabricationGuard:
+    """The fabrication veto must not fire on the S inside "U.S." or "S&P 500"
+    (it rejected valid narratives whenever S had no news that day), but a real
+    cashtag claim about an off-digest short ticker is still fabrication."""
+
+    def test_us_and_sp500_mentions_not_vetoed(self, digest, monkeypatch):
+        monkeypatch.setattr(
+            llm, "call_claude",
+            lambda *a, **k: (
+                "<REPORT>CRWD beat estimates. U.S. markets were mixed and "
+                "the S&P 500 slipped.</REPORT>"
+            ),
+        )
+        html, notes = render_news(
+            digest, "llm-brief", model="claude-sonnet-5",
+            known_tickers={"CRWD", "S"},
+        )
+        assert notes == []
+        assert "U.S. markets were mixed" in html
+
+    def test_cashtag_fabrication_still_vetoed(self, digest, monkeypatch):
+        monkeypatch.setattr(
+            llm, "call_claude",
+            lambda *a, **k: "<REPORT>CRWD beat estimates. $S collapsed 20%.</REPORT>",
+        )
+        html, notes = render_news(
+            digest, "llm-brief", model="claude-sonnet-5",
+            known_tickers={"CRWD", "S"},
+        )
+        assert "$S collapsed" not in html
+        assert any("fell back to 'headlines'" in n for n in notes)

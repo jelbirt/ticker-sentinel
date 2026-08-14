@@ -21,6 +21,7 @@ import re
 from datetime import datetime
 from urllib.parse import urlparse
 
+from sentinel.news.matching import ticker_pattern
 from sentinel.news.pipeline import NewsDigest, NewsItem
 
 _FONT = "font-family:Arial,Helvetica,sans-serif;"
@@ -173,6 +174,13 @@ def _narrative_valid(
     watchlist ticker that is NOT in today's digest — the model had no headlines
     for it, so any claim about it is fabricated. Peer mentions by company name
     (Oracle, Fortinet, ...) remain legitimate editorial comparison.
+
+    The two checks deliberately use different symbol patterns. Coverage stays
+    permissive (a bare word-boundary match: the prompt tells the model to open
+    each paragraph with the bare symbol, so "S fell after..." must count).
+    Fabrication uses matching.ticker_pattern, which for 1-2 char symbols
+    requires explicit context ($S, "(S)", "NYSE: S") — a bare \\bS\\b would
+    match the S inside "U.S." or "S&P 500" and veto perfectly valid prose.
     """
     for tn in digest.tickers:
         symbol_present = re.search(rf"\b{re.escape(tn.ticker)}\b", text)
@@ -182,7 +190,7 @@ def _narrative_valid(
     if known_tickers:
         in_digest = {tn.ticker for tn in digest.tickers}
         for ticker in known_tickers - in_digest:
-            if re.search(rf"\b{re.escape(ticker)}\b", text):
+            if ticker_pattern(ticker).search(text):
                 return False
     return True
 

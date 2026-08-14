@@ -66,3 +66,34 @@ class TestMatchEntries:
 
     def test_no_tickers_no_matches(self):
         assert match_entries([_entry("CRWD news")], {}) == []
+
+
+class TestShortTickers:
+    """1-2 char symbols need explicit symbol context: a bare word-boundary
+    match hits the S inside "U.S." and "S&P 500", which attributed every
+    macro headline on the general feeds to SentinelOne (live bug)."""
+
+    def test_bare_abbreviations_never_match(self):
+        assert not matches_ticker(_entry("U.S. stocks rally as inflation cools"), "S")
+        assert not matches_ticker(_entry("S&P 500 hits record high"), "S")
+        assert not matches_ticker(_entry("S. Korea trade data improves"), "S")
+
+    def test_bare_short_symbol_no_longer_matches(self):
+        # deliberate tradeoff: bare "DT rallies" is given up so "U.S." noise
+        # cannot pollute; short tickers rely on name, cashtag, or context
+        assert not matches_ticker(_entry("DT rallies on strong guidance"), "DT")
+
+    def test_explicit_symbol_context_matches(self):
+        assert matches_ticker(_entry("$S jumped 12% after earnings"), "S")
+        assert matches_ticker(_entry("SentinelOne (S) beats expectations"), "S")
+        assert matches_ticker(_entry("NYSE: S added to index"), "S")
+        assert matches_ticker(_entry("Dynatrace (DT) raises outlook"), "DT")
+
+    def test_company_name_still_matches(self):
+        assert matches_ticker(
+            _entry("SentinelOne posts a strong quarter"), "S", "SentinelOne"
+        )
+
+    def test_three_char_symbols_keep_word_boundary_rule(self):
+        assert matches_ticker(_entry("NET jumped 9%"), "NET")
+        assert not matches_ticker(_entry("Higher net income this quarter"), "NET")

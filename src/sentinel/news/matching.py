@@ -19,18 +19,34 @@ class TickerMatch:
     entry: NewsEntry
 
 
-def _ticker_pattern(ticker: str) -> re.Pattern:
+# 1-2 character symbols collide with ordinary abbreviations even under a
+# case-sensitive word-boundary match: S is inside "U.S." and "S&P 500", so a
+# bare-symbol rule attributed every macro headline to SentinelOne.
+SHORT_TICKER_MAX_LEN = 2
+
+
+def ticker_pattern(ticker: str) -> re.Pattern:
     """Word-boundary AND case-sensitive: symbols are written uppercase, so this
     matches "NET jumped 9%" but not the English words in "net income", "the
     team", or "snow fell" — which otherwise misattribute constantly for
-    watchlist symbols like NET/TEAM/SNOW on general business feeds."""
-    return re.compile(rf"\b{re.escape(ticker)}\b")
+    watchlist symbols like NET/TEAM/SNOW on general business feeds.
+
+    Short symbols (len <= 2) additionally require explicit symbol context: a
+    cashtag ($S), a parenthesized symbol "(S)", or an exchange prefix
+    "NYSE: S" / "NASDAQ: S". The company-name path still matches prose
+    mentions like "SentinelOne"."""
+    t = re.escape(ticker)
+    if len(ticker) <= SHORT_TICKER_MAX_LEN:
+        return re.compile(
+            rf"(?:\${t}\b|\({t}\)|(?:NYSE|NASDAQ|Nasdaq|AMEX):\s*{t}\b)"
+        )
+    return re.compile(rf"\b{t}\b")
 
 
 def matches_ticker(entry: NewsEntry, ticker: str, company_name: str | None = None) -> bool:
     """True if `entry` mentions the ticker symbol or (optionally) the company name."""
     text = f"{entry.title} {entry.summary}"
-    if _ticker_pattern(ticker).search(text):
+    if ticker_pattern(ticker).search(text):
         return True
     if company_name:
         # company names are natural-language phrases, not symbols: plain
