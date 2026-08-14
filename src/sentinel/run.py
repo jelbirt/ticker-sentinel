@@ -95,6 +95,25 @@ def _reprice_market_cap(
     return stale
 
 
+def _trend_warmup_note(scorecards: list) -> str | None:
+    """One aggregate line disclosing how much of the trend machinery is live.
+
+    r40_trend needs 12 cached quarters (TTM at offsets 0 and 4, growth
+    denominators 4 further back); yfinance serves about 6, and the committed
+    cache deepens by 4 per year. Until then the F-score trend term, R40
+    inflection changes, and the deterioration watch's R40 signal are silent
+    for the affected names, which the owner should see, not infer.
+    """
+    scored = [sc for sc in scorecards if sc.score is not None]
+    trendless = [sc for sc in scored if sc.r40_trend is None]
+    if not trendless:
+        return None
+    return (
+        f"R40 trend warming up: n/a for {len(trendless)} of {len(scored)} scored "
+        "names (needs 12 cached quarters; the committed cache deepens by 4 per year)"
+    )
+
+
 def main(argv: list[str] | None = None) -> int:
     logging.basicConfig(level=logging.INFO, format="%(levelname)s %(name)s: %(message)s")
     args = parse_args(argv)
@@ -162,6 +181,9 @@ def main(argv: list[str] | None = None) -> int:
     )
     for sc in scorecards:  # between-quarter signals: informational, never scored
         sc.signals = signals.get(sc.ticker)
+    warmup = _trend_warmup_note(scorecards)
+    if warmup:
+        notes.append(warmup)
 
     # --- day-over-day change detection vs committed run history ----------------------
     today = date.today()

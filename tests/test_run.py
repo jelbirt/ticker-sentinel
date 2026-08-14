@@ -37,3 +37,30 @@ def test_no_cached_cap_nothing_to_disclose():
     # no price AND no cached cap: valuation will show as missing, not stale
     inp = FundamentalInputs(ticker="AAA", diluted_shares_now=100.0, market_cap=None)
     assert _reprice_market_cap([inp], None) == []
+
+
+class TestTrendWarmupNote:
+    def _sc(self, score, trend):
+        from sentinel.indicators.fundamentals import Scorecard
+
+        sc = Scorecard(ticker="X")
+        sc.score, sc.r40_trend = score, trend
+        return sc
+
+    def test_counts_only_scored_trendless_names(self):
+        from sentinel.run import _trend_warmup_note
+
+        cards = [
+            self._sc(50.0, None),      # scored, no trend -> counted
+            self._sc(60.0, 0.05),      # scored, trend present
+            self._sc(None, None),      # unscored: not part of the disclosure
+        ]
+        note = _trend_warmup_note(cards)
+        assert note is not None
+        assert "1 of 2" in note and "n/a" in note
+
+    def test_silent_when_every_scored_name_has_trend(self):
+        from sentinel.run import _trend_warmup_note
+
+        assert _trend_warmup_note([self._sc(50.0, 0.02)]) is None
+        assert _trend_warmup_note([]) is None

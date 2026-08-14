@@ -69,11 +69,14 @@ scoring:               # weights, overridable without code changes
 | Sector / industry tags | yfinance `Ticker.info` | manual tag in watchlist.yaml | on add |
 **Fields required per ticker (fundamentals):** Total Revenue, EBITDA (or compute: Operating Income + D&A), Operating Income, Operating Cash Flow, Capital Expenditure, Stock-Based Compensation (from cash flow stmt), Diluted Shares Outstanding, Total Debt, Cash & Equivalents.
 **TTM construction:** sum of the four most recent quarters; require ≥4 quarters or mark `insufficient_data`. Also build TTM as of −2Q and −4Q for trend metrics.
+**Quarter anchoring (2026-08-14):** Yahoo publishes a fresh quarter's statements piecemeal for a few days after earnings; a newest column missing any core field (revenue, OCF, capex) is skipped so the TTM windows anchor on the newest COMPLETE quarter, with a "scored as of" data note. A ticker with usable history degrades to the prior quarter, never to `insufficient_data`.
+**History warm-up (documented 2026-08-14):** yfinance serves only ~5-6 quarters at a time; the committed cache deepens by 4 per year. Until 8 quarters exist, growth falls back to FY-over-FY annual revenue (flagged `growth_from_annual`; never silent). Until 12 exist, `r40_trend` is n/a (flagged `insufficient_history`), which also silences the F-score trend term, R40-inflection change detection, and the deterioration watch's R40 signal; a daily aggregate warm-up data note discloses the affected count. A one-time deep-history backfill (e.g. SEC EDGAR companyfacts) is an open owner decision.
 ---
 ## 5. Metric Definitions (exact formulas)
 Let `Rev_TTM` = trailing-12-month revenue; `Rev_TTM_prior` = TTM revenue one year earlier.
 **Growth**
 - `growth = (Rev_TTM / Rev_TTM_prior) − 1` (as %)
+- fallback: with fewer than 8 cached quarters, growth is FY-over-FY from the two most recent annual revenues, flagged `growth_from_annual` (section 4 warm-up; never silent)
 **Margins (all TTM, % of Rev_TTM)**
 - `fcf_margin = (OCF − CapEx) / Rev_TTM`
 - `ebitda_margin = EBITDA / Rev_TTM`
@@ -216,4 +219,8 @@ Notes: US market holidays → job runs but detects "no new bar" and sends nothin
 | Run-history state corrupted or growing | versioned JSON with wrong-shape detection degrading to "change detection reset" note (never a crash); 12-run retention pruned on every write; sorted-key pretty printing keeps bot-commit diffs reviewable |
 | Larger watchlist trips API limits | one batched yfinance call regardless of size; Twelve Data fallback paced to 8 requests/min when >8 symbols need it; per-ticker fundamentals/signals calls degrade to cached values + staleness notes as before |
 | Watchlist goes stale as businesses drift | weekly digest issue (Saturday workflow) summarizing deterioration evidence + liveness gaps prompts the owner-gated candidate refresh; structured `bench:` list in watchlist.yaml; cache pruning cleans up dropped names automatically |
+| Quarterly history too shallow for trend metrics (yfinance serves ~5-6 quarters; r40_trend needs 12) | cache deepens 4/year; FY-over-FY growth fallback with flag; daily warm-up data note discloses the count; deep-history backfill (e.g. SEC EDGAR) is an open owner decision |
+| Partially-published newest quarter poisons TTM windows right after earnings | anchor on the newest complete core quarter (revenue, OCF, capex) with a scored-as-of note (2026-08-14) |
+| Degraded runs corrupting change detection (missing technicals change composite construction; wholesale fetch outage empties the scored set) | diffs compare like for like (F vs F across a basis change, info-labeled otherwise); runs scoring below `changes.baseline_min_fraction` of the universe are reported but neither diffed nor saved as baseline (2026-08-14) |
+| Silent run or email failure (owner just gets no email) | unsent email exits nonzero; failure-gated workflow step opens or extends an owner-assigned `run-failure` issue (2026-08-14) |
 | Scope creep | phases; news module explicitly Phase 3 |
