@@ -20,6 +20,7 @@ from sentinel.indicators.technicals import TechnicalSnapshot, compute_technicals
 from sentinel.report.builder import build_context, rank_key, render_report, write_outputs
 from sentinel.report.changes import (
     RunSnapshot,
+    baseline_ok,
     deterioration_rows,
     diff_runs,
     select_baselines,
@@ -185,14 +186,27 @@ def main(argv: list[str] | None = None) -> int:
                 (sc for sc in scorecards if sc.score is not None),
                 key=lambda s: rank_key(s, cfg.ranking),
             )
-            current_run = snapshot_from_scorecards(
-                ranked, today=today, run_type=_run_type(args)
-            )
-            prior, week_ago, week_span = select_baselines(
-                prior_runs, current_run.date, cfg.changes.week_window_runs
-            )
-            change_set = diff_runs(current_run, prior, cfg.changes)
-            det_rows = deterioration_rows(ranked, prior, week_ago, cfg.changes)
+            # expected universe: the names this run actually set out to score
+            # (fixture set for dry runs, configured r40 list for real runs)
+            n_expected = len(inputs_list) if args.dry_run else len(tickers)
+            if not baseline_ok(
+                len(ranked), n_expected, cfg.changes.baseline_min_fraction
+            ):
+                # a collapsed run must not diff (wall of universe_removed rows)
+                # nor become tomorrow's baseline (mirror-image wall tomorrow)
+                notes.append(
+                    f"run degraded ({len(ranked)} of {n_expected} names scored); "
+                    "change detection skipped and baseline not advanced"
+                )
+            else:
+                current_run = snapshot_from_scorecards(
+                    ranked, today=today, run_type=_run_type(args)
+                )
+                prior, week_ago, week_span = select_baselines(
+                    prior_runs, current_run.date, cfg.changes.week_window_runs
+                )
+                change_set = diff_runs(current_run, prior, cfg.changes)
+                det_rows = deterioration_rows(ranked, prior, week_ago, cfg.changes)
         except Exception as exc:  # degrade, never lose the report to a bad state file
             notes.append(f"change detection failed, sections skipped ({exc})")
             change_set, det_rows, week_span, current_run = None, [], 0, None

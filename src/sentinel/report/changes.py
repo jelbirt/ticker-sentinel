@@ -106,9 +106,9 @@ class Change:
     up (improving), down (worsening), info (neutral)."""
 
     ticker: str
-    kind: str      # score | rank | flag_set | flag_cleared | r40_inflection |
-                   # trend_state | new_cross | revisions | short_interest |
-                   # universe_added | universe_removed
+    kind: str      # score | score_basis | rank | flag_set | flag_cleared |
+                   # r40_inflection | trend_state | new_cross | revisions |
+                   # short_interest | universe_added | universe_removed
     detail: str
     direction: str = "info"
 
@@ -127,6 +127,36 @@ class ChangeSet:
 _TREND_LEVEL = {"downtrend": 0, "mixed": 1, "uptrend": 2}
 
 
+def same_score_basis(cur: TickerSnapshot, prior: TickerSnapshot) -> bool:
+    """Composites are only comparable when both were built the same way.
+
+    C = w_f F + w_t T when technicals ran, but C falls back to F alone when
+    they did not (scoring.composite_score), so a day of missing price data
+    shifts every composite by construction, not by anything real. Diffing
+    across that boundary fabricates large score and rank moves.
+    """
+    return (cur.technical_score is None) == (prior.technical_score is None)
+
+
+def _scorecard_basis_matches(sc: Scorecard, snap: TickerSnapshot) -> bool:
+    """same_score_basis for the live-Scorecard vs persisted-snapshot pairing."""
+    return (sc.technical_score is None) == (snap.technical_score is None)
+
+
+def baseline_ok(n_scored: int, n_expected: int, min_fraction: float) -> bool:
+    """Should this run's snapshot become tomorrow's comparison baseline?
+
+    A run whose scored set collapsed below `min_fraction` of the expected
+    universe (data-source outage, wholesale fetch failure) would poison the
+    history: today it would emit a wall of universe_removed rows, and the next
+    healthy run would emit the mirror-image wall of additions. Such runs are
+    reported (with a note) but neither diffed nor saved.
+    """
+    if n_expected <= 0:
+        return True
+    return n_scored >= min_fraction * n_expected
+
+
 def _human(flag: str) -> str:
     return flag.replace("_", " ")
 
@@ -140,16 +170,39 @@ def _ticker_changes(
 ) -> list[Change]:
     out: list[Change] = []
 
+    basis_same = same_score_basis(cur, prior)
     if cur.composite is not None and prior.composite is not None:
-        delta = cur.composite - prior.composite
-        if abs(delta) >= cfg.score_delta_pts:
-            out.append(Change(
-                ticker, "score",
-                f"composite {cur.composite:.1f} ({delta:+.1f})",
-                "up" if delta > 0 else "down",
-            ))
+        if basis_same:
+            delta = cur.composite - prior.composite
+            if abs(delta) >= cfg.score_delta_pts:
+                out.append(Change(
+                    ticker, "score",
+                    f"composite {cur.composite:.1f} ({delta:+.1f})",
+                    "up" if delta > 0 else "down",
+                ))
+        else:
+            # construction changed (technicals dropped out or came back):
+            # composite deltas are fabrication, so compare F to F instead
+            tech_word = "unavailable" if cur.technical_score is None else "restored"
+            if (
+                cur.score is not None and prior.score is not None
+                and abs(cur.score - prior.score) >= cfg.score_delta_pts
+            ):
+                delta = cur.score - prior.score
+                out.append(Change(
+                    ticker, "score",
+                    f"fundamental score {cur.score:.1f} ({delta:+.1f}); "
+                    f"technicals {tech_word}, composite not comparable",
+                    "up" if delta > 0 else "down",
+                ))
+            else:
+                out.append(Change(
+                    ticker, "score_basis",
+                    f"technicals {tech_word}; composite basis changed, "
+                    "day-over-day move not comparable",
+                ))
 
-    if cur.rank is not None and prior.rank is not None:
+    if cur.rank is not None and prior.rank is not None and basis_same:
         if abs(cur.rank - prior.rank) >= cfg.rank_delta:
             out.append(Change(
                 ticker, "rank",
@@ -293,6 +346,7 @@ def _negative_signals(
 
     if (
         sc.composite is not None and prior is not None and prior.composite is not None
+        and _scorecard_basis_matches(sc, prior)
         and prior.composite - sc.composite >= cfg.score_delta_pts
     ):
         reasons.append(f"composite fell {prior.composite - sc.composite:.1f} since prior run")
@@ -300,6 +354,7 @@ def _negative_signals(
     if (
         sc.composite is not None and week_ago is not None
         and week_ago.composite is not None
+        and _scorecard_basis_matches(sc, week_ago)
         and week_ago.composite - sc.composite >= cfg.week_drop_pts
     ):
         reasons.append(
@@ -376,12 +431,14 @@ def deterioration_rows(
         delta_1run = (
             sc.composite - prior_snap.composite
             if sc.composite is not None and prior_snap is not None
-            and prior_snap.composite is not None else None
+            and prior_snap.composite is not None
+            and _scorecard_basis_matches(sc, prior_snap) else None
         )
         delta_week = (
             sc.composite - week_snap.composite
             if sc.composite is not None and week_snap is not None
-            and week_snap.composite is not None else None
+            and week_snap.composite is not None
+            and _scorecard_basis_matches(sc, week_snap) else None
         )
         rows.append(DeteriorationRow(
             ticker=sc.ticker,

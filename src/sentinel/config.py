@@ -59,6 +59,9 @@ class ChangesCfg:
     deteriorating_r40_trend: float = -0.10  # plan section 6 weakest-buy threshold
     digest_decay_runs: int = 2      # decay-gate hits in the weekly digest window
                                     # for a ticker to make the attention list
+    baseline_min_fraction: float = 0.5  # scored fraction of the universe below
+                                        # which a run is too degraded to diff
+                                        # or to become tomorrow's baseline
 
 
 @dataclass(frozen=True)

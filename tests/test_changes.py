@@ -11,6 +11,7 @@ from sentinel.indicators.technicals import TechnicalSnapshot
 from sentinel.report.changes import (
     RunSnapshot,
     TickerSnapshot,
+    baseline_ok,
     deteriorating,
     deterioration_rows,
     diff_runs,
@@ -411,3 +412,87 @@ class TestDeteriorationGate:
         assert len(cs.changes) >= 7
         for c in cs.changes:
             assert not re.search(r"[–—]", c.detail), c.detail
+
+
+class TestScoreBasisGuard:
+    """Audit fix: composite falls back to F alone when technicals are missing
+    (scoring.composite_score), so diffing across that boundary fabricated big
+    score and rank moves. Deltas must compare like for like."""
+
+    def test_basis_flip_suppresses_composite_and_rank_fabrication(self):
+        # the live CRWD shape: F 18.1, T 85.0, C 44.9; next day prices missing
+        cur, prior = _runs(
+            dict(composite=44.9, score=18.1, technical_score=85.0, rank=15),
+            dict(composite=18.1, score=18.1, technical_score=None, rank=1),
+        )
+        cs = diff_runs(cur, prior, CFG)
+        assert _kinds(cs) == ["score_basis"]
+        assert cs.changes[0].direction == "info"
+        assert "not comparable" in cs.changes[0].detail
+
+    def test_basis_flip_still_reports_real_f_moves(self):
+        cur, prior = _runs(
+            dict(composite=44.9, score=18.1, technical_score=85.0, rank=15),
+            dict(composite=10.0, score=10.0, technical_score=None, rank=8),
+        )
+        cs = diff_runs(cur, prior, CFG)
+        assert _kinds(cs) == ["score"]
+        change = cs.changes[0]
+        assert "fundamental score" in change.detail
+        assert change.direction == "down"
+
+    def test_technicals_restored_is_info_not_a_gain(self):
+        cur, prior = _runs(
+            dict(composite=18.1, score=18.1, technical_score=None, rank=1),
+            dict(composite=44.9, score=18.1, technical_score=85.0, rank=15),
+        )
+        cs = diff_runs(cur, prior, CFG)
+        assert _kinds(cs) == ["score_basis"]
+        assert "restored" in cs.changes[0].detail
+
+    def test_same_basis_keeps_existing_behavior(self):
+        cur, prior = _runs(
+            dict(composite=50.0, score=50.0, technical_score=60.0, rank=1),
+            dict(composite=44.0, score=44.0, technical_score=60.0, rank=4),
+        )
+        cs = diff_runs(cur, prior, CFG)
+        assert set(_kinds(cs)) == {"score", "rank"}
+
+
+class TestDeteriorationBasisGuard:
+    def test_composite_drop_signals_suppressed_across_basis_change(self):
+        sc = _det_sc(composite=18.1, score=18.1)  # technical_score None
+        prior = _prior_run(composite=44.9, score=18.1, technical_score=85.0)
+        assert deterioration_rows([sc], prior, None, ONE_SIGNAL) == []
+
+    def test_week_drop_suppressed_across_basis_change(self):
+        sc = _det_sc(composite=18.1, score=18.1)
+        prior = _prior_run(composite=18.5)  # same basis: no 1-run signal
+        week = RunSnapshot(
+            "2026-08-01", "scheduled",
+            {"CCC": TickerSnapshot(composite=44.9, technical_score=85.0)},
+        )
+        assert deterioration_rows([sc], prior, week, ONE_SIGNAL) == []
+
+    def test_deltas_render_na_when_basis_differs_but_row_qualifies(self):
+        sc = _det_sc(
+            composite=30.0, r40_trend=-0.2,
+            signals=SignalSnapshot(ticker="CCC", eps_rev_up_30d=0, eps_rev_down_30d=3),
+        )
+        prior = _prior_run(composite=44.0, technical_score=85.0)
+        rows = deterioration_rows([sc], prior, None, CFG)
+        assert len(rows) == 1
+        assert rows[0].delta_1run is None  # renders n/a, not a fabricated -14
+
+
+class TestBaselineOk:
+    def test_collapsed_run_rejected(self):
+        assert not baseline_ok(0, 20, 0.5)
+        assert not baseline_ok(9, 20, 0.5)
+
+    def test_healthy_and_boundary_accepted(self):
+        assert baseline_ok(10, 20, 0.5)
+        assert baseline_ok(19, 20, 0.5)
+
+    def test_empty_expected_universe_is_not_a_gate(self):
+        assert baseline_ok(0, 0, 0.5)
