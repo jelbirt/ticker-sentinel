@@ -57,6 +57,8 @@ class ChangesCfg:
     revision_cut: int = 2           # net downward revisions counting as deterioration
     min_signals: int = 2            # negative signals needed for Deterioration watch
     deteriorating_r40_trend: float = -0.10  # plan section 6 weakest-buy threshold
+    digest_decay_runs: int = 2      # decay-gate hits in the weekly digest window
+                                    # for a ticker to make the attention list
 
 
 @dataclass(frozen=True)

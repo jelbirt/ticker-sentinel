@@ -1,0 +1,39 @@
+name: weekly-refresh
+on:
+  schedule:
+    # Sat 12:00 UTC: after the Saturday daily report (10:00 UTC) and its
+    # run-history commit land, so the digest covers the full Tue-Sat week.
+    - cron: "0 12 * * 6"
+  workflow_dispatch:
+
+permissions:
+  contents: read
+  issues: write
+
+jobs:
+  digest:
+    runs-on: ubuntu-latest
+    env:
+      GH_TOKEN: ${{ github.token }}
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with: {python-version: "3.12", cache: pip}
+      - run: pip install -e .
+      - name: refresh number (prior digest issues + 1)
+        id: seq
+        run: |
+          prior=$(gh issue list --repo "$GITHUB_REPOSITORY" --label watchlist-refresh \
+            --state all --limit 500 --json number --jq length)
+          echo "n=$(( prior + 1 ))" >> "$GITHUB_OUTPUT"
+      - name: build digest from committed run history
+        run: python -m sentinel.digest --refresh-number "${{ steps.seq.outputs.n }}" --out digest.md
+      - name: open the refresh issue (assignment notifies the owner)
+        run: |
+          gh label create watchlist-refresh --repo "$GITHUB_REPOSITORY" --force \
+            --color 1d76db --description "Weekly watchlist candidate refresh"
+          gh issue create --repo "$GITHUB_REPOSITORY" \
+            --title "Watchlist candidate refresh #${{ steps.seq.outputs.n }}: week of $(date -u +%F)" \
+            --body-file digest.md \
+            --label watchlist-refresh \
+            --assignee "${{ github.repository_owner }}"
