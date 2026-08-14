@@ -10,11 +10,16 @@
   `run_history.json`; discard that change rather than committing it.
 
 ## Active workstreams
-- `weekly-refresh-digest` (started 2026-08-14): Phase 4.1, Saturday workflow
-  opens a watchlist-refresh digest issue from committed run history (owner
-  decision stays manual; first 3 refreshes calibrate the rotation rubric).
+- (none). One branch per workstream via `scripts/new-worktree.sh <branch>`;
+  main is the review inbox; merge back via PR.
 
 ## Done
+- `weekly-refresh-digest` (2026-08-14, merged as PR #2, worktree torn down):
+  Phase 4.1 shipped: sentinel.digest module + Saturday weekly-refresh workflow
+  opening the owner-assigned watchlist-refresh issue; bench now a structured
+  `bench:` key; review findings fixed (degraded-run deltas, calibration label,
+  test coupling, workflow concurrency). First digest issue expected Sat
+  2026-08-15 12:00 UTC.
 - `variety-deterioration` (2026-08-06, merged as PR #1, worktree torn down):
   Phase 4 shipped: run-history state file, What-changed and Deterioration-watch
   sections, watchlist 8 -> 20 (CYBR/CFLT swapped for FTNT/ESTC after
