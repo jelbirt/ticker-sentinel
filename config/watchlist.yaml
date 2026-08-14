@@ -20,8 +20,9 @@ universe:
     tags: [software, r40]
   # expansion approved 2026-08-06 (12 adds; original picks CYBR and CFLT were
   # swapped for bench names FTNT and ESTC same day: both stopped trading after
-  # their acquisitions, per live verification). Bench held in reserve: WDAY,
-  # SHOP, TWLO, ZM. Rotation: roughly weekly owner-initiated candidate refresh;
+  # their acquisitions, per live verification). Bench held in reserve: see the
+  # `bench:` key below. Rotation: roughly weekly owner-initiated candidate
+  # refresh (the weekly-refresh workflow opens a digest issue Saturdays);
   # every edit here stays owner-gated.
   - ticker: S
     tags: [software, r40]
@@ -47,6 +48,7 @@ universe:
     tags: [software, r40]
   - ticker: PLTR
     tags: [software, r40]
+bench: [WDAY, SHOP, TWLO, ZM]   # reserve swap candidates, not scored; owner-gated like universe
 benchmark: SPY
 report:
   top_n: 10

@@ -62,6 +62,7 @@ class ChangesCfg:
 @dataclass(frozen=True)
 class Config:
     universe: tuple[TickerCfg, ...]
+    bench: tuple[str, ...] = ()   # reserve swap candidates, not scored (spec 7.0)
     benchmark: str = "SPY"
     top_n: int = 10
     bottom_n: int = 5
@@ -106,6 +107,7 @@ def load_config(path: Path | None = None) -> Config:
     )
     return Config(
         universe=universe,
+        bench=tuple(str(t).upper() for t in raw.get("bench", []) or []),
         benchmark=str(raw.get("benchmark", "SPY")).upper(),
         top_n=int(report.get("top_n", 10)),
         bottom_n=int(report.get("bottom_n", 5)),
