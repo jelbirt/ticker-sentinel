@@ -20,8 +20,9 @@ universe:
     tags: [software, r40]
   # expansion approved 2026-08-06 (12 adds; original picks CYBR and CFLT were
   # swapped for bench names FTNT and ESTC same day: both stopped trading after
-  # their acquisitions, per live verification). Bench held in reserve: WDAY,
-  # SHOP, TWLO, ZM. Rotation: roughly weekly owner-initiated candidate refresh;
+  # their acquisitions, per live verification). Bench held in reserve: see the
+  # `bench:` key below. Rotation: roughly weekly owner-initiated candidate
+  # refresh (the weekly-refresh workflow opens a digest issue Saturdays);
   # every edit here stays owner-gated.
   - ticker: S
     tags: [software, r40]
@@ -47,6 +48,7 @@ universe:
     tags: [software, r40]
   - ticker: PLTR
     tags: [software, r40]
+bench: [WDAY, SHOP, TWLO, ZM]   # reserve swap candidates, not scored; owner-gated like universe
 benchmark: SPY
 report:
   top_n: 10
@@ -67,6 +69,7 @@ changes:                 # day-over-day change detection (defaults shown; all op
   revision_cut: 2        # net downward revisions counting as deterioration
   min_signals: 2         # negative signals needed for the Deterioration watch
   deteriorating_r40_trend: -0.10  # R40 trend below this = deteriorating (plan section 6)
+  digest_decay_runs: 2   # decay-gate hits in the weekly digest window for the attention list
 news:
   feeds:               # general feeds — every entry text-matched to your tickers
     - https://www.cnbc.com/id/100003114/device/rss/rss.html          # CNBC Top Business
