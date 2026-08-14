@@ -10,8 +10,9 @@
   `run_history.json`; discard that change rather than committing it.
 
 ## Active workstreams
-- (none). One branch per workstream via `scripts/new-worktree.sh <branch>`;
-  main is the review inbox; merge back via PR.
+- `weekly-refresh-digest` (started 2026-08-14): Phase 4.1, Saturday workflow
+  opens a watchlist-refresh digest issue from committed run history (owner
+  decision stays manual; first 3 refreshes calibrate the rotation rubric).
 
 ## Done
 - `variety-deterioration` (2026-08-06, merged as PR #1, worktree torn down):
@@ -22,7 +23,10 @@
   green with the same script.
 
 ## Next gates (owner)
-- First scheduled run after merge creates `data/cache/run_history.json`; change
-  detection starts the morning after (first email says "no prior state").
-- Weekly watchlist candidate refresh (owner-initiated, first one ~2026-08-13);
-  bench: WDAY, SHOP, TWLO, ZM.
+- Weekly watchlist candidate refresh: once `weekly-refresh-digest` merges, a
+  digest issue opens Saturdays (label `watchlist-refresh`, owner-assigned);
+  do the refresh from the issue. Bench: WDAY, SHOP, TWLO, ZM (now a structured
+  `bench:` key in watchlist.yaml). First 3 refreshes are calibration rounds;
+  refresh #3's checklist adds the automate-vs-manual decision (option 3).
+- (done) First scheduled run after merge created `data/cache/run_history.json`
+  on 2026-08-07; change detection live since 2026-08-08.
