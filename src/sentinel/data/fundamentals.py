@@ -45,6 +45,25 @@ NEGATIVE_MAGNITUDE_FIELDS = {"capex"}
 
 CANONICAL_FIELDS = list(ALIASES)
 
+# The fields the headline metric (r40_fcf = growth + fcf_margin) cannot live
+# without. Yahoo publishes a fresh quarter's statements piecemeal for a few
+# days after earnings; a column carrying only, say, diluted_shares must not
+# anchor the TTM windows, or the ticker silently drops out of scoring at the
+# exact moment its numbers are most interesting.
+CORE_FIELDS = ("revenue", "ocf", "capex")
+
+
+def _anchor_offset(stmts: pd.DataFrame) -> int:
+    """Index of the newest column where every core field is present.
+
+    0 when the newest column is already complete, or when no column is
+    (then the normal insufficient-data degradation applies unchanged).
+    """
+    for i, col in enumerate(stmts.columns):
+        if all(f in stmts.index and pd.notna(stmts.loc[f, col]) for f in CORE_FIELDS):
+            return i
+    return 0
+
 
 def normalize_statements(
     income: pd.DataFrame | None,
@@ -155,7 +174,24 @@ def inputs_from_canonical(
     notes: list[str] | None = None,
     company_name: str | None = None,
 ) -> FundamentalInputs:
-    """Canonical statements frame -> FundamentalInputs for the indicator engine."""
+    """Canonical statements frame -> FundamentalInputs for the indicator engine.
+
+    Leading partially-populated quarters (core fields missing) are skipped so
+    the TTM windows anchor on the newest COMPLETE quarter, with a data note;
+    a ticker with usable history must degrade to "scored as of the prior
+    quarter", never to insufficient_data.
+    """
+    notes = notes if notes is not None else []
+    anchor = _anchor_offset(stmts)
+    if anchor:
+        skipped = ", ".join(c.date().isoformat() for c in stmts.columns[:anchor])
+        stmts = stmts.iloc[:, anchor:]
+        anchor_date = stmts.columns[0].date().isoformat()
+        notes.append(
+            f"{ticker}: newest statement quarter incomplete at the source "
+            f"({skipped}); scored as of {anchor_date}"
+        )
+
     statement_date: date | None = None
     if "revenue" in stmts.index:
         rev = stmts.loc["revenue"]
@@ -179,7 +215,7 @@ def inputs_from_canonical(
         cash=_first_valid(stmts, "cash"),
         statement_date=statement_date,
         annual_revenue=annual_revenue or {},
-        data_notes=notes or [],
+        data_notes=notes,
     )
 
 

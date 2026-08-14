@@ -103,3 +103,87 @@ class TestPairedShares:
         inp = self._inputs([np.nan, np.nan, np.nan, np.nan, np.nan])
         assert inp.diluted_shares_now is None
         assert inp.diluted_shares_1y_ago is None
+
+
+class TestPartialQuarterAnchoring:
+    """A leading partially-populated quarter (Yahoo publishing statements
+    piecemeal after earnings) must shift the TTM anchor back one quarter with
+    a note, never unscore the ticker (the live TEAM case, 2026-08-14)."""
+
+    FULL = {
+        "revenue": [260.0, 250, 240, 230, 200, 190, 180],
+        "ocf": [90.0, 85, 80, 75, 70, 65, 60],
+        "capex": [10.0, 10, 10, 10, 10, 10, 10],
+        "diluted_shares": [100.0, 100, 100, 100, 100, 100, 100],
+    }
+
+    def _inputs(self, fields, notes=None):
+        from sentinel.data.fundamentals import inputs_from_canonical
+
+        return inputs_from_canonical("X", make_canonical(fields), market_cap=None, notes=notes)
+
+    def _with_partial_lead(self, missing: tuple[str, ...]):
+        fields = {k: list(v) for k, v in self.FULL.items()}
+        for f in missing:
+            fields[f][0] = np.nan
+        return fields
+
+    def test_complete_newest_quarter_anchors_at_zero_no_note(self):
+        notes: list[str] = []
+        inp = self._inputs(self.FULL, notes)
+        assert inp.ttm_now.revenue == approx(980)
+        assert notes == []
+
+    def test_shares_only_lead_column_scores_as_of_prior_quarter(self):
+        # TEAM-shaped: newest column carries only diluted_shares
+        fields = self._with_partial_lead(("revenue", "ocf", "capex"))
+        notes: list[str] = []
+        inp = self._inputs(fields, notes)
+        assert inp.ttm_now is not None
+        assert inp.ttm_now.revenue == approx(250 + 240 + 230 + 200)
+        assert inp.ttm_now.ocf == approx(85 + 80 + 75 + 70)
+        assert len(notes) == 1
+        assert "scored as of" in notes[0]
+
+    def test_revenue_present_but_cashflow_lagging_also_anchors_back(self):
+        # income statement often posts before the cash-flow statement
+        fields = self._with_partial_lead(("ocf", "capex"))
+        notes: list[str] = []
+        inp = self._inputs(fields, notes)
+        assert inp.ttm_now.revenue == approx(250 + 240 + 230 + 200)
+        assert len(notes) == 1
+
+    def test_scorecard_scores_despite_partial_lead(self):
+        from datetime import date
+
+        from sentinel.data.fundamentals import inputs_from_canonical
+        from sentinel.indicators.fundamentals import FLAG_INSUFFICIENT_DATA, compute_scorecard
+
+        # 7 cached quarters (the live shape): growth rides the annual fallback,
+        # so provide annual revenue exactly as get_fundamentals() does
+        inp = inputs_from_canonical(
+            "X",
+            make_canonical(self._with_partial_lead(("revenue", "ocf", "capex"))),
+            market_cap=None,
+            annual_revenue={date(2026, 1, 31): 980.0, date(2025, 1, 31): 800.0},
+        )
+        sc = compute_scorecard(inp)
+        assert FLAG_INSUFFICIENT_DATA not in sc.flags
+        assert sc.r40_fcf is not None
+
+    def test_no_complete_column_degrades_unchanged(self):
+        # cash flow missing everywhere: anchor stays at 0, margins stay None
+        fields = {"revenue": [260.0, 250, 240, 230], "diluted_shares": [100.0] * 4}
+        notes: list[str] = []
+        inp = self._inputs(fields, notes)
+        assert notes == []
+        assert inp.ttm_now.revenue == approx(980)
+        assert inp.ttm_now.ocf is None
+
+    def test_two_partial_lead_columns_skip_both(self):
+        fields = {k: [np.nan, np.nan] + list(v) for k, v in self.FULL.items()}
+        fields["diluted_shares"] = [100.0] * 9
+        notes: list[str] = []
+        inp = self._inputs(fields, notes)
+        assert inp.ttm_now.revenue == approx(980)
+        assert len(notes) == 1
