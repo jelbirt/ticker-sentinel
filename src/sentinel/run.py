@@ -334,15 +334,23 @@ def main(argv: list[str] | None = None) -> int:
 
     if args.no_email or args.dry_run:
         log.info("email not sent (%s)", "--dry-run" if args.dry_run else "--no-email")
-    else:
-        from sentinel.deliver import send_report
+        return 0
 
-        sent, status = send_report(
-            html_email,
-            subject=f"Ticker Sentinel · {date.today().isoformat()}",
-            images={f"spark_{t}": png for t, png in sparks.items()},
-        )
-        log.info(status)
+    from sentinel.deliver import send_report
+
+    sent, status = send_report(
+        html_email,
+        subject=f"Ticker Sentinel · {date.today().isoformat()}",
+        images={f"spark_{t}": png for t, png in sparks.items()},
+    )
+    if not sent:
+        # the product IS the morning email: an unsent report must fail the run
+        # loudly (nonzero exit -> red job -> the workflow's failure alert),
+        # never masquerade as a green morning. Report and history are already
+        # on disk at this point, so nothing is lost by failing here.
+        log.error("EMAIL NOT SENT: %s", status)
+        return 1
+    log.info(status)
     return 0
 
 

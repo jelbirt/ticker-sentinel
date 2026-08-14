@@ -12,6 +12,7 @@ on:
 
 permissions:
   contents: write   # scheduled cache + run-history commit
+  issues: write     # run-failure alert issue
 
 jobs:
   run:
@@ -37,11 +38,33 @@ jobs:
           RECIPIENT_EMAILS: ${{ secrets.RECIPIENT_EMAILS }}
           TWELVEDATA_API_KEY: ${{ secrets.TWELVEDATA_API_KEY }}
           FINNHUB_API_KEY: ${{ secrets.FINNHUB_API_KEY }}
+      # report artifact and the cache/history commit must survive a failed run
+      # step: the run writes its outputs before attempting email, and an
+      # email-failure exit must not also cost the day's baseline
       - uses: actions/upload-artifact@v4
-        with: {name: report, path: reports/}
+        if: ${{ !cancelled() }}
+        with: {name: report, path: reports/, if-no-files-found: ignore}
       - name: refresh fundamentals cache commit (state-changing runs)
-        if: github.event_name == 'schedule'
+        if: ${{ !cancelled() && github.event_name == 'schedule' }}
         run: |
           git config user.name sentinel-bot && git config user.email bot@users.noreply.github.com
           git add data/cache
           git diff --cached --quiet || { git commit -m "cache: refresh fundamentals" && git push; }
+      - name: alert on failure (a silent morning must become a visible issue)
+        if: ${{ failure() }}
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          gh label create run-failure --repo "$GITHUB_REPOSITORY" --force \
+            --color b60205 --description "A daily report run failed"
+          body="Run failed: ${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }} (event: ${{ github.event_name }}, $(date -u +%FT%TZ))"
+          existing=$(gh issue list --repo "$GITHUB_REPOSITORY" --label run-failure \
+            --state open --limit 1 --json number --jq '.[0].number // empty')
+          if [ -n "$existing" ]; then
+            gh issue comment "$existing" --repo "$GITHUB_REPOSITORY" --body "$body"
+          else
+            gh issue create --repo "$GITHUB_REPOSITORY" \
+              --title "Daily report run failure ($(date -u +%F))" \
+              --body "$body" --label run-failure \
+              --assignee "${{ github.repository_owner }}"
+          fi
