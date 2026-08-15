@@ -380,3 +380,24 @@ class TestTagShadowing:
             PRODUCTIVE: [fact(Q1, 90.0)],
         })
         assert composite_values(payload, "capex") == {Q1: 90.0}
+
+
+class TestCompositeBaseCoverage:
+    """Verification-pass regression (live case: PANW). Base alternatives pick
+    by derivable-quarter coverage, not first-derives-anything: a single stray
+    PP&E quarter must not shadow a deep ProductiveAssets series."""
+
+    def test_deeper_base_wins_over_stray_quarter(self):
+        payload = tag_payload({
+            PPE: [fact(Q1, 999.0)],  # one stray quarter
+            PRODUCTIVE: [fact(Q1, 90.0), fact(Q2, 95.0), fact(Q3, 100.0)],
+        })
+        values = composite_values(payload, "capex")
+        assert values == {Q1: 90.0, Q2: 95.0, Q3: 100.0}
+
+    def test_equal_coverage_still_prefers_ppe(self):
+        payload = tag_payload({
+            PPE: [fact(Q1, 100.0)],
+            PRODUCTIVE: [fact(Q1, 130.0)],
+        })
+        assert composite_values(payload, "capex") == {Q1: 100.0}

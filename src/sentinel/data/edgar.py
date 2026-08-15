@@ -314,14 +314,18 @@ def composite_values(payload: dict[str, Any], field: str) -> dict[pd.Timestamp, 
     """
     base_tags, addend_tags = COMPOSITE_TAGS[field]
     out: dict[pd.Timestamp, float] = {}
-    # alternatives, not addends: the first base tag that DERIVES quarters wins
-    # (same rule as field_values: facts alone can be annual-only shells that
-    # would shadow a base with real quarterly coverage)
+    # alternatives, not addends: the base with the MOST derivable quarters
+    # wins (ties break toward the earlier tag). "First tag that derives
+    # anything" is not enough: PANW files a single stray PP&E quarter next to
+    # a 59-quarter PaymentsToAcquireProductiveAssets series, and preferring
+    # the stray would blank capex across its whole history. Whichever base
+    # wins, addends are still summed on top and nothing is double counted.
+    best: dict[pd.Timestamp, float] = {}
     for tag in base_tags:
         values = quarterly_values(facts_for_tag(payload, tag, field))
-        if values:
-            out = {end: abs(v) for end, v in values.items()}
-            break
+        if len(values) > len(best):
+            best = values
+    out = {end: abs(v) for end, v in best.items()}
     if not out:
         return {}
 

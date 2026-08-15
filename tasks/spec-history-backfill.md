@@ -272,3 +272,21 @@ gated anyway. The options are to leave TEAM as it stands (16 quarters, holes
 unfilled), or to restore TEAM's parquet to its pre-`2621e02` yfinance-only
 state and re-run, which would verify the composite against yfinance as the
 spec intends.
+
+### Implementation note: tag precedence and base selection (verification pass, 2026-08-15)
+
+Two live counterexamples forced the tag-selection rules to be stricter than
+Amendment 1's prose:
+
+1. A tag can carry facts yet derive zero quarters. PANW files 18 annual-only
+   "Revenues" shells; first-tag-with-any-facts returned them and shadowed the
+   contract-revenue tag holding 35 derivable quarters, leaving every
+   backfilled quarter without revenue (and the gate silent, since NaN is
+   never compared). Precedence now sits on derived quarters, not raw facts,
+   for plain fields and composite bases alike.
+2. Among base alternatives, coverage decides. PANW also files a single stray
+   PP&E quarter next to a 59-quarter PaymentsToAcquireProductiveAssets
+   series; "prefer PP&E" as written would have blanked capex across its
+   whole history. The base with the most derivable quarters wins (ties break
+   toward the earlier tag); addends still sum on top and nothing is double
+   counted, which is what the preference rule existed to guarantee.
