@@ -86,6 +86,36 @@ class TestDegradation:
         runs, notes = history.load_history()
         assert runs == [] and len(notes) == 1
 
+    def test_newer_schema_version_degrades_with_note(self, isolated_root):
+        history.history_path().write_text(
+            json.dumps({"version": history.SCHEMA_VERSION + 1, "runs": [_run("2026-08-06")]})
+        )
+        runs, notes = history.load_history()
+        assert runs == []
+        assert len(notes) == 1
+        assert f"schema v{history.SCHEMA_VERSION + 1} is newer" in notes[0]
+        assert "change detection reset" in notes[0]
+
+    def test_current_schema_version_is_accepted(self, isolated_root):
+        history.history_path().write_text(
+            json.dumps({"version": history.SCHEMA_VERSION, "runs": [_run("2026-08-06")]})
+        )
+        runs, notes = history.load_history()
+        assert [r["date"] for r in runs] == ["2026-08-06"] and notes == []
+
+    def test_missing_version_is_accepted(self, isolated_root):
+        # pre-versioning files (and hand-edited ones) still load
+        history.history_path().write_text(json.dumps({"runs": [_run("2026-08-06")]}))
+        runs, notes = history.load_history()
+        assert [r["date"] for r in runs] == ["2026-08-06"] and notes == []
+
+    def test_non_numeric_version_degrades_like_corruption(self, isolated_root):
+        history.history_path().write_text(
+            json.dumps({"version": "two", "runs": [_run("2026-08-06")]})
+        )
+        runs, notes = history.load_history()
+        assert runs == [] and len(notes) == 1
+
     def test_retention_floor_of_one(self, isolated_root):
         history.save_run(_run("2026-08-05"), retention=0)
         history.save_run(_run("2026-08-06"), retention=0)

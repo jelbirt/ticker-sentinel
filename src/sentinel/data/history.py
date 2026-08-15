@@ -25,12 +25,22 @@ def history_path() -> Path:
 
 def load_history(path: Path | None = None) -> tuple[list[dict], list[str]]:
     """Return (runs oldest-first, degradation notes). Missing file is an empty
-    history; a corrupt or wrong-shaped file degrades to empty with a note."""
+    history; a corrupt, wrong-shaped, or newer-schema file degrades to empty
+    with a note."""
     p = path or history_path()
     if not p.exists():
         return [], []
     try:
         raw = json.loads(p.read_text())
+        # a file written by a newer schema may reuse "runs" with different
+        # semantics: degrade like corruption rather than half-parsing it.
+        # Missing (pre-versioning) or equal versions are accepted.
+        version = raw.get("version")
+        if version is not None and int(version) > SCHEMA_VERSION:
+            return [], [
+                f"run history schema v{int(version)} is newer than this code "
+                f"(v{SCHEMA_VERSION}), change detection reset"
+            ]
         runs = raw["runs"]
         if not isinstance(runs, list) or not all(isinstance(r, dict) for r in runs):
             raise ValueError("runs is not a list of objects")
