@@ -1,0 +1,14 @@
+{
+  "fetched_at": "2026-08-15T18:39:59.254001+00:00",
+  "market_cap": 31070885550.817886,
+  "shares_outstanding": 293232218.0,
+  "company_name": "Zoom Communications, Inc.",
+  "next_earnings": "2026-08-25",
+  "annual_revenue": {
+    "2026-01-31": 4868769000.0,
+    "2025-01-31": 4665433000.0,
+    "2024-01-31": 4527224000.0,
+    "2023-01-31": 4392960000.0
+  },
+  "source": "yfinance"
+}
