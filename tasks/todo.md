@@ -16,6 +16,9 @@
   verification gate, plus the R40-trend warm-up disclosure. Spec:
   `tasks/spec-history-backfill.md`. Does NOT write `data/cache/` on this
   branch; the `--apply` run is a separate owner-approved post-merge commit.
+- `news-quality` (branch `news-quality`, worktree
+  `../ticker-sentinel.news-quality`): revive the dead company-name matching
+  path by normalizing yfinance legal names to their trading name.
 
   One branch per workstream via `scripts/new-worktree.sh <branch>`; main is the
   review inbox; merge back via PR.
