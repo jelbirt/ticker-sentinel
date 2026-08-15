@@ -342,3 +342,41 @@ class TestCompositeCapex:
             )
         )
         assert frame.loc["capex", Q1] == approx(9_000_000)
+
+
+class TestTagShadowing:
+    """Verification-pass regression (live case: PANW). A tag can carry facts
+    yet derive zero quarters (annual-only "Revenues" shells); precedence must
+    sit on derived quarters or the shell tag shadows the tag with the real
+    quarterly coverage and the field silently vanishes from the frame."""
+
+    def _annual_shell(self, value: float) -> dict:
+        return {
+            "start": "2024-02-01", "end": "2025-01-31", "val": value,
+            "form": "10-K", "filed": "2025-03-15",
+        }
+
+    def _payload(self):
+        return tag_payload({
+            "Revenues": [self._annual_shell(8_000.0)],
+            "RevenueFromContractWithCustomerExcludingAssessedTax": [
+                fact(Q1, 2_000.0), fact(Q2, 2_100.0),
+            ],
+        })
+
+    def test_field_values_skips_shell_tag(self):
+        from sentinel.data.edgar import field_values
+
+        values = field_values(self._payload(), "revenue")
+        assert values == {Q1: 2_000.0, Q2: 2_100.0}
+
+    def test_canonical_frame_carries_the_field(self):
+        frame = canonical_from_companyfacts(self._payload())
+        assert pd.notna(frame.loc["revenue", Q2])
+
+    def test_composite_base_skips_shell_tag(self):
+        payload = tag_payload({
+            PPE: [self._annual_shell(400.0)],
+            PRODUCTIVE: [fact(Q1, 90.0)],
+        })
+        assert composite_values(payload, "capex") == {Q1: 90.0}

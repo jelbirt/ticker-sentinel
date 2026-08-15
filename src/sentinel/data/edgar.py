@@ -182,12 +182,34 @@ def facts_for_tag(payload: dict[str, Any], tag: str, field: str) -> list[Fact]:
 
 
 def facts_for_field(payload: dict[str, Any], field: str) -> list[Fact]:
-    """Periodic-report facts for one canonical field; first matching tag wins."""
+    """Periodic-report facts for one canonical field; first matching tag wins.
+
+    Ad-hoc inspection helper. Derivation goes through field_values(), whose
+    precedence test is stricter: see there for why facts alone are not enough.
+    """
     for tag in TAG_MAP[field]:
         facts = facts_for_tag(payload, tag, field)
         if facts:
             return facts
     return []
+
+
+def field_values(payload: dict[str, Any], field: str) -> dict[pd.Timestamp, float]:
+    """Per-quarter values for a plain field: first tag that DERIVES quarters wins.
+
+    The precedence test must sit on derived quarters, not on raw facts: a tag
+    can carry facts yet derive zero quarters (PANW files 18 annual-only
+    "Revenues" shells), and returning it would shadow a later tag holding the
+    real quarterly coverage (PANW's contract-revenue tag has 35 derivable
+    quarters). Alias precedence is unchanged; only the non-emptiness test
+    moves from facts to quarters.
+    """
+    additive = field not in NON_ADDITIVE_FIELDS
+    for tag in TAG_MAP[field]:
+        values = quarterly_values(facts_for_tag(payload, tag, field), additive=additive)
+        if values:
+            return values
+    return {}
 
 
 def _latest_filed(facts: list[Fact]) -> dict[tuple[pd.Timestamp | None, pd.Timestamp], Fact]:
@@ -292,10 +314,13 @@ def composite_values(payload: dict[str, Any], field: str) -> dict[pd.Timestamp, 
     """
     base_tags, addend_tags = COMPOSITE_TAGS[field]
     out: dict[pd.Timestamp, float] = {}
-    for tag in base_tags:  # alternatives, not addends: the first present wins
-        facts = facts_for_tag(payload, tag, field)
-        if facts:
-            out = {end: abs(v) for end, v in quarterly_values(facts).items()}
+    # alternatives, not addends: the first base tag that DERIVES quarters wins
+    # (same rule as field_values: facts alone can be annual-only shells that
+    # would shadow a base with real quarterly coverage)
+    for tag in base_tags:
+        values = quarterly_values(facts_for_tag(payload, tag, field))
+        if values:
+            out = {end: abs(v) for end, v in values.items()}
             break
     if not out:
         return {}
@@ -326,9 +351,7 @@ def canonical_from_companyfacts(payload: dict[str, Any]) -> pd.DataFrame:
         if field in COMPOSITE_TAGS:
             series[field] = composite_values(payload, field)
             continue
-        series[field] = quarterly_values(
-            facts_for_field(payload, field), additive=field not in NON_ADDITIVE_FIELDS
-        )
+        series[field] = field_values(payload, field)
 
     columns = sorted({end for values in series.values() for end in values}, reverse=True)
     frame = pd.DataFrame(index=CANONICAL_FIELDS, columns=columns, dtype="float64")
