@@ -20,6 +20,12 @@
   every macro headline was attributed to SentinelOne), split the narrative
   fabrication guard from the coverage check, restrict feed link hrefs to
   http(s), and run the headless claude call with no tools.
+- `run-integrity` (opened 2026-08-14, worktree `../ticker-sentinel.run-integrity`):
+  audit fixes 1, 3, 7: partial-quarter TTM anchoring (bounded), quarter-gap
+  contiguity guard, degraded-run diff/baseline guards with basis-aware
+  comparisons, unscored-reason disclosure. Code/tests/docs only; no
+  data/cache changes (bot keeps the pen). Siblings ops-alerting and
+  news-matching run in parallel; registry lines will conflict trivially.
 
   One branch per workstream via `scripts/new-worktree.sh <branch>`; main is the
   review inbox; merge back via PR.
