@@ -9,10 +9,15 @@ It is a tool, not a scheduled job: both modes fetch EDGAR live, and nothing
 here is imported by sentinel.run. Steady-state fundamentals stay on yfinance.
 Spec and decisions: tasks/spec-history-backfill.md.
 
-Verification gate: for every quarter present on both sides, every mapped field
-where both sides have a value must agree within 1 percent relative OR 100,000
-absolute (the floor keeps near-zero values from failing on rounding). One
-mismatch rejects the whole ticker. No partial trust.
+Verification gate: for every quarter present on both sides, every backfilled
+field where both sides have a value must agree within 1 percent relative OR
+100,000 absolute (the floor keeps near-zero values from failing on rounding).
+One mismatch rejects the whole ticker. No partial trust.
+
+Amendment 1 (approved 2026-08-15) narrows the backfilled set to the fields the
+historical quarters actually feed, derives capex as a composite of its base and
+software-capitalization tags, and lets a verified EDGAR frame fill EMPTY cells
+inside the cached range (never overwrite a cached value).
 """
 from __future__ import annotations
 
@@ -27,7 +32,11 @@ import pandas as pd
 
 from sentinel.config import load_config
 from sentinel.data import cache
-from sentinel.data.edgar import BACKFILL_FIELDS, canonical_from_companyfacts
+from sentinel.data.edgar import (
+    BACKFILL_FIELDS,
+    canonical_from_companyfacts,
+    composite_base_candidates,
+)
 
 log = logging.getLogger("sentinel.backfill")
 
@@ -76,7 +85,9 @@ class BackfillResult:
     comparisons: list[Comparison] = field(default_factory=list)
     quarters_before: int = 0
     quarters_after: int = 0
+    cells_filled: int = 0  # empty cells inside the cached range filled from EDGAR
     seeded: bool = False  # bench name whose yfinance overlap had to be fetched
+    base_note: str | None = None  # gate-selected composite base, when it mattered
 
     @property
     def gained(self) -> int:
@@ -134,10 +145,12 @@ def align_columns(
 
 
 def compare(cached: pd.DataFrame, edgar: pd.DataFrame) -> list[Comparison]:
-    """Every overlap quarter x mapped field where BOTH sides carry a value.
+    """Every overlap quarter x backfilled field where BOTH sides carry a value.
 
-    A NaN on either side is not a mismatch: it is simply nothing to check
-    (EDGAR does not backfill ebitda, total_debt or cash at all).
+    A NaN on either side is not a mismatch: it is simply nothing to check.
+    The gate covers BACKFILL_FIELDS only, so the fields EDGAR never derives
+    (ebitda, operating_income, d_and_a, total_debt, cash) are not compared and
+    cannot reject a ticker.
     """
     overlap = sorted(set(cached.columns) & set(edgar.columns), reverse=True)
     out: list[Comparison] = []
@@ -153,21 +166,107 @@ def compare(cached: pd.DataFrame, edgar: pd.DataFrame) -> list[Comparison]:
     return out
 
 
-def merge_backfill(cached: pd.DataFrame, edgar: pd.DataFrame) -> pd.DataFrame:
-    """Cached frame plus the EDGAR quarters that predate it, capped and sorted.
+def fill_holes(cached: pd.DataFrame, edgar: pd.DataFrame) -> pd.DataFrame:
+    """Cached frame with its EMPTY cells filled from the aligned EDGAR frame.
 
-    Only quarters strictly older than the cache are taken, so no cached value
-    is touched even where yfinance left a hole. cache.merge_statements does
-    the union with the cached frame as the winning side and applies the
-    MAX_QUARTERS cap.
+    Amendment 1 (change 3). yfinance leaves hollow columns inside the cached
+    range: a quarter end with no core field at all, published piecemeal and
+    never completed. Every ticker accepted by the live apply run carried one or
+    two, and they cost more than they look: `build_ttm` returns None for any
+    window containing them, so growth and r40_trend stayed n/a even at 16
+    quarters of depth.
+
+    Only genuinely empty cells are filled. A cached non-NaN value always wins
+    (`combine_first` semantics), so the acceptance decision, which rests solely
+    on the overlap checks of non-NaN cached cells, is never undermined by what
+    gets written. Columns the cache does not already have are left to
+    `merge_backfill`.
+    """
+    in_range = [c for c in edgar.columns if c in set(cached.columns)]
+    if not in_range:
+        return cached
+    filled = cached.combine_first(edgar.loc[:, in_range])
+    # combine_first sorts the union; restore the cache's own row/column order
+    return filled.reindex(index=cached.index, columns=cached.columns)
+
+
+def merge_backfill(cached: pd.DataFrame, edgar: pd.DataFrame) -> pd.DataFrame:
+    """Cached frame, holes filled, plus the EDGAR quarters that predate it.
+
+    No cached VALUE is overwritten; verified EDGAR values may fill empty
+    cells (see `fill_holes`). Quarters strictly older than the cache are
+    appended through cache.merge_statements, which does the union with the
+    cached frame as the winning side and applies the MAX_QUARTERS cap.
     """
     if cached.shape[1] == 0:
         return cached
+    filled = fill_holes(cached, edgar)
     oldest = min(cached.columns)
     older_cols = [c for c in edgar.columns if c < oldest]
     if not older_cols:
-        return cache.merge_statements(None, cached)
-    return cache.merge_statements(edgar.loc[:, older_cols], cached)
+        return cache.merge_statements(None, filled)
+    return cache.merge_statements(edgar.loc[:, older_cols], filled)
+
+
+def count_filled_cells(cached: pd.DataFrame, merged: pd.DataFrame) -> int:
+    """How many empty cells inside the cached range the merge filled.
+
+    Quarters gained is the wrong measure of what change 3 buys: a hollow column
+    already counted toward depth while blocking every TTM window that spanned
+    it. This counts the cells that were NaN in the cache and carry a value
+    after the merge, so the report can show the hole filling separately.
+    """
+    if cached.shape[1] == 0:
+        return 0
+    after = merged.reindex(index=cached.index, columns=cached.columns)
+    return int((cached.isna() & after.notna()).to_numpy().sum())
+
+
+# --- candidate selection -----------------------------------------------------
+
+
+def _select_candidate(
+    payload: dict[str, Any], cached: pd.DataFrame
+) -> tuple[pd.DataFrame, list[Comparison], str | None]:
+    """Build one aligned frame per viable composite-base choice and let the
+    verification gate pick.
+
+    No static preference selects the capex base correctly: PANW files a
+    single stray PP&E quarter next to the real ProductiveAssets series, while
+    FTNT's PP&E series is the one that reconciles with yfinance and its
+    deeper ProductiveAssets series does not. So every candidate base is tried
+    and the gate arbitrates: among candidates whose frames verify with ZERO
+    mismatches, the one with the most verified capex overlap checks wins
+    (absence of capex overlap must not beat presence: the PANW stray has no
+    overlap at all), then the deeper frame, then TAG-list order. When no
+    candidate verifies, the fewest-mismatch candidate is returned so the
+    report shows the closest miss.
+
+    Returns (aligned frame, its comparisons, base note for the report when a
+    choice actually happened).
+    """
+    candidates = composite_base_candidates(payload, "capex") or [None]
+    scored: list[tuple[tuple, pd.DataFrame, list[Comparison], str | None]] = []
+    for order, base in enumerate(candidates):
+        frame = canonical_from_companyfacts(
+            payload, composite_bases={"capex": base} if base else None
+        )
+        frame = align_columns(frame, cached.columns)
+        comps = compare(cached, frame)
+        mismatches = sum(1 for c in comps if not c.ok)
+        capex_checked = sum(1 for c in comps if c.field == "capex")
+        key = (
+            0 if mismatches == 0 else 1,   # verified candidates first
+            mismatches,                     # then closest miss
+            -capex_checked,                 # then most capex overlap verified
+            -frame.shape[1],                # then depth
+            order,                          # then tag order
+        )
+        note = f"capex base: {base}" if base and len(candidates) > 1 else None
+        scored.append((key, frame, comps, note))
+    scored.sort(key=lambda item: item[0])
+    _, frame, comps, note = scored[0]
+    return frame, comps, note
 
 
 # --- per-ticker orchestration ----------------------------------------------
@@ -198,7 +297,8 @@ def backfill_ticker(
 
     before = int(cached_df.shape[1])
     try:
-        edgar = canonical_from_companyfacts(fetch_facts(ticker))
+        payload = fetch_facts(ticker)
+        edgar, comparisons, base_note = _select_candidate(payload, cached_df)
     except Exception as exc:  # noqa: BLE001 - report and continue the sweep
         return BackfillResult(
             ticker, ERROR, reason=f"EDGAR fetch failed ({exc})",
@@ -209,12 +309,10 @@ def backfill_ticker(
             ticker, REJECT, reason="no quarterly facts derivable from EDGAR",
             quarters_before=before, quarters_after=before, seeded=seeded,
         )
-
-    edgar = align_columns(edgar, cached_df.columns)
-    comparisons = compare(cached_df, edgar)
     result = BackfillResult(
         ticker, REJECT, comparisons=comparisons,
         quarters_before=before, quarters_after=before, seeded=seeded,
+        base_note=base_note,
     )
     if not comparisons:
         result.reason = "no overlapping quarters to verify against"
@@ -228,6 +326,7 @@ def backfill_ticker(
     merged = merge_backfill(cached_df, edgar)
     result.status = ACCEPT
     result.quarters_after = int(merged.shape[1])
+    result.cells_filled = count_filled_cells(cached_df, merged)
     if apply:
         cache.save(ticker, merged, meta or {})
     return result
@@ -304,7 +403,7 @@ def format_report(results: list[BackfillResult], apply: bool = False) -> str:
         if r.status == ACCEPT:
             head = (
                 f"{r.ticker:<6} ACCEPT  {r.quarters_before} -> {r.quarters_after} "
-                f"quarters (+{r.gained}){seeded}"
+                f"quarters (+{r.gained}), {r.cells_filled} empty cells filled{seeded}"
             )
         else:
             head = (
@@ -312,6 +411,8 @@ def format_report(results: list[BackfillResult], apply: bool = False) -> str:
                 f"{seeded}"
             )
         lines.append(head)
+        if r.base_note:
+            lines.append(f"       {r.base_note}")
         if r.reason:
             lines.append(f"       reason: {r.reason}")
         matched = len(r.comparisons) - len(r.mismatches)
@@ -330,6 +431,7 @@ def format_report(results: list[BackfillResult], apply: bool = False) -> str:
     counts = {status: sum(1 for r in results if r.status == status) for status in
               (ACCEPT, REJECT, SKIP, ERROR)}
     gained = sum(r.gained for r in results if r.status == ACCEPT)
+    filled = sum(r.cells_filled for r in results if r.status == ACCEPT)
     short = [
         r.ticker for r in results
         if r.status == ACCEPT and r.quarters_after < TARGET_QUARTERS
@@ -337,7 +439,8 @@ def format_report(results: list[BackfillResult], apply: bool = False) -> str:
     lines.append(
         f"Summary: {counts[ACCEPT]} accepted, {counts[REJECT]} rejected, "
         f"{counts[SKIP]} skipped, {counts[ERROR]} errored; "
-        f"{gained} quarters gained across the universe"
+        f"{gained} quarters gained across the universe, "
+        f"{filled} empty cells filled inside the cached range"
     )
     lines.append(
         "Below target depth after accept: "

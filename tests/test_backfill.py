@@ -164,6 +164,18 @@ class TestCompare:
         edgar = cached.copy()
         assert not any(c.field in ("ebitda", "total_debt", "cash") for c in compare(cached, edgar))
 
+    def test_operating_income_and_d_and_a_are_outside_the_gate(self):
+        """Amendment 1 change 1: as-filed vs normalized gaps stop rejecting."""
+        cached = canonical(series(4, 400_000_000.0))
+        cached.loc["operating_income"] = 50_000_000.0
+        cached.loc["d_and_a"] = 20_000_000.0
+        edgar = cached.copy()
+        edgar.loc["operating_income"] = -900_000_000.0  # wildly disagreeing
+        edgar.loc["d_and_a"] = 1.0
+        checks = compare(cached, edgar)
+        assert checks and all(c.ok for c in checks)
+        assert not any(c.field in ("operating_income", "d_and_a") for c in checks)
+
 
 class TestAlignColumns:
     def test_near_identical_quarter_ends_are_snapped_to_the_cache(self):
@@ -194,16 +206,6 @@ class TestMergeBackfill:
         merged = merge_backfill(cached, edgar)
         assert merged.loc["revenue", cached.columns[0]] == approx(400_000_000.0)
 
-    def test_a_cached_hole_is_not_filled_from_edgar(self):
-        """Only quarters strictly older than the cache are taken."""
-        cached = canonical(series(6, 400_000_000.0))
-        cached.loc["sbc"] = float("nan")
-        edgar = canonical(series(14, 400_000_000.0))
-        edgar.loc["sbc"] = 9_000_000.0
-        merged = merge_backfill(cached, edgar)
-        assert merged.loc["sbc", cached.columns[0]] != merged.loc["sbc", edgar.columns[-1]]
-        assert pd.isna(merged.loc["sbc", cached.columns[0]])
-
     def test_merge_is_capped_at_max_quarters(self):
         cached = canonical(series(6, 400_000_000.0))
         edgar = canonical(series(30, 400_000_000.0))
@@ -214,6 +216,96 @@ class TestMergeBackfill:
         cached = canonical(series(6, 400_000_000.0))
         merged = merge_backfill(cached, canonical(series(3, 400_000_000.0)))
         assert list(merged.columns) == list(cached.columns)
+
+
+class TestHoleFilling:
+    """Amendment 1 change 3: fill EMPTY cells inside the cached range.
+
+    The promise is no longer "no cached cell is touched", it is "no cached
+    VALUE is overwritten; verified EDGAR values may fill empty cells".
+    """
+
+    def test_a_hollow_mid_frame_column_is_filled(self):
+        cached = canonical(series(8, 400_000_000.0))
+        hollow = cached.columns[3]
+        cached.loc[:, hollow] = float("nan")  # yfinance shell column
+        edgar = canonical(series(14, 400_000_000.0))
+        merged = merge_backfill(cached, edgar)
+        for name in ("revenue", "ocf", "capex"):
+            assert merged.loc[name, hollow] == approx(edgar.loc[name, hollow])
+
+    def test_a_single_missing_cell_is_filled(self):
+        cached = canonical(series(6, 400_000_000.0))
+        cached.loc["sbc"] = float("nan")
+        edgar = canonical(series(14, 400_000_000.0))
+        edgar.loc["sbc"] = 9_000_000.0
+        merged = merge_backfill(cached, edgar)
+        assert merged.loc["sbc", cached.columns[0]] == approx(9_000_000.0)
+
+    def test_a_cached_value_is_never_overwritten(self):
+        """EDGAR disagreeing inside the cached range still loses."""
+        cached = canonical(series(6, 400_000_000.0))
+        edgar = canonical(series(14, 400_000_000.0))
+        for col in cached.columns:
+            edgar.loc["revenue", col] = 1.0
+        merged = merge_backfill(cached, edgar)
+        for col in cached.columns:
+            assert merged.loc["revenue", col] == approx(cached.loc["revenue", col])
+
+    def test_the_partial_newest_column_stays_partial_without_edgar_facts(self):
+        """EDGAR has nothing that recent, so the hole survives the merge."""
+        cached = canonical(series(6, 400_000_000.0))
+        newest = cached.columns[0]
+        cached.loc["ocf", newest] = float("nan")
+        cached.loc["capex", newest] = float("nan")
+        edgar = canonical(series(14, 400_000_000.0)).drop(columns=[newest])
+        merged = merge_backfill(cached, edgar)
+        assert pd.isna(merged.loc["ocf", newest])
+        assert pd.isna(merged.loc["capex", newest])
+        assert merged.loc["revenue", newest] == approx(cached.loc["revenue", newest])
+
+    def test_an_all_nan_edgar_row_never_erases_a_cached_value(self):
+        """The narrowed field set leaves operating_income NaN on the EDGAR side."""
+        cached = canonical(series(6, 400_000_000.0))
+        cached.loc["operating_income"] = 12_000_000.0
+        edgar = canonical(series(14, 400_000_000.0))
+        merged = merge_backfill(cached, edgar)
+        assert (merged.loc["operating_income", cached.columns] == 12_000_000.0).all()
+
+    def test_row_and_column_order_survive_the_fill(self):
+        cached = canonical(series(6, 400_000_000.0))
+        cached.loc[:, cached.columns[2]] = float("nan")
+        merged = merge_backfill(cached, canonical(series(14, 400_000_000.0)))
+        assert list(merged.index) == CANONICAL_FIELDS
+        assert list(merged.columns) == sorted(merged.columns, reverse=True)
+
+    def test_edgar_columns_the_cache_lacks_are_not_inserted_mid_range(self):
+        """Hole filling fills cells; it does not invent quarters."""
+        cached = canonical(series(6, 400_000_000.0))
+        gap = cached.columns[2]
+        cached = cached.drop(columns=[gap])
+        merged = merge_backfill(cached, canonical(series(14, 400_000_000.0)))
+        assert gap not in merged.columns
+
+
+class TestTrendInputsGoLive:
+    """End to end: the fill is what turns 16 quarters into usable TTM windows."""
+
+    def test_a_hollow_column_blocks_a_ttm_window_until_it_is_filled(self):
+        from sentinel.data.fundamentals import build_ttm
+
+        cached = canonical(series(16, 400_000_000.0))
+        cached.loc[:, cached.columns[5]] = float("nan")
+        # the -4Q window r40_trend needs spans the hollow column, so every one
+        # of its sums is None and r40_trend stays n/a at full cache depth
+        before = build_ttm(cached, offset=4)
+        assert (before.revenue, before.ocf, before.capex) == (None, None, None)
+
+        merged = merge_backfill(cached, canonical(series(16, 400_000_000.0)))
+        windows = [build_ttm(merged, offset=o) for o in (0, 4, 8)]
+        assert all(w is not None for w in windows)
+        assert all(w.revenue is not None and w.ocf is not None for w in windows)
+        assert all(w.capex is not None for w in windows)
 
 
 def _fetchers(edgar_values, yf_frame=None):
@@ -377,8 +469,107 @@ class TestReport:
         text = format_report(results)
         assert "1 accepted, 0 rejected, 1 skipped, 1 errored" in text
 
+    def test_filled_cells_are_reported_per_ticker_and_in_the_summary(self, cache_root):
+        cached = canonical(series(6, 400_000_000.0))
+        cached.loc[:, cached.columns[2]] = float("nan")  # a hollow shell column
+        seed_cache("AAA", cached)
+        facts, yf = _fetchers(series(14, 400_000_000.0))
+        result = backfill_ticker("AAA", facts, yf)
+        assert result.cells_filled == 3  # revenue, ocf, capex of the hollow column
+        text = format_report([result])
+        assert "3 empty cells filled" in text
+        assert "3 empty cells filled inside the cached range" in text
+
+    def test_a_cache_with_no_holes_reports_zero_filled(self, cache_root):
+        seed_cache("AAA", canonical(series(6, 400_000_000.0)))
+        facts, yf = _fetchers(series(14, 400_000_000.0))
+        assert backfill_ticker("AAA", facts, yf).cells_filled == 0
+
     def test_below_target_depth_is_called_out(self, cache_root):
         seed_cache("AAA", canonical(series(6, 400_000_000.0)))
         facts, yf = _fetchers(series(8, 400_000_000.0))
         text = format_report([backfill_ticker("AAA", facts, yf)])
         assert "Below target depth after accept: AAA" in text
+
+
+class TestGateArbitratedBase:
+    """Verification-pass regression (live cases: PANW and FTNT are mirror
+    images). The capex base must be chosen by the verification gate, not by a
+    static preference: every viable base becomes a candidate frame, and the
+    one that reconciles with the cached yfinance overlap wins."""
+
+    def _cached(self, capex_values):
+        cols = pd.to_datetime(["2026-04-30", "2026-01-31", "2025-10-31", "2025-07-31"])
+        df = pd.DataFrame(100.0, index=CANONICAL_FIELDS, columns=cols)
+        df.loc["capex"] = capex_values
+        return df
+
+    def _payload(self, ppe_entries, productive_entries):
+        starts = {"2026-04-30": "2026-02-01", "2026-01-31": "2025-11-01",
+                  "2025-10-31": "2025-08-01", "2025-07-31": "2025-05-01",
+                  "2022-04-30": "2022-02-01"}
+        def entries(pairs):
+            return [
+                {"start": starts[end], "end": end, "val": val,
+                 "form": "10-Q", "filed": end}
+                for end, val in pairs
+            ]
+        tags = {
+            "RevenueFromContractWithCustomerExcludingAssessedTax": entries(
+                [("2026-04-30", 100.0), ("2026-01-31", 100.0),
+                 ("2025-10-31", 100.0), ("2025-07-31", 100.0)]),
+            "NetCashProvidedByUsedInOperatingActivities": entries(
+                [("2026-04-30", 100.0), ("2026-01-31", 100.0),
+                 ("2025-10-31", 100.0), ("2025-07-31", 100.0)]),
+            "ShareBasedCompensation": entries(
+                [("2026-04-30", 100.0), ("2026-01-31", 100.0),
+                 ("2025-10-31", 100.0), ("2025-07-31", 100.0)]),
+        }
+        if ppe_entries:
+            tags["PaymentsToAcquirePropertyPlantAndEquipment"] = entries(ppe_entries)
+        if productive_entries:
+            tags["PaymentsToAcquireProductiveAssets"] = entries(productive_entries)
+        return {"facts": {"us-gaap": {t: {"units": {"USD": e}} for t, e in tags.items()}}}
+
+    def _run(self, payload, cached):
+        return backfill_ticker(
+            "XXXX", lambda t: payload, lambda t: (cached, {}), apply=False
+        )
+
+    def test_ftnt_shape_ppe_reconciles_deeper_base_does_not(self):
+        # magnitudes matter: values must dwarf MATCH_ABS_FLOOR or every
+        # candidate trivially verifies through the near-zero floor
+        cached = self._cached([100e6, 100e6, 100e6, 100e6])
+        payload = self._payload(
+            ppe_entries=[("2026-04-30", 100e6), ("2026-01-31", 100e6),
+                         ("2025-10-31", 100e6), ("2025-07-31", 100e6)],
+            productive_entries=[("2026-04-30", 15e6), ("2026-01-31", 15e6),
+                                ("2025-10-31", 15e6), ("2025-07-31", 15e6),
+                                ("2022-04-30", 15e6)],  # deeper but wrong
+        )
+        result = self._run(payload, cached)
+        assert result.status == "ACCEPT"
+        assert "PropertyPlantAndEquipment" in (result.base_note or "")
+
+    def test_panw_shape_stray_ppe_loses_to_verified_deep_base(self):
+        cached = self._cached([90e6, 90e6, 90e6, 90e6])
+        payload = self._payload(
+            ppe_entries=[("2022-04-30", 999e6)],  # one stray, no overlap at all
+            productive_entries=[("2026-04-30", 90e6), ("2026-01-31", 90e6),
+                                ("2025-10-31", 90e6), ("2025-07-31", 90e6)],
+        )
+        result = self._run(payload, cached)
+        assert result.status == "ACCEPT"
+        assert "ProductiveAssets" in (result.base_note or "")
+
+    def test_no_candidate_reconciles_rejects_with_closest_miss(self):
+        cached = self._cached([100e6, 100e6, 100e6, 100e6])
+        payload = self._payload(
+            ppe_entries=[("2026-04-30", 55e6), ("2026-01-31", 55e6),
+                         ("2025-10-31", 55e6), ("2025-07-31", 55e6)],
+            productive_entries=[("2026-04-30", 15e6), ("2026-01-31", 15e6),
+                                ("2025-10-31", 15e6), ("2025-07-31", 15e6)],
+        )
+        result = self._run(payload, cached)
+        assert result.status == "REJECT"
+        assert len(result.mismatches) == 4  # the closest miss is reported

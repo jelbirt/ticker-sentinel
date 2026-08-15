@@ -12,9 +12,11 @@ import pytest
 from pytest import approx
 
 from sentinel.data.edgar import (
+    BACKFILL_FIELDS,
     Fact,
     canonical_from_companyfacts,
     classify_period,
+    composite_values,
     facts_for_field,
     quarterly_values,
 )
@@ -25,6 +27,39 @@ Q1 = pd.Timestamp("2024-04-30")
 Q2 = pd.Timestamp("2024-07-31")
 Q3 = pd.Timestamp("2024-10-31")
 Q4 = pd.Timestamp("2025-01-31")
+
+PPE = "PaymentsToAcquirePropertyPlantAndEquipment"
+PRODUCTIVE = "PaymentsToAcquireProductiveAssets"
+DEVELOP_SW = "PaymentsToDevelopSoftware"
+INTERNAL_SW = "PaymentsToCapitalizeInternalUseSoftware"
+INTANGIBLES = "PaymentsToAcquireIntangibleAssets"
+
+# fiscal quarter starts matching Q1..Q4 above
+_STARTS = {
+    Q1: "2024-02-01",
+    Q2: "2024-05-01",
+    Q3: "2024-08-01",
+    Q4: "2024-11-01",
+}
+
+
+def fact(end: pd.Timestamp, value: float, start: str | None = None) -> dict:
+    """One direct 3-month 10-Q entry, unless `start` widens it to a YTD period."""
+    return {
+        "start": start or _STARTS[end],
+        "end": end.date().isoformat(),
+        "val": value,
+        "form": "10-Q",
+        "filed": end.date().isoformat(),
+    }
+
+
+def tag_payload(tags: dict[str, list[dict]]) -> dict:
+    return {
+        "facts": {
+            "us-gaap": {tag: {"units": {"USD": entries}} for tag, entries in tags.items()}
+        }
+    }
 
 
 @pytest.fixture(scope="module")
@@ -169,3 +204,205 @@ class TestCanonicalFrame:
     def test_empty_payload_yields_an_empty_frame(self):
         empty = canonical_from_companyfacts({"facts": {"us-gaap": {}}})
         assert empty.shape[1] == 0
+
+
+class TestNarrowedFieldSet:
+    """Amendments 1 and 2: only the fields the history actually feeds.
+
+    Amendment 2 also drops diluted_shares: dilution reads only the newest
+    five yfinance-served quarters, and EDGAR as-filed counts are on the
+    filing-date basis, which for split tickers would churn against the
+    PR #12 share-basis guard."""
+
+    def test_backfill_fields_are_the_r40_trend_inputs(self):
+        assert BACKFILL_FIELDS == ["revenue", "ocf", "capex", "sbc"]
+
+    def test_dropped_fields_are_never_derived(self, frame):
+        """Their tags are present in the fixture; the frame leaves them NaN."""
+        for field in ("operating_income", "d_and_a", "diluted_shares"):
+            assert frame.loc[field].isna().all()
+
+    def test_their_tags_stay_mapped_for_inspection(self, payload):
+        """TAG_MAP keeps the entries as documentation, nothing derives them."""
+        assert facts_for_field(payload, "operating_income")
+        assert facts_for_field(payload, "d_and_a")
+
+
+class TestCompositeCapex:
+    """Amendment 1 change 2: capex = base tag plus software capitalization."""
+
+    def test_components_are_summed_per_quarter(self):
+        values = composite_values(
+            tag_payload(
+                {
+                    PPE: [fact(Q1, 5_000_000), fact(Q2, 6_000_000)],
+                    DEVELOP_SW: [fact(Q1, 3_000_000), fact(Q2, 3_500_000)],
+                    INTERNAL_SW: [fact(Q1, 1_000_000), fact(Q2, 1_000_000)],
+                    INTANGIBLES: [fact(Q1, 500_000), fact(Q2, 500_000)],
+                }
+            ),
+            "capex",
+        )
+        assert values[Q1] == approx(9_500_000)
+        assert values[Q2] == approx(11_000_000)
+
+    def test_base_only_filer_is_unchanged(self):
+        values = composite_values(tag_payload({PPE: [fact(Q1, 5_000_000)]}), "capex")
+        assert values == {Q1: approx(5_000_000)}
+
+    def test_a_quarter_missing_from_the_base_is_absent(self):
+        """No base, no quarter: the addend alone is not a capex number."""
+        values = composite_values(
+            tag_payload(
+                {
+                    PPE: [fact(Q1, 5_000_000)],
+                    DEVELOP_SW: [fact(Q1, 3_000_000), fact(Q2, 3_500_000)],
+                }
+            ),
+            "capex",
+        )
+        assert Q2 not in values
+        assert values[Q1] == approx(8_000_000)
+
+    def test_an_unfiled_addend_quarter_counts_as_zero(self):
+        """A quarter that capitalized no software simply omits the tag."""
+        values = composite_values(
+            tag_payload(
+                {
+                    PPE: [fact(Q1, 5_000_000), fact(Q2, 6_000_000)],
+                    DEVELOP_SW: [fact(Q1, 3_000_000)],
+                }
+            ),
+            "capex",
+        )
+        assert values[Q1] == approx(8_000_000)
+        assert values[Q2] == approx(6_000_000)
+
+    def test_a_filed_but_underivable_addend_quarter_drops_the_quarter(self):
+        """A 6-month YTD with no Q1 point to difference: unknown, not zero."""
+        values = composite_values(
+            tag_payload(
+                {
+                    PPE: [fact(Q1, 5_000_000), fact(Q2, 6_000_000)],
+                    DEVELOP_SW: [fact(Q2, 7_000_000, start=_STARTS[Q1])],
+                }
+            ),
+            "capex",
+        )
+        assert Q2 not in values
+        assert values[Q1] == approx(5_000_000)
+
+    def test_productive_assets_is_an_alternative_base_not_an_addend(self):
+        """Both tags filed: PP&E wins and ProductiveAssets is not added on top."""
+        values = composite_values(
+            tag_payload(
+                {
+                    PPE: [fact(Q1, 5_000_000)],
+                    PRODUCTIVE: [fact(Q1, 7_000_000)],
+                }
+            ),
+            "capex",
+        )
+        assert values[Q1] == approx(5_000_000)
+
+    def test_productive_assets_carries_the_base_when_ppe_is_absent(self):
+        values = composite_values(
+            tag_payload(
+                {
+                    PRODUCTIVE: [fact(Q1, 7_000_000)],
+                    DEVELOP_SW: [fact(Q1, 1_000_000)],
+                }
+            ),
+            "capex",
+        )
+        assert values[Q1] == approx(8_000_000)
+
+    def test_no_base_tag_at_all_yields_nothing(self):
+        assert composite_values(tag_payload({DEVELOP_SW: [fact(Q1, 1_000_000)]}), "capex") == {}
+
+    def test_components_are_derived_before_summing(self):
+        """PP&E files YTD, software files per quarter: differencing comes first."""
+        values = composite_values(
+            tag_payload(
+                {
+                    PPE: [
+                        fact(Q1, 5_000_000),
+                        fact(Q2, 11_000_000, start=_STARTS[Q1]),
+                    ],
+                    DEVELOP_SW: [fact(Q1, 1_000_000), fact(Q2, 2_000_000)],
+                }
+            ),
+            "capex",
+        )
+        assert values[Q1] == approx(6_000_000)
+        assert values[Q2] == approx(8_000_000)  # (11 - 5) + 2
+
+    def test_the_composite_reaches_the_canonical_frame(self):
+        frame = canonical_from_companyfacts(
+            tag_payload(
+                {
+                    PPE: [fact(Q1, 5_000_000)],
+                    INTERNAL_SW: [fact(Q1, 4_000_000)],
+                }
+            )
+        )
+        assert frame.loc["capex", Q1] == approx(9_000_000)
+
+
+class TestTagShadowing:
+    """Verification-pass regression (live case: PANW). A tag can carry facts
+    yet derive zero quarters (annual-only "Revenues" shells); precedence must
+    sit on derived quarters or the shell tag shadows the tag with the real
+    quarterly coverage and the field silently vanishes from the frame."""
+
+    def _annual_shell(self, value: float) -> dict:
+        return {
+            "start": "2024-02-01", "end": "2025-01-31", "val": value,
+            "form": "10-K", "filed": "2025-03-15",
+        }
+
+    def _payload(self):
+        return tag_payload({
+            "Revenues": [self._annual_shell(8_000.0)],
+            "RevenueFromContractWithCustomerExcludingAssessedTax": [
+                fact(Q1, 2_000.0), fact(Q2, 2_100.0),
+            ],
+        })
+
+    def test_field_values_skips_shell_tag(self):
+        from sentinel.data.edgar import field_values
+
+        values = field_values(self._payload(), "revenue")
+        assert values == {Q1: 2_000.0, Q2: 2_100.0}
+
+    def test_canonical_frame_carries_the_field(self):
+        frame = canonical_from_companyfacts(self._payload())
+        assert pd.notna(frame.loc["revenue", Q2])
+
+    def test_composite_base_skips_shell_tag(self):
+        payload = tag_payload({
+            PPE: [self._annual_shell(400.0)],
+            PRODUCTIVE: [fact(Q1, 90.0)],
+        })
+        assert composite_values(payload, "capex") == {Q1: 90.0}
+
+
+class TestCompositeBaseCoverage:
+    """Verification-pass regression (live case: PANW). Base alternatives pick
+    by derivable-quarter coverage, not first-derives-anything: a single stray
+    PP&E quarter must not shadow a deep ProductiveAssets series."""
+
+    def test_deeper_base_wins_over_stray_quarter(self):
+        payload = tag_payload({
+            PPE: [fact(Q1, 999.0)],  # one stray quarter
+            PRODUCTIVE: [fact(Q1, 90.0), fact(Q2, 95.0), fact(Q3, 100.0)],
+        })
+        values = composite_values(payload, "capex")
+        assert values == {Q1: 90.0, Q2: 95.0, Q3: 100.0}
+
+    def test_equal_coverage_still_prefers_ppe(self):
+        payload = tag_payload({
+            PPE: [fact(Q1, 100.0)],
+            PRODUCTIVE: [fact(Q1, 130.0)],
+        })
+        assert composite_values(payload, "capex") == {Q1: 100.0}

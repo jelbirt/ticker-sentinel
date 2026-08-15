@@ -10,12 +10,17 @@
   `run_history.json`; discard that change rather than committing it.
 
 ## Active workstreams
-- `history-backfill` (branch `history-backfill`, worktree
-  `../ticker-sentinel.history-backfill`): one-time SEC EDGAR backfill tool
-  deepening the committed cache to >= 12 quarters per ticker behind a
-  verification gate, plus the R40-trend warm-up disclosure. Spec:
-  `tasks/spec-history-backfill.md`. Does NOT write `data/cache/` on this
-  branch; the `--apply` run is a separate owner-approved post-merge commit.
+- `backfill-amendment` (branch `backfill-amendment`, worktree
+  `../ticker-sentinel.backfill-amendment`): Amendment 1 to
+  `tasks/spec-history-backfill.md` (approved 2026-08-15), acting on the live
+  findings from PR #10 and the apply commit `2621e02`: narrow
+  `BACKFILL_FIELDS` to the r40_fcf trend inputs (drop `operating_income` and
+  `d_and_a` from derivation and from the gate), derive capex as a composite of
+  its base tag plus the software-capitalization tags, and let the merge fill
+  EMPTY cells inside the cached range so the pre-existing hollow yfinance
+  columns stop blocking every TTM window. Does NOT write `data/cache/` on this
+  branch; a fresh `--apply` run remains a separate owner-approved post-merge
+  commit.
 
   One branch per workstream via `scripts/new-worktree.sh <branch>`; main is the
   review inbox; merge back via PR.
@@ -45,6 +50,13 @@
 - `news-quality` (2026-08-15, merged as PR #8, worktree torn down): the dead
   company-name matching path revived by normalizing yfinance legal names to
   their trading name.
+- `history-backfill` (2026-08-15, merged as PR #10, apply commit `2621e02`
+  landed, worktree torn down): one-time SEC EDGAR backfill tool deepening the
+  committed cache behind a per-ticker verification gate, plus the R40-trend
+  warm-up disclosure and the bench keep-set fix. Spec:
+  `tasks/spec-history-backfill.md`. The live apply run accepted 6 tickers and
+  rejected 17; the follow-up findings are the `backfill-amendment` workstream
+  above.
 - `run-integrity` (2026-08-15, merged as PR #7, worktree torn down): audit
   fixes 1, 3, 7 shipped: TTM windows anchor on the newest complete quarter
   (bounded 2-column skip, "scored as of" note), windows spanning a >120-day
