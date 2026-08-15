@@ -15,6 +15,11 @@
   daily-report.yml gains a failure-alert issue, a concurrency group,
   artifact/cache steps that survive that non-zero exit, a rebase-and-retry
   cache push, and step-scoped secrets with no raw input interpolation.
+- `news-matching` (worktree `../ticker-sentinel.news-matching`): fix the short
+  ticker collision in news matching (`\bS\b` matched "U.S." and "S&P 500", so
+  every macro headline was attributed to SentinelOne), split the narrative
+  fabrication guard from the coverage check, restrict feed link hrefs to
+  http(s), and run the headless claude call with no tools.
 
   One branch per workstream via `scripts/new-worktree.sh <branch>`; main is the
   review inbox; merge back via PR.

@@ -45,6 +45,51 @@ class TestMatchesTicker:
         assert not matches_ticker(_entry("Oil prices climb"), "CRWD", company_name="CrowdStrike")
 
 
+class TestShortTickers:
+    """1-2 char symbols: a bare word boundary is not evidence of a mention.
+
+    `\\bS\\b` matches the S inside "U.S." and "S&P 500", so with S
+    (SentinelOne) on the watchlist every macro headline on the general feeds
+    was attributed to it.
+    """
+
+    def test_abbreviations_are_not_the_symbol_s(self):
+        assert not matches_ticker(_entry("U.S. stocks rally"), "S")
+        assert not matches_ticker(_entry("S&P 500 hits record high"), "S")
+        assert not matches_ticker(_entry("S. Korea trade data beats"), "S")
+        assert not matches_ticker(_entry("Markets climb", summary="The U.S. dollar slipped"), "S")
+
+    def test_explicit_symbol_context_matches(self):
+        assert matches_ticker(_entry("$S jumped after the breach report"), "S")
+        assert matches_ticker(_entry("SentinelOne (S) beats estimates"), "S")
+        assert matches_ticker(_entry("NYSE: S added to the index"), "S")
+        assert matches_ticker(_entry("NASDAQ:S halted briefly"), "S")
+        assert matches_ticker(_entry("NYSE:  S added (reformatted wire)"), "S")
+        assert matches_ticker(_entry("NYSE American: S begins trading"), "S")
+
+    def test_bare_two_char_symbol_no_longer_matches(self):
+        # deliberate tradeoff: a bare "DT rallies" headline on a general feed is
+        # given up, because accepting it also means accepting every
+        # "U.S."-style abbreviation. Per-ticker feeds skip matching entirely,
+        # so DT still gets its own coverage.
+        assert not matches_ticker(_entry("DT rallies on cloud demand"), "DT")
+        assert matches_ticker(_entry("Dynatrace (DT) raises outlook"), "DT")
+
+    def test_company_name_path_is_unchanged(self):
+        # unchanged also means unchanged in its limits: the configured name has
+        # to appear verbatim, and yfinance supplies it with the legal suffix
+        # attached, so it is a partial recovery at best
+        assert matches_ticker(_entry("sentinelone wins federal deal"), "S", "SentinelOne")
+        assert matches_ticker(_entry("Dynatrace rallies on cloud demand"), "DT", "Dynatrace")
+        assert not matches_ticker(
+            _entry("SentinelOne wins federal deal"), "S", "SentinelOne, Inc."
+        )
+
+    def test_longer_tickers_keep_word_boundary_behavior(self):
+        assert matches_ticker(_entry("NET jumped 9% on AI enthusiasm"), "NET")
+        assert not matches_ticker(_entry("Company reports higher net income"), "NET")
+
+
 class TestMatchEntries:
     def test_multiple_tickers_and_entries(self):
         entries = [

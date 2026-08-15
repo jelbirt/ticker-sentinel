@@ -21,6 +21,7 @@ import re
 from datetime import datetime
 from urllib.parse import urlparse
 
+from sentinel.news.matching import SHORT_TICKER_MAX_LEN, ticker_pattern
 from sentinel.news.pipeline import NewsDigest, NewsItem
 
 _FONT = "font-family:Arial,Helvetica,sans-serif;"
@@ -28,6 +29,28 @@ _FONT = "font-family:Arial,Helvetica,sans-serif;"
 
 def _esc(text: str) -> str:
     return html.escape(text, quote=True)
+
+
+_LINK_STYLE = "color:#1f5fa8;text-decoration:none;"
+_SAFE_SCHEMES = {"http", "https"}
+
+
+def _link(url: str, text: str) -> str:
+    """Render `text` as a link, but only behind an http(s) URL.
+
+    Feed items carry attacker-controlled link fields: escaping alone would
+    happily produce href="javascript:alert(1)" or a data: URL. Anything outside
+    the scheme allowlist renders as escaped plain text, so the reader sees the
+    same words with nothing clickable behind them.
+    """
+    esc_text = _esc(text)
+    try:
+        scheme = urlparse(url).scheme.lower()
+    except ValueError:  # malformed URL (e.g. bad IPv6 literal)
+        return esc_text
+    if scheme not in _SAFE_SCHEMES:
+        return esc_text
+    return f'<a href="{_esc(url)}" style="{_LINK_STYLE}">{esc_text}</a>'
 
 
 def _domain(url: str) -> str:
@@ -63,8 +86,7 @@ def _headlines(
         lines = []
         for item in tn.items:
             lines.append(
-                f'<a href="{_esc(item.link)}" style="color:#1f5fa8;text-decoration:none;">'
-                f"{_esc(item.title)}</a> "
+                f"{_link(item.link, item.title)} "
                 f'<span style="font-size:11px;color:#8a94a0;">({_item_meta(item, digest.as_of)})</span>'
             )
         company = (
@@ -99,8 +121,7 @@ def _brief(
         more = f" · +{len(tn.items) - 1} more" if len(tn.items) > 1 else ""
         lines.append(
             f"<b>{_esc(tn.ticker)}</b>: "
-            f'<a href="{_esc(top.link)}" style="color:#1f5fa8;text-decoration:none;">'
-            f"{_esc(top.title)}</a> "
+            f"{_link(top.link, top.title)} "
             f'<span style="font-size:11px;color:#8a94a0;">({_item_meta(top, digest.as_of)}){_esc(more)}</span>'
         )
     return (
@@ -162,6 +183,29 @@ def _extract_report(text: str) -> str | None:
     return blocks[-1].strip() or None
 
 
+def _sentence_start_symbol(ticker: str) -> re.Pattern:
+    """Bare symbol opening a sentence or paragraph: start of text, start of a
+    line, or right after sentence-ending punctuation plus whitespace.
+
+    This is the shape a fabricated claim about a short ticker actually takes,
+    because the prompt tells the model to OPEN each paragraph with the symbol
+    ("S fell 30% after a breach."). The separator is deliberately loose (any run
+    of whitespace and quote characters, and any of .!?:; before it) so the
+    ordinary spelling variants of one sentence start all count: two spaces after
+    the period, an indented paragraph, a semicolon, an opening quote.
+
+    The trailing lookahead keeps the abbreviations that share the letter out of
+    it: "S&P 500" and "S. Korea" opening a sentence are prose, not a claim about
+    the symbol. Known limit: a symbol that is also a capitalized English word
+    ("A", "IT", "ON") would veto on ordinary prose at a sentence start. None of
+    the current watchlist or bench symbols are, but check that before adding
+    one.
+    """
+    return re.compile(
+        rf"(?:^\s*|(?<=[.!?:;])[\s\"']+){re.escape(ticker)}\b(?![&.])", re.MULTILINE
+    )
+
+
 def _narrative_valid(
     text: str, digest: NewsDigest, known_tickers: set[str] | None = None
 ) -> bool:
@@ -169,10 +213,26 @@ def _narrative_valid(
 
     Rejects a narrative that (a) drops a digest ticker entirely (neither its
     symbol nor company name appears — the sources footer would then point at
-    stories the prose never covered), or (b) mentions the SYMBOL of a known
+    stories the prose never covered), or (b) claims something about a known
     watchlist ticker that is NOT in today's digest — the model had no headlines
     for it, so any claim about it is fabricated. Peer mentions by company name
     (Oracle, Fortinet, ...) remain legitimate editorial comparison.
+
+    The two checks use DELIBERATELY different symbol tests, because a false
+    positive costs the opposite thing in each direction:
+    - COVERAGE stays permissive (bare word boundary or company name): the model
+      was handed this ticker's headlines and told to open its paragraph with
+      the symbol, so any plausible mention counts. A stricter test here would
+      veto good narratives (with S on the watchlist, every "U.S." sentence used
+      to look like proof, and every valid narrative without one looked like a
+      drop).
+    - FABRICATION stays strict-plus-sentence-start: the strict
+      matching.ticker_pattern (cashtag, parenthesized, exchange-prefixed) plus,
+      for 1-2 char symbols, the bare symbol at a sentence or paragraph start.
+      Strict alone would be near-vacuous for short symbols, since a fabricated
+      claim will read "S fell 30%..." at a paragraph opening, never "$S".
+      Bare-word-boundary alone would veto any narrative saying "U.S." or
+      "S&P 500" whenever S had no news that day.
     """
     for tn in digest.tickers:
         symbol_present = re.search(rf"\b{re.escape(tn.ticker)}\b", text)
@@ -182,7 +242,11 @@ def _narrative_valid(
     if known_tickers:
         in_digest = {tn.ticker for tn in digest.tickers}
         for ticker in known_tickers - in_digest:
-            if re.search(rf"\b{re.escape(ticker)}\b", text):
+            if ticker_pattern(ticker).search(text):
+                return False
+            if len(ticker) <= SHORT_TICKER_MAX_LEN and _sentence_start_symbol(
+                ticker
+            ).search(text):
                 return False
     return True
 
@@ -269,8 +333,7 @@ def _llm_brief(
     source_bits = []
     for tn in digest.tickers:
         links = " ".join(
-            f'<a href="{_esc(item.link)}" style="color:#1f5fa8;text-decoration:none;">[{i}]</a>'
-            for i, item in enumerate(tn.items, start=1)
+            _link(item.link, f"[{i}]") for i, item in enumerate(tn.items, start=1)
         )
         source_bits.append(f"{_esc(tn.ticker)} {links}")
     return (

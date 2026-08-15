@@ -91,7 +91,25 @@ class TestCallClaude:
         ]
         assert captured["env"]["CLAUDE_CODE_MAX_OUTPUT_TOKENS"] == llm.MAX_OUTPUT_TOKENS
         assert captured["env"]["MAX_THINKING_TOKENS"] == "0"
-        assert len(captured["cmd"]) == 8  # exactly one prompt arg — one call, no extras
+        assert captured["cmd"][-1] == "summarize this"
+        assert len(captured["cmd"]) == 11  # exactly one prompt arg — one call, no extras
+
+    def test_call_runs_with_no_tools(self, monkeypatch):
+        # feed text is attacker-controlled: the call must carry an empty
+        # built-in tool set and ignore ambient MCP config
+        captured = {}
+
+        def fake_run(cmd, **kwargs):
+            captured["cmd"] = cmd
+            return SimpleNamespace(returncode=0, stdout="prose", stderr="")
+
+        monkeypatch.setattr(subprocess, "run", fake_run)
+        llm.call_claude("summarize this", model="claude-sonnet-5")
+        cmd = captured["cmd"]
+        assert cmd[cmd.index("--tools") + 1] == ""   # "" disables every built-in tool
+        assert "--strict-mcp-config" in cmd
+        # the empty value must not be swallowed by the prompt slot
+        assert cmd.index("--tools") < cmd.index("--strict-mcp-config") < len(cmd) - 1
 
     def test_multi_message_answers_are_concatenated(self, monkeypatch):
         # the front-truncation bug: continuation turns split the answer across
@@ -284,6 +302,89 @@ class TestNarrativeValidation:
         )
         assert "DDOG collapsed" not in html
         assert any("fell back to 'headlines'" in n for n in notes)
+
+    def _render(self, digest, monkeypatch, narrative, known_tickers):
+        monkeypatch.setattr(llm, "call_claude", lambda *a, **k: f"<REPORT>{narrative}</REPORT>")
+        return render_news(
+            digest, "llm-brief", model="claude-sonnet-5", known_tickers=known_tickers
+        )
+
+    def test_macro_prose_does_not_look_like_a_short_ticker(self, digest, monkeypatch):
+        # S (SentinelOne) is on the watchlist but has no news today. A bare
+        # word boundary saw "U.S." and "S&P 500" as claims about S and vetoed
+        # every valid narrative that mentioned the macro backdrop.
+        html, notes = self._render(
+            digest, monkeypatch,
+            "CRWD beat estimates. U.S. markets rallied and the S&P 500 closed at a record.",
+            {"CRWD", "S"},
+        )
+        assert notes == []
+        assert "S&amp;P 500 closed at a record" in html
+
+    def test_cashtag_claim_about_absent_short_ticker_fails_open(self, digest, monkeypatch):
+        html, notes = self._render(
+            digest, monkeypatch, "CRWD beat estimates. $S collapsed 20%.", {"CRWD", "S"}
+        )
+        assert "collapsed 20%" not in html
+        assert any("fell back to 'headlines'" in n for n in notes)
+
+    def test_bare_short_ticker_opening_a_paragraph_fails_open(self, digest, monkeypatch):
+        # the prompt tells the model to OPEN each paragraph with the symbol, so
+        # this is the shape a fabricated claim about S actually takes
+        html, notes = self._render(
+            digest, monkeypatch,
+            "CRWD beat estimates.\n\nS fell 30% after a breach.",
+            {"CRWD", "S"},
+        )
+        assert "fell 30%" not in html
+        assert any("fell back to 'headlines'" in n for n in notes)
+
+    @pytest.mark.parametrize(
+        "narrative",
+        [
+            "CRWD beat estimates. S fell 30% after a breach.",
+            "CRWD beat estimates.  S fell 30% after a breach.",     # two spaces
+            "CRWD beat estimates.\n\n  S fell 30% after a breach.",  # indented
+            "CRWD beat estimates; S fell 30% after a breach.",       # semicolon
+            'CRWD beat estimates. "S fell 30%," analysts said.',     # quoted
+            "S fell 30% after a breach. CRWD beat estimates.",       # first thing said
+        ],
+    )
+    def test_sentence_start_claims_fail_open_in_every_spelling(
+        self, digest, monkeypatch, narrative
+    ):
+        # one sentence start has many spellings; all of them are the same claim
+        html, notes = self._render(digest, monkeypatch, narrative, {"CRWD", "S"})
+        assert "fell 30%" not in html
+        assert any("fell back to 'headlines'" in n for n in notes)
+
+    def test_short_ticker_in_the_digest_is_covered_by_the_bare_symbol(self, monkeypatch):
+        # coverage stays permissive: when S DOES have news, opening its
+        # paragraph with the bare symbol is exactly what the prompt asked for
+        s_digest = NewsDigest(
+            as_of=NOW,
+            tickers=[
+                TickerNews(
+                    ticker="S",
+                    company_name="SentinelOne",
+                    items=[
+                        NewsItem(
+                            title="SentinelOne lands a federal deal",
+                            link="https://news.example.com/s",
+                            source="https://feeds.example.com/top",
+                            published=NOW - timedelta(hours=3),
+                        )
+                    ],
+                )
+            ],
+            scanned=10,
+            matched=1,
+        )
+        html, notes = self._render(
+            s_digest, monkeypatch, "S won a federal contract, its largest to date.", {"S", "CRWD"}
+        )
+        assert notes == []
+        assert "S won a federal contract" in html
 
     def test_peer_mention_by_company_name_is_legitimate(self, digest, monkeypatch):
         monkeypatch.setattr(
