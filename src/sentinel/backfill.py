@@ -32,7 +32,11 @@ import pandas as pd
 
 from sentinel.config import load_config
 from sentinel.data import cache
-from sentinel.data.edgar import BACKFILL_FIELDS, canonical_from_companyfacts
+from sentinel.data.edgar import (
+    BACKFILL_FIELDS,
+    canonical_from_companyfacts,
+    composite_base_candidates,
+)
 
 log = logging.getLogger("sentinel.backfill")
 
@@ -83,6 +87,7 @@ class BackfillResult:
     quarters_after: int = 0
     cells_filled: int = 0  # empty cells inside the cached range filled from EDGAR
     seeded: bool = False  # bench name whose yfinance overlap had to be fetched
+    base_note: str | None = None  # gate-selected composite base, when it mattered
 
     @property
     def gained(self) -> int:
@@ -217,6 +222,53 @@ def count_filled_cells(cached: pd.DataFrame, merged: pd.DataFrame) -> int:
     return int((cached.isna() & after.notna()).to_numpy().sum())
 
 
+# --- candidate selection -----------------------------------------------------
+
+
+def _select_candidate(
+    payload: dict[str, Any], cached: pd.DataFrame
+) -> tuple[pd.DataFrame, list[Comparison], str | None]:
+    """Build one aligned frame per viable composite-base choice and let the
+    verification gate pick.
+
+    No static preference selects the capex base correctly: PANW files a
+    single stray PP&E quarter next to the real ProductiveAssets series, while
+    FTNT's PP&E series is the one that reconciles with yfinance and its
+    deeper ProductiveAssets series does not. So every candidate base is tried
+    and the gate arbitrates: among candidates whose frames verify with ZERO
+    mismatches, the one with the most verified capex overlap checks wins
+    (absence of capex overlap must not beat presence: the PANW stray has no
+    overlap at all), then the deeper frame, then TAG-list order. When no
+    candidate verifies, the fewest-mismatch candidate is returned so the
+    report shows the closest miss.
+
+    Returns (aligned frame, its comparisons, base note for the report when a
+    choice actually happened).
+    """
+    candidates = composite_base_candidates(payload, "capex") or [None]
+    scored: list[tuple[tuple, pd.DataFrame, list[Comparison], str | None]] = []
+    for order, base in enumerate(candidates):
+        frame = canonical_from_companyfacts(
+            payload, composite_bases={"capex": base} if base else None
+        )
+        frame = align_columns(frame, cached.columns)
+        comps = compare(cached, frame)
+        mismatches = sum(1 for c in comps if not c.ok)
+        capex_checked = sum(1 for c in comps if c.field == "capex")
+        key = (
+            0 if mismatches == 0 else 1,   # verified candidates first
+            mismatches,                     # then closest miss
+            -capex_checked,                 # then most capex overlap verified
+            -frame.shape[1],                # then depth
+            order,                          # then tag order
+        )
+        note = f"capex base: {base}" if base and len(candidates) > 1 else None
+        scored.append((key, frame, comps, note))
+    scored.sort(key=lambda item: item[0])
+    _, frame, comps, note = scored[0]
+    return frame, comps, note
+
+
 # --- per-ticker orchestration ----------------------------------------------
 
 
@@ -245,7 +297,8 @@ def backfill_ticker(
 
     before = int(cached_df.shape[1])
     try:
-        edgar = canonical_from_companyfacts(fetch_facts(ticker))
+        payload = fetch_facts(ticker)
+        edgar, comparisons, base_note = _select_candidate(payload, cached_df)
     except Exception as exc:  # noqa: BLE001 - report and continue the sweep
         return BackfillResult(
             ticker, ERROR, reason=f"EDGAR fetch failed ({exc})",
@@ -256,12 +309,10 @@ def backfill_ticker(
             ticker, REJECT, reason="no quarterly facts derivable from EDGAR",
             quarters_before=before, quarters_after=before, seeded=seeded,
         )
-
-    edgar = align_columns(edgar, cached_df.columns)
-    comparisons = compare(cached_df, edgar)
     result = BackfillResult(
         ticker, REJECT, comparisons=comparisons,
         quarters_before=before, quarters_after=before, seeded=seeded,
+        base_note=base_note,
     )
     if not comparisons:
         result.reason = "no overlapping quarters to verify against"
@@ -360,6 +411,8 @@ def format_report(results: list[BackfillResult], apply: bool = False) -> str:
                 f"{seeded}"
             )
         lines.append(head)
+        if r.base_note:
+            lines.append(f"       {r.base_note}")
         if r.reason:
             lines.append(f"       reason: {r.reason}")
         matched = len(r.comparisons) - len(r.mismatches)

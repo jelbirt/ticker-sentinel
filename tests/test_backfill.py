@@ -490,3 +490,86 @@ class TestReport:
         facts, yf = _fetchers(series(8, 400_000_000.0))
         text = format_report([backfill_ticker("AAA", facts, yf)])
         assert "Below target depth after accept: AAA" in text
+
+
+class TestGateArbitratedBase:
+    """Verification-pass regression (live cases: PANW and FTNT are mirror
+    images). The capex base must be chosen by the verification gate, not by a
+    static preference: every viable base becomes a candidate frame, and the
+    one that reconciles with the cached yfinance overlap wins."""
+
+    def _cached(self, capex_values):
+        cols = pd.to_datetime(["2026-04-30", "2026-01-31", "2025-10-31", "2025-07-31"])
+        df = pd.DataFrame(100.0, index=CANONICAL_FIELDS, columns=cols)
+        df.loc["capex"] = capex_values
+        return df
+
+    def _payload(self, ppe_entries, productive_entries):
+        starts = {"2026-04-30": "2026-02-01", "2026-01-31": "2025-11-01",
+                  "2025-10-31": "2025-08-01", "2025-07-31": "2025-05-01",
+                  "2022-04-30": "2022-02-01"}
+        def entries(pairs):
+            return [
+                {"start": starts[end], "end": end, "val": val,
+                 "form": "10-Q", "filed": end}
+                for end, val in pairs
+            ]
+        tags = {
+            "RevenueFromContractWithCustomerExcludingAssessedTax": entries(
+                [("2026-04-30", 100.0), ("2026-01-31", 100.0),
+                 ("2025-10-31", 100.0), ("2025-07-31", 100.0)]),
+            "NetCashProvidedByUsedInOperatingActivities": entries(
+                [("2026-04-30", 100.0), ("2026-01-31", 100.0),
+                 ("2025-10-31", 100.0), ("2025-07-31", 100.0)]),
+            "ShareBasedCompensation": entries(
+                [("2026-04-30", 100.0), ("2026-01-31", 100.0),
+                 ("2025-10-31", 100.0), ("2025-07-31", 100.0)]),
+        }
+        if ppe_entries:
+            tags["PaymentsToAcquirePropertyPlantAndEquipment"] = entries(ppe_entries)
+        if productive_entries:
+            tags["PaymentsToAcquireProductiveAssets"] = entries(productive_entries)
+        return {"facts": {"us-gaap": {t: {"units": {"USD": e}} for t, e in tags.items()}}}
+
+    def _run(self, payload, cached):
+        return backfill_ticker(
+            "XXXX", lambda t: payload, lambda t: (cached, {}), apply=False
+        )
+
+    def test_ftnt_shape_ppe_reconciles_deeper_base_does_not(self):
+        # magnitudes matter: values must dwarf MATCH_ABS_FLOOR or every
+        # candidate trivially verifies through the near-zero floor
+        cached = self._cached([100e6, 100e6, 100e6, 100e6])
+        payload = self._payload(
+            ppe_entries=[("2026-04-30", 100e6), ("2026-01-31", 100e6),
+                         ("2025-10-31", 100e6), ("2025-07-31", 100e6)],
+            productive_entries=[("2026-04-30", 15e6), ("2026-01-31", 15e6),
+                                ("2025-10-31", 15e6), ("2025-07-31", 15e6),
+                                ("2022-04-30", 15e6)],  # deeper but wrong
+        )
+        result = self._run(payload, cached)
+        assert result.status == "ACCEPT"
+        assert "PropertyPlantAndEquipment" in (result.base_note or "")
+
+    def test_panw_shape_stray_ppe_loses_to_verified_deep_base(self):
+        cached = self._cached([90e6, 90e6, 90e6, 90e6])
+        payload = self._payload(
+            ppe_entries=[("2022-04-30", 999e6)],  # one stray, no overlap at all
+            productive_entries=[("2026-04-30", 90e6), ("2026-01-31", 90e6),
+                                ("2025-10-31", 90e6), ("2025-07-31", 90e6)],
+        )
+        result = self._run(payload, cached)
+        assert result.status == "ACCEPT"
+        assert "ProductiveAssets" in (result.base_note or "")
+
+    def test_no_candidate_reconciles_rejects_with_closest_miss(self):
+        cached = self._cached([100e6, 100e6, 100e6, 100e6])
+        payload = self._payload(
+            ppe_entries=[("2026-04-30", 55e6), ("2026-01-31", 55e6),
+                         ("2025-10-31", 55e6), ("2025-07-31", 55e6)],
+            productive_entries=[("2026-04-30", 15e6), ("2026-01-31", 15e6),
+                                ("2025-10-31", 15e6), ("2025-07-31", 15e6)],
+        )
+        result = self._run(payload, cached)
+        assert result.status == "REJECT"
+        assert len(result.mismatches) == 4  # the closest miss is reported

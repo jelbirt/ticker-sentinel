@@ -285,7 +285,9 @@ def quarterly_values(facts: list[Fact], additive: bool = True) -> dict[pd.Timest
     return out
 
 
-def composite_values(payload: dict[str, Any], field: str) -> dict[pd.Timestamp, float]:
+def composite_values(
+    payload: dict[str, Any], field: str, base_tag: str | None = None
+) -> dict[pd.Timestamp, float]:
     """Per-quarter values for a COMPOSITE field: base tag plus its addends.
 
     Each component tag gets its own independent quarterly derivation (the same
@@ -314,18 +316,22 @@ def composite_values(payload: dict[str, Any], field: str) -> dict[pd.Timestamp, 
     """
     base_tags, addend_tags = COMPOSITE_TAGS[field]
     out: dict[pd.Timestamp, float] = {}
-    # alternatives, not addends: the base with the MOST derivable quarters
-    # wins (ties break toward the earlier tag). "First tag that derives
-    # anything" is not enough: PANW files a single stray PP&E quarter next to
-    # a 59-quarter PaymentsToAcquireProductiveAssets series, and preferring
-    # the stray would blank capex across its whole history. Whichever base
-    # wins, addends are still summed on top and nothing is double counted.
-    best: dict[pd.Timestamp, float] = {}
-    for tag in base_tags:
-        values = quarterly_values(facts_for_tag(payload, tag, field))
-        if len(values) > len(best):
-            best = values
-    out = {end: abs(v) for end, v in best.items()}
+    # alternatives, not addends. No static preference can pick correctly:
+    # PANW files a single stray PP&E quarter next to the real 59-quarter
+    # ProductiveAssets series, while FTNT's PP&E series is the one that
+    # reconciles with yfinance and its deeper ProductiveAssets series does
+    # not. When `base_tag` is pinned (the backfill tries each candidate and
+    # lets the verification gate choose), that tag is used; unpinned callers
+    # get the deepest-coverage base (ties toward the earlier tag).
+    if base_tag is not None:
+        chosen = quarterly_values(facts_for_tag(payload, base_tag, field))
+    else:
+        chosen = {}
+        for tag in base_tags:
+            values = quarterly_values(facts_for_tag(payload, tag, field))
+            if len(values) > len(chosen):
+                chosen = values
+    out = {end: abs(v) for end, v in chosen.items()}
     if not out:
         return {}
 
@@ -343,7 +349,9 @@ def composite_values(payload: dict[str, Any], field: str) -> dict[pd.Timestamp, 
     return out
 
 
-def canonical_from_companyfacts(payload: dict[str, Any]) -> pd.DataFrame:
+def canonical_from_companyfacts(
+    payload: dict[str, Any], composite_bases: dict[str, str] | None = None
+) -> pd.DataFrame:
     """companyfacts JSON -> canonical statements frame (newest quarter first).
 
     Rows are CANONICAL_FIELDS so the frame merges directly with a cached
@@ -353,7 +361,9 @@ def canonical_from_companyfacts(payload: dict[str, Any]) -> pd.DataFrame:
     series: dict[str, dict[pd.Timestamp, float]] = {}
     for field in BACKFILL_FIELDS:
         if field in COMPOSITE_TAGS:
-            series[field] = composite_values(payload, field)
+            series[field] = composite_values(
+                payload, field, (composite_bases or {}).get(field)
+            )
             continue
         series[field] = field_values(payload, field)
 
@@ -402,3 +412,17 @@ def fetch_companyfacts(
 ) -> dict[str, Any]:
     session = session or make_session()
     return _get_json(COMPANYFACTS_URL.format(cik=cik), session, throttle_s)
+
+
+def composite_base_candidates(payload: dict[str, Any], field: str) -> list[str]:
+    """Base tags with at least one derivable quarter, in TAG-list order.
+
+    The backfill builds one frame per candidate and lets the verification
+    gate pick the base that reconciles with the cached yfinance values;
+    see backfill.backfill_ticker.
+    """
+    base_tags, _ = COMPOSITE_TAGS[field]
+    return [
+        tag for tag in base_tags
+        if quarterly_values(facts_for_tag(payload, tag, field))
+    ]
