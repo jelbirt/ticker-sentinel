@@ -10,8 +10,14 @@
   `run_history.json`; discard that change rather than committing it.
 
 ## Active workstreams
-- (none). One branch per workstream via `scripts/new-worktree.sh <branch>`;
-  main is the review inbox; merge back via PR.
+- `ops-alerting` (worktree `../ticker-sentinel.ops-alerting`): make silent
+  failures loud: a requested email that does not send exits non-zero, and
+  daily-report.yml gains a failure-alert issue, a concurrency group,
+  artifact/cache steps that survive that non-zero exit, a rebase-and-retry
+  cache push, and step-scoped secrets with no raw input interpolation.
+
+  One branch per workstream via `scripts/new-worktree.sh <branch>`; main is the
+  review inbox; merge back via PR.
 
 ## Done
 - `weekly-refresh-digest` (2026-08-14, merged as PR #2, worktree torn down):

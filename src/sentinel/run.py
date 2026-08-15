@@ -328,6 +328,14 @@ def main(argv: list[str] | None = None) -> int:
             subject=f"Ticker Sentinel · {date.today().isoformat()}",
             images={f"spark_{t}": png for t, png in sparks.items()},
         )
+        if not sent:
+            # a requested email that never left is a failed run, and a silent
+            # green job is worse than a red one: exit non-zero so the workflow
+            # alerts. The report files and the run history are already written
+            # above, so failing here loses nothing (the workflow still uploads
+            # the report artifact and commits the day's cache baseline).
+            log.error("EMAIL NOT SENT: %s", status)
+            return 1
         log.info(status)
     return 0
 

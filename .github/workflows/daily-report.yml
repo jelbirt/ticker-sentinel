@@ -1,8 +1,8 @@
 name: daily-report
 on:
   schedule:
-    # 10:00 UTC = 6:00am EDT / 5:00am EST — pre-market briefing on the prior
-    # session's close. Tue–Sat so Friday's session arrives Saturday morning.
+    # 10:00 UTC = 6:00am EDT / 5:00am EST, pre-market briefing on the prior
+    # session's close. Tue-Sat so Friday's session arrives Saturday morning.
     - cron: "0 10 * * 2-6"
   workflow_dispatch:
     inputs:
@@ -12,24 +12,38 @@ on:
 
 permissions:
   contents: write   # scheduled cache + run-history commit
+  issues: write     # failure-alert issue
+
+# serialize runs: a dispatch overlapping the cron run would send the same
+# report twice and double the data-provider calls that Yahoo already rate-limits
+concurrency:
+  group: daily-report
+  cancel-in-progress: false
 
 jobs:
   run:
     runs-on: ubuntu-latest
     env:
-      # subscription auth for the llm-brief news style (claude setup-token);
-      # absent -> the install step is skipped and the style fails open to headlines
-      CLAUDE_CODE_OAUTH_TOKEN: ${{ secrets.CLAUDE_CODE_OAUTH_TOKEN }}
+      # presence flag only, never the token itself: the `secrets` context is
+      # not available in a step `if`, but `env` is, and this keeps the token
+      # scoped to the one step that needs it
+      CLAUDE_AUTH_PRESENT: ${{ secrets.CLAUDE_CODE_OAUTH_TOKEN != '' }}
     steps:
       - uses: actions/checkout@v4
       - uses: actions/setup-python@v5
         with: {python-version: "3.12", cache: pip}
       - run: pip install -e .
       - name: install Claude Code CLI (LLM news style)
-        if: env.CLAUDE_CODE_OAUTH_TOKEN != ''
+        # absent token -> this step is skipped and the style fails open to headlines
+        if: ${{ env.CLAUDE_AUTH_PRESENT == 'true' }}
         run: npm install -g @anthropic-ai/claude-code
-      - run: python -m sentinel.run ${{ inputs.tickers && format('--tickers {0}', inputs.tickers) || '' }} ${{ github.event_name == 'workflow_dispatch' && inputs.send_email == false && '--no-email' || '' }} ${{ inputs.deep && '--deep' || '' }}
+      - run: python -m sentinel.run ${TICKERS:+--tickers "$TICKERS"} ${{ github.event_name == 'workflow_dispatch' && inputs.send_email == false && '--no-email' || '' }} ${{ inputs.deep && '--deep' || '' }}
         env:
+          # a dispatch-supplied ticker list is untrusted text: pass it through the
+          # environment so it is never interpolated into the command line
+          TICKERS: ${{ inputs.tickers }}
+          # subscription auth for the llm-brief news style (claude setup-token)
+          CLAUDE_CODE_OAUTH_TOKEN: ${{ secrets.CLAUDE_CODE_OAUTH_TOKEN }}
           SMTP_HOST: ${{ secrets.SMTP_HOST }}
           SMTP_PORT: ${{ secrets.SMTP_PORT }}
           SMTP_USER: ${{ secrets.SMTP_USER }}
@@ -37,11 +51,69 @@ jobs:
           RECIPIENT_EMAILS: ${{ secrets.RECIPIENT_EMAILS }}
           TWELVEDATA_API_KEY: ${{ secrets.TWELVEDATA_API_KEY }}
           FINNHUB_API_KEY: ${{ secrets.FINNHUB_API_KEY }}
+      # an email-send failure exits non-zero after the report and run history are
+      # written, so both of the next steps still run and keep the day's outputs
       - uses: actions/upload-artifact@v4
-        with: {name: report, path: reports/}
+        if: ${{ !cancelled() }}
+        with: {name: report, path: reports/, if-no-files-found: ignore}
       - name: refresh fundamentals cache commit (state-changing runs)
-        if: github.event_name == 'schedule'
+        if: ${{ !cancelled() && github.event_name == 'schedule' }}
         run: |
-          git config user.name sentinel-bot && git config user.email bot@users.noreply.github.com
+          # !cancelled() covers every failure, not just an unsent email, so
+          # confirm the run got as far as a written report before committing
+          # its cache: a crash mid-refresh must not publish a partial baseline
+          if ! ls reports/*/report.html >/dev/null 2>&1; then
+            echo "no report produced, skipping cache commit"
+            exit 0
+          fi
+          git config user.name sentinel-bot
+          git config user.email bot@users.noreply.github.com
           git add data/cache
-          git diff --cached --quiet || { git commit -m "cache: refresh fundamentals" && git push; }
+          if git diff --cached --quiet; then
+            echo "cache unchanged, nothing to commit"
+            exit 0
+          fi
+          git commit -m "cache: refresh fundamentals"
+          # a merge to main landing after checkout makes a bare push fail and
+          # loses the day's baseline, so rebase onto main first, then retry once
+          if git pull --rebase origin main && git push; then
+            exit 0
+          fi
+          # one retry: it clears a push that lost a race, not a real conflict
+          # inside data/cache, which stays red for the owner to resolve
+          echo "cache push failed, retrying once after a fresh rebase"
+          git rebase --abort 2>/dev/null || true
+          git pull --rebase origin main
+          git push
+      - name: alert on failure
+        if: ${{ failure() }}
+        env:
+          GH_TOKEN: ${{ github.token }}
+          OWNER: ${{ github.repository_owner }}
+        run: |
+          # every gh call here is best-effort: a label or assignee problem must
+          # not swallow the alert, which is the only signal this run went red
+          gh label create run-failure --repo "$GITHUB_REPOSITORY" --force \
+            --color b60205 --description "Automated run failure" || true
+          run_url="$GITHUB_SERVER_URL/$GITHUB_REPOSITORY/actions/runs/$GITHUB_RUN_ID"
+          body=$(printf '%s\n' \
+            "The daily-report run failed." \
+            "" \
+            "- Run: $run_url" \
+            "- Event: $GITHUB_EVENT_NAME" \
+            "- Time (UTC): $(date -u '+%Y-%m-%d %H:%M:%S')" \
+            "" \
+            "An email delivery failure exits non-zero after the report is written, so the report artifact and the day's cache commit may still have landed; check the run log for the reason.")
+          existing=$(gh issue list --repo "$GITHUB_REPOSITORY" --label run-failure \
+            --state open --limit 1 --json number --jq '.[0].number // empty' || true)
+          if [ -n "$existing" ]; then
+            if gh issue comment "$existing" --repo "$GITHUB_REPOSITORY" --body "$body"; then
+              exit 0
+            fi
+            echo "comment on issue #$existing failed, opening a new issue instead"
+          fi
+          title="Daily report run failure ($(date -u +%F))"
+          gh issue create --repo "$GITHUB_REPOSITORY" --title "$title" --body "$body" \
+            --label run-failure --assignee "$OWNER" \
+          || gh issue create --repo "$GITHUB_REPOSITORY" --title "$title" --body "$body" \
+            --label run-failure
