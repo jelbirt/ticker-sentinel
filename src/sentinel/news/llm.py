@@ -2,6 +2,10 @@
 
 Guardrails, in order of defense:
 - exactly ONE subprocess call per run, no retries, no loops
+- NO tools: the prompt carries attacker-controlled feed text, so the call runs
+  with the built-in tool set emptied (`--tools ""`) and MCP servers ignored
+  (`--strict-mcp-config` with no config supplied). Injected instructions in a
+  headline have nothing to reach for; the model can only write prose.
 - prompt hard-truncated before it leaves this module
 - output capped via CLAUDE_CODE_MAX_OUTPUT_TOKENS + a subprocess timeout
 - every failure mode (CLI missing, auth expired, rate-limited, timeout, empty
@@ -65,6 +69,10 @@ def call_claude(prompt: str, model: str, timeout: int = TIMEOUT_SECONDS) -> str 
     cmd = [
         "claude", "-p", "--model", model,
         "--output-format", "stream-json", "--verbose",  # stream-json requires verbose
+        # Defense in depth against prompt injection from feed content: an empty
+        # built-in tool set, and no MCP servers loaded from ambient config.
+        "--tools", "",
+        "--strict-mcp-config",
         prompt[:MAX_PROMPT_CHARS],
     ]
     env = {

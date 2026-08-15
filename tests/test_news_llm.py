@@ -91,7 +91,25 @@ class TestCallClaude:
         ]
         assert captured["env"]["CLAUDE_CODE_MAX_OUTPUT_TOKENS"] == llm.MAX_OUTPUT_TOKENS
         assert captured["env"]["MAX_THINKING_TOKENS"] == "0"
-        assert len(captured["cmd"]) == 8  # exactly one prompt arg — one call, no extras
+        assert captured["cmd"][-1] == "summarize this"
+        assert len(captured["cmd"]) == 11  # exactly one prompt arg — one call, no extras
+
+    def test_call_runs_with_no_tools(self, monkeypatch):
+        # feed text is attacker-controlled: the call must carry an empty
+        # built-in tool set and ignore ambient MCP config
+        captured = {}
+
+        def fake_run(cmd, **kwargs):
+            captured["cmd"] = cmd
+            return SimpleNamespace(returncode=0, stdout="prose", stderr="")
+
+        monkeypatch.setattr(subprocess, "run", fake_run)
+        llm.call_claude("summarize this", model="claude-sonnet-5")
+        cmd = captured["cmd"]
+        assert cmd[cmd.index("--tools") + 1] == ""   # "" disables every built-in tool
+        assert "--strict-mcp-config" in cmd
+        # the empty value must not be swallowed by the prompt slot
+        assert cmd.index("--tools") < cmd.index("--strict-mcp-config") < len(cmd) - 1
 
     def test_multi_message_answers_are_concatenated(self, monkeypatch):
         # the front-truncation bug: continuation turns split the answer across
