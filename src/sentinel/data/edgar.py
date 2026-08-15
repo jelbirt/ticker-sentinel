@@ -42,8 +42,30 @@ DEFAULT_USER_AGENT = (
 THROTTLE_S = 0.2  # ~5 req/s, half the SEC fair-access ceiling
 TIMEOUT_S = 30
 
+# Amendment 1: capex is a COMPOSITE field, not a first-match-wins alias list.
+# yfinance's "Capital Expenditure" for SaaS filers bundles capitalized software
+# development with plain PP&E purchases, so the single
+# PaymentsToAcquirePropertyPlantAndEquipment tag reads 7 to 97 percent low and
+# fails the verification gate on names that are otherwise clean.
+#
+# BASE tags are alternatives to each other (first present wins);
+# PaymentsToAcquireProductiveAssets is a broader BASE some filers use INSTEAD of
+# PP&E, never an addend on top of it, so preferring PP&E cannot double count.
+CAPEX_BASE_TAGS = [
+    "PaymentsToAcquirePropertyPlantAndEquipment",
+    "PaymentsToAcquireProductiveAssets",
+]
+# ADDEND tags are summed on top of the base when the filer reports them.
+CAPEX_ADDEND_TAGS = [
+    "PaymentsToDevelopSoftware",
+    "PaymentsToCapitalizeInternalUseSoftware",
+    "PaymentsToAcquireIntangibleAssets",
+]
+
 # canonical field -> us-gaap tags, first tag with any usable facts wins
 # (same alias semantics as the yfinance ALIASES map in data/fundamentals.py).
+# `capex` carries only its BASE tags here; its addends go through
+# COMPOSITE_TAGS below.
 TAG_MAP: dict[str, list[str]] = {
     "revenue": [
         "Revenues",
@@ -61,19 +83,30 @@ TAG_MAP: dict[str, list[str]] = {
         "NetCashProvidedByUsedInOperatingActivities",
         "NetCashProvidedByUsedInOperatingActivitiesContinuingOperations",
     ],
-    "capex": [
-        "PaymentsToAcquirePropertyPlantAndEquipment",
-        "PaymentsToAcquireProductiveAssets",
-    ],
+    "capex": CAPEX_BASE_TAGS,
     "sbc": ["ShareBasedCompensation"],
     "diluted_shares": ["WeightedAverageNumberOfDilutedSharesOutstanding"],
 }
 
-BACKFILL_FIELDS = list(TAG_MAP)
+# canonical field -> (base tag alternatives, addend tags summed on top)
+COMPOSITE_TAGS: dict[str, tuple[list[str], list[str]]] = {
+    "capex": (CAPEX_BASE_TAGS, CAPEX_ADDEND_TAGS),
+}
+
+# Amendment 1 (approved 2026-08-15) narrows the backfilled set. Historical
+# quarters exist only to feed r40_fcf trend and growth, which read revenue,
+# ocf and capex (plus sbc for the SBC-adjusted level and diluted_shares for
+# dilution). `operating_income` and `d_and_a` are read only from the NEWEST
+# quarter, which always comes from yfinance, so backfilling them bought
+# nothing while their as-filed-vs-normalized mismatches rejected whole
+# tickers. Their TAG_MAP entries stay as documentation of the EDGAR tags (and
+# keep `facts_for_field` usable for ad-hoc inspection); nothing derives them.
+BACKFILL_FIELDS = ["revenue", "ocf", "capex", "sbc", "diluted_shares"]
 
 # Deliberately NOT backfilled: `ebitda` (build_ttm's OpInc + D&A fallback
-# computes it), `total_debt` and `cash` (EV uses only the newest reading, so
-# backfilled quarters keep NaN).
+# computes it from the newest quarter), `operating_income` and `d_and_a` (see
+# above), `total_debt` and `cash` (EV uses only the newest reading). All of
+# them keep NaN in backfilled quarters.
 
 # Weighted averages are not flows: differencing a year-to-date figure or
 # subtracting three quarters from a fiscal year produces nonsense for them.
@@ -131,22 +164,27 @@ def _entries_for_tag(payload: dict[str, Any], tag: str, field: str) -> list[dict
     return next(iter(units.values()))
 
 
+def facts_for_tag(payload: dict[str, Any], tag: str, field: str) -> list[Fact]:
+    """Periodic-report, non-instant facts for one us-gaap tag."""
+    facts = [
+        Fact(
+            start=pd.Timestamp(e["start"]) if e.get("start") else None,
+            end=pd.Timestamp(e["end"]),
+            value=float(e["val"]),
+            filed=pd.Timestamp(e["filed"]),
+            form=str(e.get("form", "")),
+            period_type=classify_period(e.get("start"), e["end"]),
+        )
+        for e in _entries_for_tag(payload, tag, field)
+        if e.get("form") in _PERIODIC_FORMS and e.get("val") is not None
+    ]
+    return [f for f in facts if f.period_type != "instant"]
+
+
 def facts_for_field(payload: dict[str, Any], field: str) -> list[Fact]:
     """Periodic-report facts for one canonical field; first matching tag wins."""
     for tag in TAG_MAP[field]:
-        facts = [
-            Fact(
-                start=pd.Timestamp(e["start"]) if e.get("start") else None,
-                end=pd.Timestamp(e["end"]),
-                value=float(e["val"]),
-                filed=pd.Timestamp(e["filed"]),
-                form=str(e.get("form", "")),
-                period_type=classify_period(e.get("start"), e["end"]),
-            )
-            for e in _entries_for_tag(payload, tag, field)
-            if e.get("form") in _PERIODIC_FORMS and e.get("val") is not None
-        ]
-        facts = [f for f in facts if f.period_type != "instant"]
+        facts = facts_for_tag(payload, tag, field)
         if facts:
             return facts
     return []
@@ -225,15 +263,69 @@ def quarterly_values(facts: list[Fact], additive: bool = True) -> dict[pd.Timest
     return out
 
 
+def composite_values(payload: dict[str, Any], field: str) -> dict[pd.Timestamp, float]:
+    """Per-quarter values for a COMPOSITE field: base tag plus its addends.
+
+    Each component tag gets its own independent quarterly derivation (the same
+    YTD differencing as any other field), and the components are summed per
+    quarter. Deriving first and summing second is the only correct order: a
+    filer can report PP&E purchases per quarter while filing capitalized
+    software year-to-date, so summing the raw facts would mix period types.
+
+    Two rules decide what a missing quarter means, and they are deliberately
+    asymmetric:
+
+    * BASE missing for a quarter -> that quarter is absent (NaN downstream).
+      The base is the bulk of the number; without it there is nothing to
+      report.
+    * ADDEND missing for a quarter -> treated as 0, but ONLY when the addend
+      tag files nothing at all ending on that period end. A filer that
+      capitalizes no software in a quarter simply omits the tag, and reading
+      that as 0 is what the cash flow statement means. When the tag DOES file
+      for that period end and the quarter still could not be derived (a
+      missing intermediate YTD point), the addend is unknown rather than zero,
+      so the whole quarter is dropped instead of silently understated.
+
+    The verification gate stays the arbiter either way: a composite that does
+    not reconcile with the cached yfinance value inside the D2 tolerance still
+    rejects the ticker.
+    """
+    base_tags, addend_tags = COMPOSITE_TAGS[field]
+    out: dict[pd.Timestamp, float] = {}
+    for tag in base_tags:  # alternatives, not addends: the first present wins
+        facts = facts_for_tag(payload, tag, field)
+        if facts:
+            out = {end: abs(v) for end, v in quarterly_values(facts).items()}
+            break
+    if not out:
+        return {}
+
+    for tag in addend_tags:
+        facts = facts_for_tag(payload, tag, field)
+        if not facts:
+            continue  # tag never filed: contributes 0 to every quarter
+        values = quarterly_values(facts)
+        filed_ends = {f.end for f in facts}
+        for quarter in list(out):
+            if quarter in values:
+                out[quarter] += abs(values[quarter])
+            elif quarter in filed_ends:
+                del out[quarter]  # filed for this period but underivable
+    return out
+
+
 def canonical_from_companyfacts(payload: dict[str, Any]) -> pd.DataFrame:
     """companyfacts JSON -> canonical statements frame (newest quarter first).
 
     Rows are CANONICAL_FIELDS so the frame merges directly with a cached
-    yfinance frame; fields outside TAG_MAP stay NaN. Signs follow the cache
-    convention (capex as a positive magnitude).
+    yfinance frame; fields outside BACKFILL_FIELDS stay NaN. Signs follow the
+    cache convention (capex as a positive magnitude).
     """
     series: dict[str, dict[pd.Timestamp, float]] = {}
     for field in BACKFILL_FIELDS:
+        if field in COMPOSITE_TAGS:
+            series[field] = composite_values(payload, field)
+            continue
         series[field] = quarterly_values(
             facts_for_field(payload, field), additive=field not in NON_ADDITIVE_FIELDS
         )
