@@ -148,3 +148,127 @@ trend, and silence on an empty scorecard list.
 
 This branch must NOT modify `data/cache/` contents. The `--apply` run happens
 after the merge, as a separate owner-approved commit. The PR body repeats this.
+
+## Amendment 1 (approved 2026-08-15)
+
+Status: APPROVED 2026-08-15. Three changes, driven by the live dry run on PR
+#10 (6 accepts, 17 rejects) and by the apply commit `2621e02`. Everything above
+this heading is the original approved text and stays as filed; where the two
+disagree, this amendment governs.
+
+### Change 1: narrow the backfilled field set
+
+Historical quarters exist for exactly two consumers: `r40_fcf` trend and
+growth. Those read `revenue`, `ocf` and `capex`, plus `sbc` for the
+SBC-adjusted level and `diluted_shares` for dilution. `operating_income` and
+`d_and_a` are read only from the NEWEST quarter (the `ebitda` fallback in
+`build_ttm` and `op_margin`), which always comes from yfinance.
+
+`BACKFILL_FIELDS` therefore becomes `revenue`, `ocf`, `capex`, `sbc`,
+`diluted_shares`. Backfilled quarters keep NaN for `operating_income` and
+`d_and_a`, and those fields leave the verification gate entirely: nothing reads
+them historically, so their as-filed-vs-normalized mismatches must not reject a
+ticker whose trend inputs are clean.
+
+This dissolves the open "as-filed vs normalized operating income" question:
+there is no longer a comparison to reconcile.
+
+Judgment call, documented as required: the `TAG_MAP` entries for
+`operating_income` and `d_and_a` are KEPT, not removed. They are the
+documentation of which us-gaap tags those fields would come from, they keep
+`facts_for_field` usable for ad-hoc inspection, and re-widening the set later
+is then a one-line change. Nothing derives them: `canonical_from_companyfacts`
+iterates `BACKFILL_FIELDS`, not `TAG_MAP`.
+
+### Change 2: capex is a composite, not a single tag
+
+yfinance's "Capital Expenditure" for SaaS filers bundles capitalized software
+development with plain PP&E purchases. Read alone,
+`PaymentsToAcquirePropertyPlantAndEquipment` runs 7 to 97 percent low against
+the cached value, which is what most of the capex overlap failures were.
+
+`capex` becomes a COMPOSITE field. Each component tag gets its own independent
+quarterly derivation (the same YTD differencing as any other field) and the
+components are summed per quarter. Deriving first and summing second is the
+only correct order: a filer can report PP&E purchases per quarter while filing
+capitalized software year-to-date, so summing raw facts would mix period types.
+
+| role | us-gaap tags |
+|---|---|
+| base (alternatives, first present wins) | `PaymentsToAcquirePropertyPlantAndEquipment`, `PaymentsToAcquireProductiveAssets` |
+| addends (summed when present) | `PaymentsToDevelopSoftware`, `PaymentsToCapitalizeInternalUseSoftware`, `PaymentsToAcquireIntangibleAssets` |
+
+Dedupe: `PaymentsToAcquireProductiveAssets` is a broader BASE that some filers
+use INSTEAD of PP&E, never an addend on top of it. When both are filed, PP&E
+wins and ProductiveAssets is discarded, so the two can never double count.
+
+Missing-quarter rules, deliberately asymmetric:
+
+- A quarter missing from the BASE component leaves that quarter absent (NaN
+  downstream). The base is the bulk of the number; without it there is nothing
+  to report.
+- A quarter missing from an optional ADDEND treats that addend as 0 for that
+  quarter ONLY when the addend tag files nothing at all ending on that period
+  end. A filer that capitalized no software in a quarter simply omits the tag,
+  and reading that omission as 0 is what the cash flow statement means. When
+  the tag DOES file for that period end and the quarter still could not be
+  derived (a missing intermediate YTD point), the addend is unknown rather than
+  zero, and the whole quarter is dropped instead of being silently understated.
+
+The verification gate stays the arbiter. The D2 tolerance is UNCHANGED (1
+percent relative, 100000 absolute). A composite that still does not reconcile
+inside it rejects the ticker exactly as before.
+
+### Change 3: verified hole filling inside the cached range
+
+Live finding from the owner-approved apply run (main commit `2621e02`): all six
+accepted tickers carry 1 or 2 pre-existing HOLLOW cached columns, yfinance
+shell columns with no core fields (TEAM 2024-12-31 and 2026-06-30, PANW
+2025-01-31 and 2024-10-31, FTNT 2025-03-31 and 2024-12-31, ESTC and IOT
+2025-01-31, PLTR 2024-12-31). `merge_backfill`'s only-strictly-older rule
+preserved those holes, and `build_ttm` returns nothing usable for any window
+spanning one, so growth and `r40_trend` were STILL n/a for all six despite 16
+quarters of depth. The backfill bought depth and delivered no capability.
+
+For ACCEPTED tickers the merge now also fills NaN CELLS within the cached range
+from the aligned EDGAR frame:
+
+- Cached non-NaN values always win (`cached.combine_first(edgar)` semantics).
+  Only genuinely empty cells are filled.
+- Only quarter columns the cache already has are touched. Hole filling fills
+  cells; it does not invent quarters inside the cached range.
+- The `MAX_QUARTERS` cap and the column alignment are unchanged.
+- The acceptance decision still rests SOLELY on the overlap checks of non-NaN
+  cached cells. Nothing about which cells get filled feeds back into it.
+
+This supersedes the promise in the verification-gate section above and in the
+`merge_backfill` docstring that "no cached cell is touched". The new promise:
+no cached VALUE is overwritten; verified EDGAR values may fill empty cells.
+
+### Unchanged by this amendment
+
+The D2 tolerance, the all-or-nothing per-ticker rejection, the MNDY a-priori
+skip, the D3 riders, the CLI contract (`--dry-run` writes nothing), and the pen
+rule: this branch does not modify `data/cache/`. The `--apply` run remains a
+separate owner-approved post-merge commit.
+
+### Implementation note: the cache is no longer a pure yfinance reference
+
+Added during implementation from the live dry run, not part of the approved
+text. The verification gate's premise is that the cached frame is the yfinance
+view to reconcile against. After apply commit `2621e02` that is only true for
+the six applied tickers' NEWEST quarters: their deeper quarters are EDGAR
+values this tool wrote. The gate now compares new EDGAR against old EDGAR
+there, which is a weaker check than intended, and change 2 makes it visible:
+TEAM rejects on a single 2023-06-30 capex check (2,585,000 cached vs 2,745,000
+composite, 6.19 percent), a quarter that only exists in the cache because the
+apply run wrote it with the pre-amendment single-tag capex. PANW, FTNT, ESTC,
+IOT and PLTR happen to agree inside the tolerance and still accept.
+
+No behavior change is made for it here: widening the tolerance is out of
+bounds, and teaching the gate to skip EDGAR-written quarters is a fourth change
+nobody approved. It is an owner decision for the post-merge apply run, which is
+gated anyway. The options are to leave TEAM as it stands (16 quarters, holes
+unfilled), or to restore TEAM's parquet to its pre-`2621e02` yfinance-only
+state and re-run, which would verify the composite against yfinance as the
+spec intends.
