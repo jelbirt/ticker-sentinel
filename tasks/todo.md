@@ -10,31 +10,41 @@
   `run_history.json`; discard that change rather than committing it.
 
 ## Active workstreams
-- `share-count-guard` (branch `claude/awesome-pascal-7023f9`, agent worktree):
-  split-basis and magnitude integrity for `diluted_shares`: merge-time
-  rebasing of cached share history when a split restates the source's
-  quarters, plus a read-time sanity guard (0.33x to 3x of shares outstanding,
-  1.5x max quarter step) that degrades bad cells to n/a with a data note.
-  Outcome of investigating the PR #10 dry-run CRWD/NOW mismatch, which was a
-  split restatement, not bad data. Does NOT write `data/cache/`.
 - `history-backfill` (branch `history-backfill`, worktree
   `../ticker-sentinel.history-backfill`): one-time SEC EDGAR backfill tool
   deepening the committed cache to >= 12 quarters per ticker behind a
   verification gate, plus the R40-trend warm-up disclosure. Spec:
   `tasks/spec-history-backfill.md`. Does NOT write `data/cache/` on this
   branch; the `--apply` run is a separate owner-approved post-merge commit.
-- `news-quality` (branch `news-quality`, worktree
-  `../ticker-sentinel.news-quality`): revive the dead company-name matching
-  path by normalizing yfinance legal names to their trading name.
-- `hygiene` (branch `hygiene`, worktree `../ticker-sentinel.hygiene`): audit
-  items 3, 4, 5, 7, 8, 9: test/config decoupling, unknown-config-key warnings,
-  digest coverage false positive, run-history schema-version guard,
-  market-holiday note, and the docs/packaging nits.
 
   One branch per workstream via `scripts/new-worktree.sh <branch>`; main is the
   review inbox; merge back via PR.
 
 ## Done
+- `share-count-guard` (2026-08-15, merged as PR #12, worktree torn down):
+  `diluted_shares` integrity at two layers, after investigating the PR #10
+  dry-run CRWD/NOW mismatch and finding the cache CORRECT (CRWD split 4:1 on
+  2026-07-02, NOW 5:1 on 2025-12-18; yfinance restates every served quarter
+  and auto-adjusted prices agree, so those cached values must never be
+  rescaled). Merge time: cached share history is rebased by the factor the
+  overlapping quarters agree on, so a split cannot leave the row half
+  restated. Read time: cells outside 0.33x to 3x of shares outstanding (new
+  meta key) are dropped, and a >1.5x neighbour step keeps the side closer to
+  shares outstanding, dropping every reading when no reference can arbitrate.
+  The scrub never touches the cache, so a false positive cannot destroy
+  accumulated history. Related data fix landed direct to main as `b33044c`:
+  PANW's 4 pre-split cells from the `2621e02` backfill (2023-10 back to
+  2022-10) rescaled x2, verified per cell against SEC filings. Standing
+  requirement for any future backfill apply: split-adjust `diluted_shares` or
+  exclude the field per ticker, since the overlap gate cannot see basis
+  breaks beyond its window.
+- `hygiene` (2026-08-15, merged as PR #9, worktree torn down): audit items 3,
+  4, 5, 7, 8, 9: test/config decoupling, unknown-config-key warnings, digest
+  coverage false positive, run-history schema-version guard, market-holiday
+  note, and the docs/packaging nits.
+- `news-quality` (2026-08-15, merged as PR #8, worktree torn down): the dead
+  company-name matching path revived by normalizing yfinance legal names to
+  their trading name.
 - `run-integrity` (2026-08-15, merged as PR #7, worktree torn down): audit
   fixes 1, 3, 7 shipped: TTM windows anchor on the newest complete quarter
   (bounded 2-column skip, "scored as of" note), windows spanning a >120-day
