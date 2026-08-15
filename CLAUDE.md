@@ -8,6 +8,7 @@ PROJECT_PLAN.md is the authoritative spec — read it before making changes.
 - Run (no email): `python -m sentinel.run --no-email`
 - Offline run: `python -m sentinel.run --dry-run`
 - Tests: `pytest -q` (tests must never hit the network)
+- History backfill (one-time tool, not a scheduled job): `python -m sentinel.backfill --dry-run` fetches SEC EDGAR live and writes nothing; `--apply` rewrites `data/cache/` and therefore needs the pen (owner-gated, post-merge). See `tasks/spec-history-backfill.md`.
 - Green bar: `scripts/checks.sh` (the single definition; CI and the commit guard run this exact script)
 
 ## Conventions
