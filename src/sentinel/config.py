@@ -1,11 +1,15 @@
 """Config loading: watchlist.yaml + repo-root resolution. Secrets stay in env vars."""
 from __future__ import annotations
 
+import logging
 import os
+from collections.abc import Iterable
 from dataclasses import dataclass, field, fields
 from pathlib import Path
 
 import yaml
+
+log = logging.getLogger(__name__)
 
 
 def repo_root() -> Path:
@@ -71,6 +75,9 @@ class Config:
     benchmark: str = "SPY"
     top_n: int = 10
     bottom_n: int = 5
+    # accepted and reserved: parsed so `report.timezone` is a known key, but no
+    # code reads it yet (the report renders plain ISO dates). Keep it declared
+    # so the owner's watchlist.yaml does not trip the unknown-key warning.
     timezone: str = "America/New_York"
     ranking: str = "breadth"  # "breadth": most R40 variants ≥ 40 first; "score": plain F-score
     fundamentals_weight: float = 0.6
@@ -98,9 +105,38 @@ class Config:
         return self.all_tickers + [t for t in self.bench if t not in set(self.all_tickers)]
 
 
+# Known keys per block. A typo in an optional key used to be silent (the
+# default just quietly won), so every block is checked at load time and
+# anything unrecognized is named in a warning.
+TOP_LEVEL_KEYS = frozenset({
+    "recipients",   # accepted and reserved: labels only; real addresses come
+                    # from the RECIPIENT_EMAILS secret, so nothing reads this
+    "universe", "bench", "benchmark", "report", "scoring", "changes", "news",
+})
+REPORT_KEYS = frozenset({"top_n", "bottom_n", "timezone", "ranking"})
+SCORING_KEYS = frozenset({"fundamentals_weight", "technicals_weight"})
+NEWS_KEYS = frozenset({
+    "feeds", "per_ticker_feed", "max_age_hours", "max_per_ticker",
+    "style", "model", "tones",
+    "tone",     # singular convenience form of `tones`
+})
+CHANGES_KEYS = frozenset(f.name for f in fields(ChangesCfg))
+
+
+def _warn_unknown(keys: Iterable[str], known: frozenset[str], where: str) -> None:
+    """Name every unrecognized key so a typo fails loudly instead of silently
+    taking the default."""
+    for key in sorted(k for k in keys if k not in known):
+        log.warning(
+            "config: unknown key '%s' %s; ignored, so its default applies (typo?)",
+            key, where,
+        )
+
+
 def load_config(path: Path | None = None) -> Config:
     path = path or repo_root() / "config" / "watchlist.yaml"
-    raw = yaml.safe_load(path.read_text())
+    raw = yaml.safe_load(path.read_text()) or {}
+    _warn_unknown(raw, TOP_LEVEL_KEYS, "at the top level")
     universe = tuple(
         TickerCfg(ticker=str(item["ticker"]).upper(), tags=tuple(item.get("tags", [])))
         for item in raw.get("universe", [])
@@ -109,8 +145,11 @@ def load_config(path: Path | None = None) -> Config:
     scoring = raw.get("scoring", {}) or {}
     news_raw = raw.get("news", {}) or {}
     changes_raw = raw.get("changes", {}) or {}
-    known = {f.name for f in fields(ChangesCfg)}
-    changes = ChangesCfg(**{k: v for k, v in changes_raw.items() if k in known})
+    _warn_unknown(report, REPORT_KEYS, "in the report: block")
+    _warn_unknown(scoring, SCORING_KEYS, "in the scoring: block")
+    _warn_unknown(news_raw, NEWS_KEYS, "in the news: block")
+    _warn_unknown(changes_raw, CHANGES_KEYS, "in the changes: block")
+    changes = ChangesCfg(**{k: v for k, v in changes_raw.items() if k in CHANGES_KEYS})
     news = NewsCfg(
         feeds=tuple(news_raw.get("feeds", []) or []),
         per_ticker_feed=news_raw.get("per_ticker_feed"),
