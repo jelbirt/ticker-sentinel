@@ -1,11 +1,13 @@
-"""run.py helpers - market-cap repricing disclosure, R40 trend warm-up note."""
+"""run.py helpers: market-cap repricing, R40 trend warm-up note, market-holiday disclosure."""
 from __future__ import annotations
+
+from datetime import date
 
 import pandas as pd
 from pytest import approx
 
 from sentinel.indicators.fundamentals import FundamentalInputs, Scorecard
-from sentinel.run import _reprice_market_cap, _trend_warmup_note
+from sentinel.run import _reprice_market_cap, _stale_session_note, _trend_warmup_note
 
 
 def _close(ticker: str, price: float) -> pd.DataFrame:
@@ -74,3 +76,56 @@ class TestTrendWarmupNote:
     def test_note_has_no_em_or_en_dashes(self):
         note = _trend_warmup_note([self._sc("AAA", 50.0, None)])
         assert "—" not in note and "–" not in note
+
+
+# --- market-holiday disclosure -------------------------------------------------
+
+
+def _bench(last_bar: str, n: int = 5) -> pd.Series:
+    idx = pd.bdate_range(end=last_bar, periods=n)
+    return pd.Series(range(n), index=idx, dtype="float64")
+
+
+def test_regular_weekday_run_says_nothing():
+    # Tuesday 2026-07-07 run, Monday 2026-07-06 bar: 1 day
+    assert _stale_session_note(_bench("2026-07-06"), date(2026, 7, 7)) is None
+
+
+def test_saturday_run_over_a_normal_weekend_says_nothing():
+    # the Tue-Sat cadence means Saturday runs see Friday's bar: 1 day
+    assert _stale_session_note(_bench("2026-07-03"), date(2026, 7, 4)) is None
+
+
+def test_monday_run_over_a_normal_weekend_says_nothing():
+    # Friday bar seen on Monday is exactly 3 days: the widest normal gap
+    assert _stale_session_note(_bench("2026-07-03"), date(2026, 7, 6)) is None
+
+
+def test_tuesday_after_a_monday_holiday_discloses_the_stale_bar():
+    # Monday 2026-07-06 closed, so Tuesday's run re-reports Friday's bar: 4 days
+    note = _stale_session_note(_bench("2026-07-03"), date(2026, 7, 7))
+    assert note == "no new market session since 2026-07-03 (market holiday?)"
+
+
+def test_no_price_data_is_not_a_holiday_note():
+    # missing prices are their own failure with their own notes; do not crash
+    assert _stale_session_note(None, date(2026, 7, 7)) is None
+    assert _stale_session_note(pd.Series(dtype="float64"), date(2026, 7, 7)) is None
+    all_nan = pd.Series([float("nan")] * 3, index=pd.bdate_range(end="2026-07-03", periods=3))
+    assert _stale_session_note(all_nan, date(2026, 7, 7)) is None
+
+
+def test_trailing_nan_bars_do_not_hide_a_stale_close():
+    # a feed that appends empty rows must not read as a fresh session
+    idx = pd.bdate_range(end="2026-07-07", periods=3)   # Jul 3, 6, 7
+    series = pd.Series([1.0, float("nan"), float("nan")], index=idx)
+    note = _stale_session_note(series, date(2026, 7, 7))
+    assert note == "no new market session since 2026-07-03 (market holiday?)"
+
+
+def test_dry_run_does_not_claim_a_market_holiday(tmp_path):
+    # fixture prices are frozen at a fixed date, so the check is skipped offline
+    from sentinel.run import main
+
+    assert main(["--dry-run", "--no-email", "--out-dir", str(tmp_path)]) == 0
+    assert "market holiday" not in (tmp_path / "report.html").read_text()
