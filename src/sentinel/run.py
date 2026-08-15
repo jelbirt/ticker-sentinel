@@ -68,6 +68,31 @@ def _benchmark_line(close: pd.DataFrame | None, benchmark: str) -> str | None:
     )
 
 
+# A benchmark bar older than this many calendar days means no session closed
+# recently. 3 clears every normal weekend (a Saturday run sees Friday's bar at
+# 1 day; a Tuesday run sees Monday's at 1; a Monday run sees Friday's at 3) and
+# fires on the Tuesday after a Monday holiday, where Friday's bar is 4 days old.
+STALE_SESSION_DAYS = 3
+
+
+def _stale_session_note(bench_close: pd.Series | None, today: date) -> str | None:
+    """Disclose that a run is re-reporting an old bar (market holiday, or a data
+    feed that stopped updating). Silent on missing prices: no data is a
+    different failure and already has its own notes."""
+    if bench_close is None:
+        return None
+    series = bench_close.dropna()
+    if series.empty:
+        return None
+    try:
+        last = pd.Timestamp(series.index[-1]).date()
+    except (TypeError, ValueError):
+        return None
+    if (today - last).days <= STALE_SESSION_DAYS:
+        return None
+    return f"no new market session since {last.isoformat()} (market holiday?)"
+
+
 def _column(frame: pd.DataFrame | None, ticker: str) -> pd.Series | None:
     if frame is None or ticker not in frame.columns:
         return None
@@ -162,6 +187,12 @@ def main(argv: list[str] | None = None) -> int:
         notes.extend(price_notes)
 
     bench_close = _column(close, cfg.benchmark)
+    if not args.dry_run:
+        # dry-run fixtures are frozen at a fixed date and would always look
+        # stale; the run already discloses that it is running on fixtures
+        stale_session = _stale_session_note(bench_close, date.today())
+        if stale_session:
+            notes.append(stale_session)
 
     # --- technicals + quick win: reprice market cap from today's close ---------------
     technicals: dict[str, TechnicalSnapshot | None] = {

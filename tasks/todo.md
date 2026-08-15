@@ -19,6 +19,10 @@
 - `news-quality` (branch `news-quality`, worktree
   `../ticker-sentinel.news-quality`): revive the dead company-name matching
   path by normalizing yfinance legal names to their trading name.
+- `hygiene` (branch `hygiene`, worktree `../ticker-sentinel.hygiene`): audit
+  items 3, 4, 5, 7, 8, 9: test/config decoupling, unknown-config-key warnings,
+  digest coverage false positive, run-history schema-version guard,
+  market-holiday note, and the docs/packaging nits.
 
   One branch per workstream via `scripts/new-worktree.sh <branch>`; main is the
   review inbox; merge back via PR.

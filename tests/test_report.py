@@ -5,11 +5,25 @@ import csv
 
 import pytest
 
-from sentinel.config import load_config
+from sentinel.config import ChangesCfg, Config
 from sentinel.indicators.fundamentals import compute_scorecard
 from sentinel.report.builder import build_context, render_report, write_outputs
 from sentinel.scoring import apply_scores
 from tests.conftest import FIXED_TODAY
+
+
+def _cfg(**overrides) -> Config:
+    """Rendering config owned by the tests, not read from config/watchlist.yaml.
+
+    top_n/bottom_n are owner-tunable knobs that get retuned as the watchlist
+    grows; assertions about table sizes must pin their own values so a retune
+    is a config change, not a red suite.
+    """
+    base = dict(
+        universe=(), benchmark="SPY", top_n=10, bottom_n=4, ranking="breadth",
+        fundamentals_weight=0.6, technicals_weight=0.4, changes=ChangesCfg(),
+    )
+    return Config(**{**base, **overrides})
 
 
 @pytest.fixture()
@@ -27,8 +41,7 @@ def scored(fixture_inputs):
 
 @pytest.fixture()
 def html(scored):
-    cfg = load_config()
-    ctx = build_context(scored, cfg, run_type="dry", notes=["fixture note"], today=FIXED_TODAY)
+    ctx = build_context(scored, _cfg(), run_type="dry", notes=["fixture note"], today=FIXED_TODAY)
     return render_report(ctx)
 
 
@@ -92,8 +105,7 @@ def test_legend_rendered(html):
 
 
 def test_deep_legend_and_grid(scored):
-    cfg = load_config()
-    ctx = build_context(scored, cfg, run_type="dry", notes=[], today=FIXED_TODAY)
+    ctx = build_context(scored, _cfg(), run_type="dry", notes=[], today=FIXED_TODAY)
     ctx["deep"] = True
     deep_html = render_report(ctx)
     assert "Deep dive: full metric grid" in deep_html
@@ -131,7 +143,8 @@ def test_signals_table_rendered(html):
     assert "Between-quarter signals" in html
     assert "▲6" in html                       # ALFA estimate revisions up
     assert "+150k" in html                    # ALFA insider net buying
-    assert "−400k" in html                    # BRVO insider net selling
+    assert "-400k" in html                    # BRVO insider net selling
+    assert "−400k" not in html                # ASCII hyphen, not U+2212
     assert "Insider net 6m" in html           # legend/table header
 
 
@@ -151,9 +164,7 @@ def test_ranking_explanation_and_conditional_bold(html):
 
 
 def test_weakest_rows_keep_reason_and_flags(scored):
-    from sentinel.config import Config
-
-    cfg = Config(universe=(), top_n=1, bottom_n=2)  # force BRVO/CHRL into weakest
+    cfg = _cfg(top_n=1, bottom_n=2)  # force BRVO/CHRL into weakest
     ctx = build_context(scored, cfg, run_type="dry", notes=[], today=FIXED_TODAY)
     assert [sc.ticker for sc in ctx["strongest"]] == ["ALFA"]
     assert len(ctx["weakest"]) == 2
@@ -177,10 +188,8 @@ def test_movers_grouped_by_ticker(scored):
 
 
 def test_deep_grid_covers_every_scored_ticker(scored):
-    from sentinel.config import Config
-
     # top_n=1/bottom_n=1 forces a middle ticker to be excluded from strongest+weakest
-    cfg = Config(universe=(), top_n=1, bottom_n=1)
+    cfg = _cfg(top_n=1, bottom_n=1)
     ctx = build_context(scored, cfg, run_type="dry", notes=[], today=FIXED_TODAY)
     ctx["deep"] = True
     middle = set(sc.ticker for sc in ctx["all_scored"]) - {
@@ -193,9 +202,8 @@ def test_deep_grid_covers_every_scored_ticker(scored):
 
 
 def test_news_section_renders_single_unlabeled(scored):
-    cfg = load_config()
     ctx = build_context(
-        scored, cfg, run_type="dry", notes=[], today=FIXED_TODAY,
+        scored, _cfg(), run_type="dry", notes=[], today=FIXED_TODAY,
         news_sections=[{"label": None, "html": "<b>ALFA</b> fixture headline"}],
     )
     html = render_report(ctx)
@@ -205,9 +213,8 @@ def test_news_section_renders_single_unlabeled(scored):
 
 
 def test_news_sections_multi_tone_labeled_and_separated(scored):
-    cfg = load_config()
     ctx = build_context(
-        scored, cfg, run_type="dry", notes=[], today=FIXED_TODAY,
+        scored, _cfg(), run_type="dry", notes=[], today=FIXED_TODAY,
         news_sections=[
             {"label": "skeptic", "html": "<i>skeptic voice</i>"},
             {"label": "barrons", "html": "<i>barrons voice</i>"},
@@ -227,10 +234,11 @@ def test_small_watchlist_still_splits_strong_and_weak(scored):
     """The weak table is never starved: bottom_n names are carved out of the
     ranked list before strongest takes its share, so the two tables never
     overlap and the weak table is empty only with a single scored name."""
-    cfg = load_config()  # top_n=10 > 3 fixtures; bottom_n=4
+    cfg = _cfg(top_n=10, bottom_n=4)  # top_n exceeds the 3 fixtures; bottom_n=4
     ctx = build_context(scored, cfg, run_type="dry", notes=[], today=FIXED_TODAY)
     assert len(ctx["strongest"]) == 1
     assert len(ctx["weakest"]) == 2
+    assert len(ctx["strongest"]) + len(ctx["weakest"]) == 3  # every fixture placed
     strong = {sc.ticker for sc in ctx["strongest"]}
     weak = {sc.ticker for sc in ctx["weakest"]}
     assert not strong & weak
@@ -246,8 +254,7 @@ def test_no_em_or_en_dashes_in_report(html):
 
 
 def _change_ctx(scored, **kw):
-    cfg = load_config()
-    return build_context(scored, cfg, run_type="dry", notes=[], today=FIXED_TODAY, **kw)
+    return build_context(scored, _cfg(), run_type="dry", notes=[], today=FIXED_TODAY, **kw)
 
 
 def _changeset(changes=(), prior_date="2026-07-04"):

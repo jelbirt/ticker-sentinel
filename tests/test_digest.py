@@ -6,7 +6,7 @@ import re
 from datetime import date
 from pathlib import Path
 
-from sentinel.config import ChangesCfg, load_config
+from sentinel.config import ChangesCfg
 from sentinel.digest import (
     CALIBRATION_REFRESHES,
     build_digest,
@@ -139,6 +139,50 @@ class TestChangeActivityAndCoverage:
         assert "no run history yet" in digest.coverage_gaps[0]
 
 
+class TestCoverageUniverse:
+    """build_from_files measures coverage against the scored (r40) names only."""
+
+    def _files(self, tmp_path: Path, universe: str) -> tuple[Path, Path]:
+        cfg_path = tmp_path / "watchlist.yaml"
+        cfg_path.write_text("universe:\n" + universe)
+        hist = tmp_path / "run_history.json"
+        hist.write_text(json.dumps({
+            "version": 1,
+            "runs": [
+                _run(11, {"CRWD": _healthy()}).to_dict(),
+                _run(12, {"CRWD": _healthy()}).to_dict(),
+            ],
+        }))
+        return cfg_path, hist
+
+    def test_tech_only_ticker_is_not_a_coverage_gap(self, tmp_path: Path):
+        from sentinel.digest import build_from_files
+
+        # XOM is configured but not r40-tagged, so it is never scored and never
+        # reaches run history: flagging it weekly would be a standing false alarm
+        cfg_path, hist = self._files(
+            tmp_path,
+            "  - ticker: CRWD\n    tags: [software, r40]\n"
+            "  - ticker: XOM\n    tags: [energy]\n",
+        )
+        digest, _ = build_from_files(cfg_path, hist)
+        assert digest.coverage_gaps == []
+
+    def test_scored_ticker_absent_from_history_is_still_a_gap(self, tmp_path: Path):
+        from sentinel.digest import build_from_files
+
+        cfg_path, hist = self._files(
+            tmp_path,
+            "  - ticker: CRWD\n    tags: [software, r40]\n"
+            "  - ticker: DDOG\n    tags: [software, r40]\n",
+        )
+        digest, _ = build_from_files(cfg_path, hist)
+        assert any(
+            g.startswith("DDOG: configured but absent from every run")
+            for g in digest.coverage_gaps
+        )
+
+
 class TestRendering:
     def _digest(self, **kw):
         runs = [
@@ -186,6 +230,13 @@ class TestRendering:
 
 class TestCli:
     def test_end_to_end_from_files(self, tmp_path: Path):
+        # the CLI reads a config the test owns: the live watchlist is
+        # owner-tunable, so its universe and bench must not drive assertions
+        cfg_path = tmp_path / "watchlist.yaml"
+        cfg_path.write_text(
+            "universe:\n  - ticker: CRWD\n    tags: [r40]\n"
+            "bench: [WDAY, SHOP]\n"
+        )
         history = {
             "version": 1,
             "runs": [
@@ -197,16 +248,14 @@ class TestCli:
         hist.write_text(json.dumps(history))
         out = tmp_path / "digest.md"
         rc = main([
-            "--history", str(hist), "--refresh-number", "1",
-            "--date", "2026-08-15", "--out", str(out),
+            "--config", str(cfg_path), "--history", str(hist),
+            "--refresh-number", "1", "--date", "2026-08-15", "--out", str(out),
         ])
         assert rc == 0
         text = out.read_text()
         assert "Watchlist candidate refresh #1" in text
         assert "| CRWD | 2 of 2 |" in text
-        # real config: the bench key is wired through, whatever it currently holds
-        cfg = load_config()
-        assert cfg.bench and ", ".join(cfg.bench) + "." in text
+        assert "WDAY, SHOP." in text          # bench key wired through to the body
         assert not re.search(r"[–—]", text)
 
 

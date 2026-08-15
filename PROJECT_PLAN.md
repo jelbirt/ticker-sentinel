@@ -54,6 +54,7 @@ report:
   top_n: 10
   bottom_n: 5
   timezone: America/New_York
+  ranking: breadth       # breadth | score (see section 6)
 scoring:               # weights, overridable without code changes
   fundamentals_weight: 0.6
   technicals_weight: 0.4
@@ -111,6 +112,10 @@ Applies fully only to tickers tagged `r40`; others get technicals-only rows in a
 **Technical score T (0–100):** +40 uptrend / +0 mixed / −20 downtrend (rescaled), +30 × clamp(rel_strength_3m / 0.15, −1, 1), +15 if golden cross recent / −15 death cross, +15 proximity to 52-week high (`1 + dist_52w_high` scaled). Clamp [0, 100].
 **Composite:** `C = 0.6 F + 0.4 T` (weights from config).
 **Valuation is a label, not a score input:** each strong name gets a tag — `cheap` (fcf_yield > 4%), `fair`, or `priced-for-perfection` (ev_revenue > 12 and fcf_yield < 1%). Rationale: R40 measures quality, not price; mixing them hides both signals.
+**Report ranking (`report.ranking`, default `breadth`):** the order names appear in, separate from the scores themselves.
+- `breadth` (default): sort by how many of the three R40 variants (`r40_fcf`, `r40_ebitda`, `r40_sbc_adj`) clear 40, most first, with the composite as the tiebreak. A `None` variant never counts toward breadth. Rationale: passing R40 three different ways is stronger evidence of durable quality than one high reading, which a single generous variant can manufacture.
+- `score`: sort by composite alone (the pre-breadth behavior), for when a raw ranking is wanted.
+Either way the composite is what gets displayed and what change detection diffs; ranking only decides row order and therefore which names fall into the strongest/weakest tables.
 **Weakest-buy list:** lowest composites among r40-tagged names, prioritizing the combination `r40_trend < −10` AND downtrend/death-cross — "deteriorating fundamentals with technical confirmation."
 **Flags rendered in report:** `⚠ SBC-inflated`, `⚠ Dilution`, `⚠ Stale fundamentals`, `★ Passes all 3 R40 variants`, `📉 Death cross`, `📈 Golden cross`, `🏷 priced-for-perfection`.
 ---

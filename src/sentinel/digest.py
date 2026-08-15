@@ -69,13 +69,19 @@ def build_digest(
     notes: list[str] | None = None,
 ) -> WeeklyDigest:
     """Aggregate the last week_window_runs runs. Every threshold comes from cfg;
-    absent values never fabricate evidence (same contract as diff_runs)."""
+    absent values never fabricate evidence (same contract as diff_runs).
+
+    `universe` is the set of tickers run history is expected to contain, i.e.
+    the scored (r40-tagged) names. Coverage gaps are measured against it, so
+    passing the full configured universe would report tech-only names as
+    permanently missing.
+    """
     window = _window(runs, cfg)
     if not window:
         return WeeklyDigest(
             window_start="n/a", window_end="n/a", runs_in_window=0,
             attention=[], change_counts={}, busiest=[],
-            coverage_gaps=[f"no run history yet for {len(universe)} configured tickers"],
+            coverage_gaps=[f"no run history yet for {len(universe)} scored tickers"],
             bench=list(bench), notes=list(notes or []),
         )
 
@@ -273,7 +279,10 @@ def build_from_files(
     cfg = load_config(config_path)
     raw_runs, notes = load_history(history_path)
     runs = [RunSnapshot.from_dict(r) for r in raw_runs]
-    return build_digest(runs, cfg.all_tickers, list(cfg.bench), cfg.changes, notes), cfg
+    # r40 names only: run history records the scored set, and a tech-only
+    # ticker never enters it. Passing the whole universe would report every
+    # non-r40 name as "absent from every run, check listing status" forever.
+    return build_digest(runs, cfg.r40_tickers, list(cfg.bench), cfg.changes, notes), cfg
 
 
 def main(argv: list[str] | None = None) -> int:
