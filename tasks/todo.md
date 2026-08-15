@@ -10,22 +10,21 @@
   `run_history.json`; discard that change rather than committing it.
 
 ## Active workstreams
-- `backfill-amendment` (branch `backfill-amendment`, worktree
-  `../ticker-sentinel.backfill-amendment`): Amendment 1 to
-  `tasks/spec-history-backfill.md` (approved 2026-08-15), acting on the live
-  findings from PR #10 and the apply commit `2621e02`: narrow
-  `BACKFILL_FIELDS` to the r40_fcf trend inputs (drop `operating_income` and
-  `d_and_a` from derivation and from the gate), derive capex as a composite of
-  its base tag plus the software-capitalization tags, and let the merge fill
-  EMPTY cells inside the cached range so the pre-existing hollow yfinance
-  columns stop blocking every TTM window. Does NOT write `data/cache/` on this
-  branch; a fresh `--apply` run remains a separate owner-approved post-merge
-  commit.
+- none open.
 
   One branch per workstream via `scripts/new-worktree.sh <branch>`; main is the
   review inbox; merge back via PR.
 
 ## Done
+- `backfill-amendment` (2026-08-15, merged as PR #11, worktree torn down;
+  final apply commit `4cd9d67`): Amendments 1+2 to the backfill spec, plus
+  three main-session verification fixes (tag precedence on derived quarters,
+  gate-arbitrated composite capex base). Amendment 2's diluted_shares
+  exclusion satisfies the share-count-guard standing requirement below. The
+  apply accepted 23 of 24 (MNDY structurally excluded), +159 quarters, 135
+  holes filled, TEAM restored to pre-2621e02 first; 11 names r40_trend-live
+  and 18 of 24 on true TTM growth as of the apply, remainder self-heals as
+  quarters accumulate.
 - `share-count-guard` (2026-08-15, merged as PR #12, worktree torn down):
   `diluted_shares` integrity at two layers, after investigating the PR #10
   dry-run CRWD/NOW mismatch and finding the cache CORRECT (CRWD split 4:1 on
