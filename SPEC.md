@@ -242,6 +242,45 @@ small week to week. This is a process cadence recorded in PROJECT_PLAN.md
 (roadmap), not code; every actual `config/watchlist.yaml` edit remains
 owner-gated. Cache pruning already cleans up dropped tickers automatically.
 
+#### 7.0.1 Rotation rubric (built round by round from the weekly digests)
+The first 3 refreshes are calibration rounds: each one records which digest
+evidence actually drove a decision and which was noise, so the rubric below is
+written from observed rounds rather than guessed up front. From refresh #3 the
+checklist adds the decision on automating proposal drafting against this rubric
+vs staying manual.
+
+**Working rubric (as of round 1):**
+- Act on **decay-gate hit counts**, not on composite deltas. A name with 0 gate
+  hits has not shown persistent decay however far its composite moved.
+- Before treating an attention-list name as deterioration, check whether its
+  flags are **data-quality** (insufficient history, growth from annual, sbc
+  inflated) or **business** flags. Data-quality flags are a fetch/coverage
+  problem, not a rotation signal.
+- A **coverage gap outranks the attention list**: a name that stops being scored
+  is either a data failure to chase or a delisting to swap, and both matter more
+  than a few points of composite drift.
+- **A flat fundamental score against a moving technical score means cached
+  fundamentals**, and is worth checking before the name disappears entirely.
+- At a 5-run window, raw **change-activity counts are volume, not signal**.
+
+**Round 1 (issue #6, 2026-08-15, window 2026-08-11 to 2026-08-15, 5 runs):**
+- Outcome: no changes. DDOG held (0 of 5 gate hits, drop was composite-only,
+  flags all data-quality). TEAM held but logged as a data issue: scored stably
+  for 5 runs, then unscored on 2026-08-14 and 2026-08-15 while still configured.
+- What mattered: the decay-gate hit count, and the coverage line.
+- What was noise: change-activity counts (short interest 16, score 10, rank 9),
+  and the composite delta on its own.
+- Digest gaps found, worth fixing before the automate-vs-manual call:
+  1. Coverage is binary. `digest.py` reports "missing from the latest run"
+     unless a name is absent from every run in the window, so a 2-run streak
+     and a 1-run blip read identically. It should carry a streak count, in
+     line with `digest_decay_runs: 2`.
+  2. The attention table does not distinguish data-quality flags from business
+     flags, which is most of the noise in round 1.
+- Open item: the unscored-reason disclosure from PR #7 merged after the
+  2026-08-15 run, so the first run to name TEAM's cause is 2026-08-18. Revisit
+  at refresh #2.
+
 ### 7.1 Capacity verification at ~22-28 tickers
 - **Batched price pull**: unchanged, still one yfinance `download()` call for the
   whole universe plus SPY. OK.
