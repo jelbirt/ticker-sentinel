@@ -10,6 +10,13 @@
   `run_history.json`; discard that change rather than committing it.
 
 ## Active workstreams
+- `share-count-guard` (branch `claude/awesome-pascal-7023f9`, agent worktree):
+  split-basis and magnitude integrity for `diluted_shares`: merge-time
+  rebasing of cached share history when a split restates the source's
+  quarters, plus a read-time sanity guard (0.33x to 3x of shares outstanding,
+  1.5x max quarter step) that degrades bad cells to n/a with a data note.
+  Outcome of investigating the PR #10 dry-run CRWD/NOW mismatch, which was a
+  split restatement, not bad data. Does NOT write `data/cache/`.
 - `history-backfill` (branch `history-backfill`, worktree
   `../ticker-sentinel.history-backfill`): one-time SEC EDGAR backfill tool
   deepening the committed cache to >= 12 quarters per ticker behind a
