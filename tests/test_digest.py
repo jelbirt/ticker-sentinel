@@ -6,7 +6,7 @@ import re
 from datetime import date
 from pathlib import Path
 
-from sentinel.config import ChangesCfg, load_config
+from sentinel.config import ChangesCfg
 from sentinel.digest import (
     CALIBRATION_REFRESHES,
     build_digest,
@@ -186,6 +186,13 @@ class TestRendering:
 
 class TestCli:
     def test_end_to_end_from_files(self, tmp_path: Path):
+        # the CLI reads a config the test owns: the live watchlist is
+        # owner-tunable, so its universe and bench must not drive assertions
+        cfg_path = tmp_path / "watchlist.yaml"
+        cfg_path.write_text(
+            "universe:\n  - ticker: CRWD\n    tags: [r40]\n"
+            "bench: [WDAY, SHOP]\n"
+        )
         history = {
             "version": 1,
             "runs": [
@@ -197,16 +204,14 @@ class TestCli:
         hist.write_text(json.dumps(history))
         out = tmp_path / "digest.md"
         rc = main([
-            "--history", str(hist), "--refresh-number", "1",
-            "--date", "2026-08-15", "--out", str(out),
+            "--config", str(cfg_path), "--history", str(hist),
+            "--refresh-number", "1", "--date", "2026-08-15", "--out", str(out),
         ])
         assert rc == 0
         text = out.read_text()
         assert "Watchlist candidate refresh #1" in text
         assert "| CRWD | 2 of 2 |" in text
-        # real config: the bench key is wired through, whatever it currently holds
-        cfg = load_config()
-        assert cfg.bench and ", ".join(cfg.bench) + "." in text
+        assert "WDAY, SHOP." in text          # bench key wired through to the body
         assert not re.search(r"[–—]", text)
 
 
