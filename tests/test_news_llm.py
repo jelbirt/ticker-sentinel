@@ -289,6 +289,37 @@ class TestNarrativeValidation:
         assert notes == []
         assert "CrowdStrike delivered a clean beat." in html
 
+    def test_legal_company_name_coverage_accepted(self, monkeypatch):
+        # the digest carries the yfinance LEGAL name; the prose uses the
+        # trading name. Before normalization this read as a dropped ticker and
+        # vetoed a perfectly good narrative.
+        legal_digest = NewsDigest(
+            as_of=NOW,
+            tickers=[
+                TickerNews(
+                    ticker="CRWD",
+                    company_name="CrowdStrike Holdings, Inc.",
+                    items=[
+                        NewsItem(
+                            title="CrowdStrike beats estimates",
+                            link="https://news.example.com/crwd",
+                            source="https://feeds.example.com/top",
+                            published=NOW - timedelta(hours=2),
+                        )
+                    ],
+                )
+            ],
+            scanned=10,
+            matched=1,
+        )
+        monkeypatch.setattr(
+            llm, "call_claude",
+            lambda *a, **k: "<REPORT>CrowdStrike delivered a clean beat.</REPORT>",
+        )
+        html, notes = render_news(legal_digest, "llm-brief", model="claude-sonnet-5")
+        assert notes == []
+        assert "CrowdStrike delivered a clean beat." in html
+
     def test_fabricated_watchlist_ticker_fails_open(self, digest, monkeypatch):
         # DDOG is on the watchlist but NOT in today's digest — the model had no
         # headlines for it, so any claim about it is fabricated

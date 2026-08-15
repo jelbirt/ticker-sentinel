@@ -21,7 +21,11 @@ import re
 from datetime import datetime
 from urllib.parse import urlparse
 
-from sentinel.news.matching import SHORT_TICKER_MAX_LEN, ticker_pattern
+from sentinel.news.matching import (
+    SHORT_TICKER_MAX_LEN,
+    company_name_matches,
+    ticker_pattern,
+)
 from sentinel.news.pipeline import NewsDigest, NewsItem
 
 _FONT = "font-family:Arial,Helvetica,sans-serif;"
@@ -220,7 +224,9 @@ def _narrative_valid(
 
     The two checks use DELIBERATELY different symbol tests, because a false
     positive costs the opposite thing in each direction:
-    - COVERAGE stays permissive (bare word boundary or company name): the model
+    - COVERAGE stays permissive (bare word boundary, or the normalized company
+      name, so prose saying "CrowdStrike delivered a clean beat" covers a
+      ticker whose configured name is "CrowdStrike Holdings, Inc."): the model
       was handed this ticker's headlines and told to open its paragraph with
       the symbol, so any plausible mention counts. A stricter test here would
       veto good narratives (with S on the watchlist, every "U.S." sentence used
@@ -236,7 +242,7 @@ def _narrative_valid(
     """
     for tn in digest.tickers:
         symbol_present = re.search(rf"\b{re.escape(tn.ticker)}\b", text)
-        name_present = tn.company_name and tn.company_name.lower() in text.lower()
+        name_present = company_name_matches(tn.company_name, text)
         if not symbol_present and not name_present:
             return False
     if known_tickers:
