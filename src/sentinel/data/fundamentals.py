@@ -63,6 +63,32 @@ MAX_ANCHOR_SKIP = 2
 # and a "TTM" summed across it would silently span 15+ months.
 MAX_QUARTER_GAP_DAYS = 120
 
+# --- share-count integrity ---------------------------------------------------
+# diluted_shares is the one row a bad cell corrupts invisibly: it drives
+# dilution and (via run._reprice_market_cap) market cap, hence ev_revenue,
+# fcf_yield and the valuation label. Two upstream failure modes have been seen
+# on this watchlist, and neither is detectable from a single value:
+#   1. Basis breaks. A split rebases every share count Yahoo serves, statements
+#      included, retroactively (CRWD 4:1 on 2026-07-02, NOW 5:1 on 2025-12-18).
+#      Yahoo only serves ~5 quarters, so quarters that live only in our cache
+#      keep the pre-split basis and the row silently mixes the two.
+#   2. Scale slips. On 2026-08-07 Yahoo served two of NOW's quarters in
+#      thousands (1,034,334) next to neighbours in units (1,047,000,000).
+# So the guard uses two independent checks: each cell against the provider's
+# current shares outstanding, and each cell against its neighbour.
+
+# Diluted average shares and shares outstanding differ by option overhang,
+# buybacks and dual-class counting, never by an order of magnitude: measured
+# across this watchlist the spread is 0.98x to 1.16x. The band is deliberately
+# a magnitude check, wide enough that four years of honest issuance never trips
+# it, tight enough to catch a 4:1 basis break or a units-for-thousands slip.
+SHARE_COUNT_BAND = (0.33, 3.0)
+
+# No company changes its diluted count by half in one quarter without a split;
+# the widest genuine step on this watchlist is a stock-funded acquisition at
+# +13%. A bigger step means everything older than it sits on an unknown basis.
+MAX_QUARTER_SHARE_STEP = 1.5
+
 
 def _anchor_offset(stmts: pd.DataFrame) -> int:
     """Index of the newest column where every core field is present.
@@ -117,6 +143,64 @@ def normalize_statements(
                     series = series.abs()
                 out.loc[field, series.index.intersection(out.columns)] = series
                 break
+    return out
+
+
+def sanitize_share_counts(
+    ticker: str,
+    stmts: pd.DataFrame,
+    shares_outstanding: float | None = None,
+    notes: list[str] | None = None,
+) -> pd.DataFrame:
+    """Blank diluted-share cells that cannot be on the current share basis.
+
+    Returns a copy with the offending cells set to NaN and appends one data
+    note per check that fired; the input frame is left alone and nothing here
+    raises. Dropping degrades dilution and the repriced market cap to n/a,
+    which is the point: a share count on the wrong basis is worse than no
+    share count at all, because every number derived from it still looks
+    perfectly reasonable.
+    """
+    notes = notes if notes is not None else []
+    if "diluted_shares" not in stmts.index:
+        return stmts
+    out = stmts.copy()
+    row = out.loc["diluted_shares"].copy()
+
+    low, high = SHARE_COUNT_BAND
+    if shares_outstanding is not None and shares_outstanding > 0:
+        ratio = row / float(shares_outstanding)
+        off_scale = row.notna() & ((ratio < low) | (ratio > high))
+        if off_scale.any():
+            quarters = ", ".join(c.date().isoformat() for c in row.index[off_scale])
+            notes.append(
+                f"{ticker}: diluted share count implausible against "
+                f"{shares_outstanding:,.0f} shares outstanding; dropped ({quarters})"
+            )
+            row[off_scale] = float("nan")
+
+    # neighbour check: the newest reading is the one today's price agrees with,
+    # so a step keeps the newer side and drops everything behind it
+    valid = row.dropna()
+    for i in range(len(valid) - 1):
+        newer, older = float(valid.iloc[i]), float(valid.iloc[i + 1])
+        if newer <= 0 or older <= 0:
+            step = float("inf")
+        else:
+            step = max(newer / older, older / newer)
+        if step > MAX_QUARTER_SHARE_STEP:
+            dropped = list(valid.index[i + 1 :])
+            label = "quarter" if len(dropped) == 1 else "quarters"
+            notes.append(
+                f"{ticker}: diluted share count steps {older:,.0f} to {newer:,.0f} "
+                f"at {valid.index[i].date().isoformat()} (a split or a source "
+                f"error, not issuance); {len(dropped)} older {label} dropped as "
+                "a different share basis"
+            )
+            row[dropped] = float("nan")
+            break
+
+    out.loc["diluted_shares"] = row
     return out
 
 
@@ -285,6 +369,22 @@ def fetch_statements(ticker: str) -> tuple[pd.DataFrame, dict[str, Any]]:
         except Exception:
             pass
 
+    # the reference the share-count guard checks statement cells against: it
+    # tracks the same split basis as fast_info's price and market cap, so a
+    # statement row on any other basis stands out. "implied" shares first,
+    # since sharesOutstanding counts one class only for dual-class names.
+    shares_outstanding: float | None = None
+    try:
+        shares_outstanding = float(t.fast_info["shares"])
+    except Exception:
+        try:
+            info = t.info
+            shares_outstanding = float(
+                info.get("impliedSharesOutstanding") or info.get("sharesOutstanding")
+            )
+        except Exception:
+            pass
+
     company_name: str | None = None
     try:
         company_name = t.info.get("shortName") or t.info.get("longName")
@@ -303,6 +403,7 @@ def fetch_statements(ticker: str) -> tuple[pd.DataFrame, dict[str, Any]]:
     meta = {
         "fetched_at": datetime.now(timezone.utc).isoformat(),
         "market_cap": market_cap,
+        "shares_outstanding": shares_outstanding,
         "company_name": company_name,
         "next_earnings": next_earnings,
         "annual_revenue": annual_revenue,
@@ -331,16 +432,17 @@ def get_fundamentals(ticker: str, force_refresh: bool = False) -> tuple[Fundamen
                 fresh = False
         except (TypeError, ValueError):
             pass
+    refetched = False
     if fresh:
         df, meta = cached_df, cached_meta
     else:
         try:
             fresh_df, meta = fetch_statements(ticker)
             df = cache.merge_statements(cached_df, fresh_df)
-            for carry in ("market_cap", "company_name"):
+            for carry in ("market_cap", "shares_outstanding", "company_name"):
                 if meta.get(carry) is None and cached_meta:
                     meta[carry] = cached_meta.get(carry)
-            cache.save(ticker, df, meta)
+            refetched = True
         except Exception as exc:
             log.warning("fundamentals fetch failed for %s: %s", ticker, exc)
             if cached_df is not None:
@@ -349,6 +451,17 @@ def get_fundamentals(ticker: str, force_refresh: bool = False) -> tuple[Fundamen
             else:
                 notes.append(f"{ticker}: fundamentals unavailable ({exc})")
                 return None, notes
+
+    # guard every path into scoring, cache hits included, so a cache poisoned
+    # before this guard existed heals on the next run rather than on the next
+    # refresh; the scrubbed frame is what gets written back
+    df = sanitize_share_counts(ticker, df, (meta or {}).get("shares_outstanding"), notes)
+    if refetched:
+        try:
+            cache.save(ticker, df, meta)
+        except Exception as exc:  # a disk problem must not cost us the report
+            log.warning("cache save failed for %s: %s", ticker, exc)
+            notes.append(f"{ticker}: cache not updated ({exc})")
 
     annual_revenue = {
         date.fromisoformat(k): v for k, v in (meta or {}).get("annual_revenue", {}).items()
