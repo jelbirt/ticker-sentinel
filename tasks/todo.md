@@ -10,27 +10,29 @@
   `run_history.json`; discard that change rather than committing it.
 
 ## Active workstreams
-- `ops-alerting` (worktree `../ticker-sentinel.ops-alerting`): make silent
-  failures loud: a requested email that does not send exits non-zero, and
-  daily-report.yml gains a failure-alert issue, a concurrency group,
-  artifact/cache steps that survive that non-zero exit, a rebase-and-retry
-  cache push, and step-scoped secrets with no raw input interpolation.
-- `news-matching` (worktree `../ticker-sentinel.news-matching`): fix the short
-  ticker collision in news matching (`\bS\b` matched "U.S." and "S&P 500", so
-  every macro headline was attributed to SentinelOne), split the narrative
-  fabrication guard from the coverage check, restrict feed link hrefs to
-  http(s), and run the headless claude call with no tools.
-- `run-integrity` (opened 2026-08-14, worktree `../ticker-sentinel.run-integrity`):
-  audit fixes 1, 3, 7: partial-quarter TTM anchoring (bounded), quarter-gap
-  contiguity guard, degraded-run diff/baseline guards with basis-aware
-  comparisons, unscored-reason disclosure. Code/tests/docs only; no
-  data/cache changes (bot keeps the pen). Siblings ops-alerting and
-  news-matching run in parallel; registry lines will conflict trivially.
+- none open.
 
   One branch per workstream via `scripts/new-worktree.sh <branch>`; main is the
   review inbox; merge back via PR.
 
 ## Done
+- `run-integrity` (2026-08-15, merged as PR #7, worktree torn down): audit
+  fixes 1, 3, 7 shipped: TTM windows anchor on the newest complete quarter
+  (bounded 2-column skip, "scored as of" note), windows spanning a >120-day
+  column gap degrade to insufficient data, degraded runs are reported but
+  neither diffed nor saved as baseline (`changes.baseline_min_fraction`),
+  diffs compare like for like across a basis change, and universe_removed
+  rows carry the unscored reason.
+- `news-matching` (2026-08-15, merged as PR #5, worktree torn down): 1-2 char
+  tickers now need explicit symbol context, so macro headlines ("U.S.",
+  "S&P 500") stop being attributed to SentinelOne; the narrative fabrication
+  guard is split from the coverage check; rendered hrefs are restricted to an
+  http(s) allowlist; the headless claude call runs with no tools.
+- `ops-alerting` (2026-08-15, merged as PR #4, worktree torn down): silent run
+  failures made loud: a requested email that does not send exits non-zero, and
+  daily-report.yml gained a failure-alert issue, a concurrency group,
+  artifact/cache steps that survive that non-zero exit, a rebase-and-retry
+  cache push, and step-scoped secrets with no raw input interpolation.
 - `weekly-refresh-digest` (2026-08-14, merged as PR #2, worktree torn down):
   Phase 4.1 shipped: sentinel.digest module + Saturday weekly-refresh workflow
   opening the owner-assigned watchlist-refresh issue; bench now a structured
