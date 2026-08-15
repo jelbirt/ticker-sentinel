@@ -21,6 +21,7 @@ import re
 from datetime import datetime
 from urllib.parse import urlparse
 
+from sentinel.news.matching import SHORT_TICKER_MAX_LEN, ticker_pattern
 from sentinel.news.pipeline import NewsDigest, NewsItem
 
 _FONT = "font-family:Arial,Helvetica,sans-serif;"
@@ -162,6 +163,19 @@ def _extract_report(text: str) -> str | None:
     return blocks[-1].strip() or None
 
 
+def _sentence_start_symbol(ticker: str) -> re.Pattern:
+    """Bare symbol opening a sentence or paragraph: start of text, start of a
+    line, or right after sentence-ending punctuation plus whitespace.
+
+    This is the shape a fabricated claim about a short ticker actually takes,
+    because the prompt tells the model to OPEN each paragraph with the symbol
+    ("S fell 30% after a breach."). The trailing lookahead keeps the abbrevi-
+    ations that share the letter out of it: "S&P 500" and "S. Korea" opening a
+    sentence are prose, not a claim about the symbol.
+    """
+    return re.compile(rf"(?:^|(?<=[.!?:]\s)){re.escape(ticker)}\b(?![&.])", re.MULTILINE)
+
+
 def _narrative_valid(
     text: str, digest: NewsDigest, known_tickers: set[str] | None = None
 ) -> bool:
@@ -169,10 +183,26 @@ def _narrative_valid(
 
     Rejects a narrative that (a) drops a digest ticker entirely (neither its
     symbol nor company name appears — the sources footer would then point at
-    stories the prose never covered), or (b) mentions the SYMBOL of a known
+    stories the prose never covered), or (b) claims something about a known
     watchlist ticker that is NOT in today's digest — the model had no headlines
     for it, so any claim about it is fabricated. Peer mentions by company name
     (Oracle, Fortinet, ...) remain legitimate editorial comparison.
+
+    The two checks use DELIBERATELY different symbol tests, because a false
+    positive costs the opposite thing in each direction:
+    - COVERAGE stays permissive (bare word boundary or company name): the model
+      was handed this ticker's headlines and told to open its paragraph with
+      the symbol, so any plausible mention counts. A stricter test here would
+      veto good narratives (with S on the watchlist, every "U.S." sentence used
+      to look like proof, and every valid narrative without one looked like a
+      drop).
+    - FABRICATION stays strict-plus-sentence-start: the strict
+      matching.ticker_pattern (cashtag, parenthesized, exchange-prefixed) plus,
+      for 1-2 char symbols, the bare symbol at a sentence or paragraph start.
+      Strict alone would be near-vacuous for short symbols, since a fabricated
+      claim will read "S fell 30%..." at a paragraph opening, never "$S".
+      Bare-word-boundary alone would veto any narrative saying "U.S." or
+      "S&P 500" whenever S had no news that day.
     """
     for tn in digest.tickers:
         symbol_present = re.search(rf"\b{re.escape(tn.ticker)}\b", text)
@@ -182,7 +212,11 @@ def _narrative_valid(
     if known_tickers:
         in_digest = {tn.ticker for tn in digest.tickers}
         for ticker in known_tickers - in_digest:
-            if re.search(rf"\b{re.escape(ticker)}\b", text):
+            if ticker_pattern(ticker).search(text):
+                return False
+            if len(ticker) <= SHORT_TICKER_MAX_LEN and _sentence_start_symbol(
+                ticker
+            ).search(text):
                 return False
     return True
 

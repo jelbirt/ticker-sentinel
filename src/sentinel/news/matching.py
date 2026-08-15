@@ -1,9 +1,9 @@
 """Per-ticker news matching — pure logic, no I/O (Phase 3).
 
-Matches by ticker symbol (word-boundary, case-SENSITIVE — prose words like
-"net"/"team"/"snow" must never match NET/TEAM/SNOW) or company name
-(case-insensitive; names are natural language) appearing in an entry's
-title/summary.
+Matches by ticker symbol (case-SENSITIVE — prose words like "net"/"team"/"snow"
+must never match NET/TEAM/SNOW; symbols of 1-2 chars additionally require
+explicit symbol context, see ticker_pattern) or company name (case-insensitive;
+names are natural language) appearing in an entry's title/summary.
 """
 from __future__ import annotations
 
@@ -19,18 +19,44 @@ class TickerMatch:
     entry: NewsEntry
 
 
-def _ticker_pattern(ticker: str) -> re.Pattern:
-    """Word-boundary AND case-sensitive: symbols are written uppercase, so this
-    matches "NET jumped 9%" but not the English words in "net income", "the
-    team", or "snow fell" — which otherwise misattribute constantly for
-    watchlist symbols like NET/TEAM/SNOW on general business feeds."""
-    return re.compile(rf"\b{re.escape(ticker)}\b")
+SHORT_TICKER_MAX_LEN = 2
+
+# Exchange-prefixed symbol forms seen on the wires: "NYSE: S", "NASDAQ:S".
+_EXCHANGES = "NYSE|NASDAQ|Nasdaq|AMEX"
+
+
+def ticker_pattern(ticker: str) -> re.Pattern:
+    """Symbol-only matching, case-SENSITIVE (never matches lowercase prose).
+
+    Two regimes, because a bare word boundary is only safe once a symbol is
+    long enough to be improbable as an abbreviation:
+
+    - 3+ chars: word-boundary + case-sensitive. Matches "NET jumped 9%" but not
+      the English words in "net income", "the team", or "snow fell", which
+      otherwise misattribute constantly for symbols like NET/TEAM/SNOW.
+    - 1-2 chars: the word boundary collapses. `\\bS\\b` matches the S inside
+      "U.S.", "S&P 500", and "S. Korea", so on general business feeds EVERY
+      macro headline was attributed to SentinelOne (S), filling its item cap
+      and poisoning the LLM prompt. Short symbols therefore require explicit
+      symbol context: a cashtag ($S), a parenthesized symbol "(S)", or an
+      exchange prefix (NYSE: S). Deliberate tradeoff: a bare "DT rallies"
+      headline no longer matches DT. Company-name matching (see
+      matches_ticker) still catches those stories whenever a name is
+      configured, and a missed headline is far cheaper than a digest of
+      misattributed macro noise.
+    """
+    symbol = re.escape(ticker)
+    if len(ticker) <= SHORT_TICKER_MAX_LEN:
+        return re.compile(
+            rf"(?:\${symbol}\b|\({symbol}\)|\b(?:{_EXCHANGES}):\s?{symbol}\b)"
+        )
+    return re.compile(rf"\b{symbol}\b")
 
 
 def matches_ticker(entry: NewsEntry, ticker: str, company_name: str | None = None) -> bool:
     """True if `entry` mentions the ticker symbol or (optionally) the company name."""
     text = f"{entry.title} {entry.summary}"
-    if _ticker_pattern(ticker).search(text):
+    if ticker_pattern(ticker).search(text):
         return True
     if company_name:
         # company names are natural-language phrases, not symbols: plain
