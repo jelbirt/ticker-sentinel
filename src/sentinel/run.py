@@ -96,6 +96,28 @@ def _reprice_market_cap(
     return stale
 
 
+def _trend_warmup_note(scorecards: list) -> str | None:
+    """One aggregate note while r40_trend is still warming up, else None.
+
+    r40_trend compares r40_fcf now against r40_fcf four quarters back, and each
+    of those needs a year of revenue behind it, so the metric wants 12 cached
+    quarters. The committed cache deepens by 4 quarters a year, so most names
+    currently score with the trend term inert. One line saying so beats a
+    column of unexplained n/a cells. Counts SCORED names only: a name that
+    could not be scored at all is already covered by its own note. Returns None
+    once every scored name has a trend, so the disclosure self-erases as the
+    history deepens (the backfill tool exists to make that happen sooner).
+    """
+    scored = [sc for sc in scorecards if sc.score is not None]
+    missing = sum(1 for sc in scored if sc.r40_trend is None)
+    if not missing:
+        return None
+    return (
+        f"R40 trend warming up: n/a for {missing} of {len(scored)} scored names "
+        "(needs 12 cached quarters; the committed cache deepens by 4 per year)"
+    )
+
+
 def main(argv: list[str] | None = None) -> int:
     logging.basicConfig(level=logging.INFO, format="%(levelname)s %(name)s: %(message)s")
     args = parse_args(argv)
@@ -164,6 +186,10 @@ def main(argv: list[str] | None = None) -> int:
     for sc in scorecards:  # between-quarter signals: informational, never scored
         sc.signals = signals.get(sc.ticker)
 
+    warmup = _trend_warmup_note(scorecards)
+    if warmup:
+        notes.append(warmup)
+
     # --- day-over-day change detection vs committed run history ----------------------
     today = date.today()
     change_set = None
@@ -228,11 +254,14 @@ def main(argv: list[str] | None = None) -> int:
             change_set, det_rows, week_span, current_run = None, [], 0, None
 
     # cache hygiene: drop files for tickers no longer on the watchlist —
-    # skipped for --tickers overrides so an ad hoc subset never deletes siblings
+    # skipped for --tickers overrides so an ad hoc subset never deletes siblings.
+    # The keep-set is cfg.cache_tickers, not cfg.all_tickers: the bench is
+    # unscored but its parquets are seeded and deepened by the history backfill,
+    # and pruning on the scored universe alone would delete them every run.
     if not args.dry_run and not args.tickers:
         from sentinel.data import cache
 
-        removed = cache.prune(set(cfg.all_tickers))
+        removed = cache.prune(set(cfg.cache_tickers))
         if removed:
             notes.append(f"pruned cache for departed tickers: {', '.join(removed)}")
 

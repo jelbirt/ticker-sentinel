@@ -86,6 +86,17 @@ class Config:
     def all_tickers(self) -> list[str]:
         return [t.ticker for t in self.universe]
 
+    @property
+    def cache_tickers(self) -> list[str]:
+        """Every ticker whose cache files must survive pruning.
+
+        The bench is not scored, so it never appears in `all_tickers`, but the
+        history backfill seeds and deepens bench parquets so a rotation
+        candidate arrives with usable history. Pruning on `all_tickers` alone
+        would delete that work on the next scheduled run.
+        """
+        return self.all_tickers + [t for t in self.bench if t not in set(self.all_tickers)]
+
 
 def load_config(path: Path | None = None) -> Config:
     path = path or repo_root() / "config" / "watchlist.yaml"

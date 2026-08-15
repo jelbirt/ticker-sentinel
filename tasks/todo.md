@@ -10,7 +10,12 @@
   `run_history.json`; discard that change rather than committing it.
 
 ## Active workstreams
-- none open.
+- `history-backfill` (branch `history-backfill`, worktree
+  `../ticker-sentinel.history-backfill`): one-time SEC EDGAR backfill tool
+  deepening the committed cache to >= 12 quarters per ticker behind a
+  verification gate, plus the R40-trend warm-up disclosure. Spec:
+  `tasks/spec-history-backfill.md`. Does NOT write `data/cache/` on this
+  branch; the `--apply` run is a separate owner-approved post-merge commit.
 
   One branch per workstream via `scripts/new-worktree.sh <branch>`; main is the
   review inbox; merge back via PR.

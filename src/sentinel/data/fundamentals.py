@@ -254,8 +254,13 @@ def inputs_from_canonical(
 
 
 @retry(stop=stop_after_attempt(3), wait=wait_exponential(multiplier=1, max=20), reraise=True)
-def _fetch_statements(ticker: str) -> tuple[pd.DataFrame, dict[str, Any]]:
-    """Network fetch: quarterly statements + annual revenue + market cap."""
+def fetch_statements(ticker: str) -> tuple[pd.DataFrame, dict[str, Any]]:
+    """Network fetch: quarterly statements + annual revenue + market cap.
+
+    Public because the one-time backfill tool (sentinel.backfill) needs the
+    raw fetch without get_fundamentals' cache write: a dry run must be able to
+    seed an in-memory overlap for an uncached bench name and write nothing.
+    """
     import yfinance as yf
 
     t = yf.Ticker(ticker)
@@ -330,7 +335,7 @@ def get_fundamentals(ticker: str, force_refresh: bool = False) -> tuple[Fundamen
         df, meta = cached_df, cached_meta
     else:
         try:
-            fresh_df, meta = _fetch_statements(ticker)
+            fresh_df, meta = fetch_statements(ticker)
             df = cache.merge_statements(cached_df, fresh_df)
             for carry in ("market_cap", "company_name"):
                 if meta.get(carry) is None and cached_meta:
