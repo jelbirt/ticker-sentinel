@@ -228,11 +228,14 @@ def main(argv: list[str] | None = None) -> int:
             change_set, det_rows, week_span, current_run = None, [], 0, None
 
     # cache hygiene: drop files for tickers no longer on the watchlist —
-    # skipped for --tickers overrides so an ad hoc subset never deletes siblings
+    # skipped for --tickers overrides so an ad hoc subset never deletes siblings.
+    # The keep-set is cfg.cache_tickers, not cfg.all_tickers: the bench is
+    # unscored but its parquets are seeded and deepened by the history backfill,
+    # and pruning on the scored universe alone would delete them every run.
     if not args.dry_run and not args.tickers:
         from sentinel.data import cache
 
-        removed = cache.prune(set(cfg.all_tickers))
+        removed = cache.prune(set(cfg.cache_tickers))
         if removed:
             notes.append(f"pruned cache for departed tickers: {', '.join(removed)}")
 

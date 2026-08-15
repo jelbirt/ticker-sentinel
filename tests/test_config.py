@@ -54,3 +54,19 @@ def test_changes_partial_block_overrides_only_given_keys(tmp_path):
     assert ch.score_delta_pts == 5.5
     assert ch.retention_runs == 20
     assert ch.rank_delta == 2  # untouched default
+def test_cache_tickers_includes_the_bench(tmp_path):
+    """Bench names are unscored but their cache files must survive pruning."""
+    path = _write_cfg(tmp_path, "bench: [WDAY, SHOP]\n")
+    cfg = load_config(path)
+    assert cfg.all_tickers == ["CRWD"]
+    assert cfg.cache_tickers == ["CRWD", "WDAY", "SHOP"]
+
+
+def test_cache_tickers_does_not_duplicate_a_benched_universe_name(tmp_path):
+    path = _write_cfg(tmp_path, "bench: [CRWD, SHOP]\n")
+    assert load_config(path).cache_tickers == ["CRWD", "SHOP"]
+
+
+def test_repo_config_bench_is_cache_protected():
+    cfg = load_config()
+    assert set(cfg.bench) <= set(cfg.cache_tickers)

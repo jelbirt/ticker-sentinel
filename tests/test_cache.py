@@ -57,3 +57,38 @@ class TestPrune:
     def test_prune_missing_dir_is_noop(self, tmp_path, monkeypatch):
         monkeypatch.setenv("SENTINEL_ROOT", str(tmp_path))
         assert prune({"CRWD"}) == []
+
+class TestPruneKeepsBench:
+    """The backfill seeds bench parquets; pruning on the scored universe alone
+    would delete them on the next scheduled run (spec D3 rider 1)."""
+
+    def test_bench_files_survive_a_prune_on_cache_tickers(self, tmp_path, monkeypatch):
+        from sentinel.config import Config, TickerCfg
+
+        monkeypatch.setenv("SENTINEL_ROOT", str(tmp_path))
+        d = tmp_path / "data" / "cache"
+        d.mkdir(parents=True)
+        for t in ("CRWD", "WDAY", "CFLT"):
+            for suffix in (".parquet", ".meta.json"):
+                (d / f"{t}{suffix}").write_text("x")
+
+        cfg = Config(universe=(TickerCfg("CRWD", ("r40",)),), bench=("WDAY",))
+        removed = prune(set(cfg.cache_tickers))
+
+        assert removed == ["CFLT.meta.json", "CFLT.parquet"]  # departed name only
+        assert (d / "WDAY.parquet").exists()
+        assert (d / "CRWD.parquet").exists()
+
+    def test_pruning_on_scored_universe_alone_would_delete_the_bench(
+        self, tmp_path, monkeypatch
+    ):
+        """Guards the regression the rider fixes, so run.py cannot drift back."""
+        from sentinel.config import Config, TickerCfg
+
+        monkeypatch.setenv("SENTINEL_ROOT", str(tmp_path))
+        d = tmp_path / "data" / "cache"
+        d.mkdir(parents=True)
+        (d / "WDAY.parquet").write_text("x")
+
+        cfg = Config(universe=(TickerCfg("CRWD", ("r40",)),), bench=("WDAY",))
+        assert prune(set(cfg.all_tickers)) == ["WDAY.parquet"]
