@@ -122,6 +122,60 @@ def test_https_links_still_render_as_links(hostile_link_digest):
     assert '<a href="https://news.example.com/ok"' in html
 
 
+def _one_item_digest(link: str) -> NewsDigest:
+    return NewsDigest(
+        as_of=NOW,
+        tickers=[
+            TickerNews(
+                ticker="CRWD",
+                company_name="CrowdStrike",
+                items=[
+                    NewsItem(
+                        title="Hostile link story",
+                        link=link,
+                        source="https://feeds.example.com/top",
+                        published=NOW - timedelta(hours=1),
+                    )
+                ],
+            )
+        ],
+        scanned=1,
+        matched=1,
+    )
+
+
+# An allowlist is only as good as the shapes it was tested against: a naive
+# rewrite (`url.lower().startswith("http")`) would pass a javascript-only test
+# while admitting "httpx://" and "http-evil:".
+@pytest.mark.parametrize(
+    "link",
+    [
+        "javascript:alert(1)",
+        "JavaScript:alert(1)",          # scheme comparison is case-insensitive
+        " javascript:alert(1)",         # leading whitespace is stripped by urlparse
+        "java\tscript:alert(1)",        # embedded control character
+        "data:text/html,<script>alert(1)</script>",
+        "vbscript:msgbox(1)",
+        "httpx://evil.example.com/x",   # prefix of an allowed scheme, not the scheme
+        "http-evil:payload",
+        "//evil.example.com/x",         # protocol-relative, no scheme at all
+        "http://[::1",                  # malformed: urlparse raises, must degrade
+    ],
+)
+@pytest.mark.parametrize("style", DETERMINISTIC_STYLES)
+def test_only_http_schemes_reach_an_href(style, link):
+    html, notes = render_news(_one_item_digest(link), style)
+    assert notes == []
+    assert "<a " not in html                # the only item here is the hostile one
+    assert "Hostile link story" in html     # text still shown, just not clickable
+
+
+@pytest.mark.parametrize("style", DETERMINISTIC_STYLES)
+def test_uppercase_http_scheme_still_links(style):
+    html, _ = render_news(_one_item_digest("HTTPS://news.example.com/ok"), style)
+    assert '<a href="HTTPS://news.example.com/ok"' in html
+
+
 def test_llm_brief_sources_footer_drops_non_http_links(hostile_link_digest, monkeypatch):
     from sentinel.news import llm
 
