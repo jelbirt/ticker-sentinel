@@ -45,6 +45,44 @@ NEGATIVE_MAGNITUDE_FIELDS = {"capex"}
 
 CANONICAL_FIELDS = list(ALIASES)
 
+# The fields the headline metric (r40_fcf = growth + fcf_margin) cannot live
+# without. Yahoo publishes a fresh quarter's statements piecemeal for a few
+# days after earnings; a column carrying only, say, diluted_shares must not
+# anchor the TTM windows, or the ticker silently drops out of scoring at the
+# exact moment its numbers are most interesting.
+CORE_FIELDS = ("revenue", "ocf", "capex")
+
+# Piecemeal publishing lasts days, not quarters: skip at most this many
+# leading partial columns. A deeper scan would let a drifted field alias
+# (the repo's top gotcha) silently re-anchor scoring on arbitrarily old
+# quarters instead of surfacing the missing field as degraded data.
+MAX_ANCHOR_SKIP = 2
+
+# Consecutive fiscal quarters are ~90 days apart (a 13-week retail calendar
+# stretches to ~98). A wider gap means a quarter is missing from the source,
+# and a "TTM" summed across it would silently span 15+ months.
+MAX_QUARTER_GAP_DAYS = 120
+
+
+def _anchor_offset(stmts: pd.DataFrame) -> int:
+    """Index of the newest column where every core field is present.
+
+    Scans only the first MAX_ANCHOR_SKIP + 1 columns; 0 when the newest
+    column is already complete, or when no nearby column is (then the normal
+    insufficient-data degradation applies unchanged).
+    """
+    for i, col in enumerate(stmts.columns[: MAX_ANCHOR_SKIP + 1]):
+        if all(f in stmts.index and pd.notna(stmts.loc[f, col]) for f in CORE_FIELDS):
+            return i
+    return 0
+
+
+def _contiguous(cols: list[pd.Timestamp]) -> bool:
+    """True when consecutive (newest-first) quarter columns have no gap."""
+    return all(
+        (a - b).days <= MAX_QUARTER_GAP_DAYS for a, b in zip(cols[:-1], cols[1:])
+    )
+
 
 def normalize_statements(
     income: pd.DataFrame | None,
@@ -85,13 +123,17 @@ def normalize_statements(
 def build_ttm(stmts: pd.DataFrame | None, offset: int = 0) -> TTMWindow | None:
     """Sum of 4 consecutive quarters starting `offset` quarters back.
 
-    Returns None when fewer than offset+4 quarters exist. A field is None unless
-    all 4 quarters have it (never annualize silently). EBITDA falls back to
+    Returns None when fewer than offset+4 quarters exist, or when the window's
+    columns are not consecutive quarters (a missing quarter would make the
+    "TTM" silently span 15+ months). A field is None unless all 4 quarters
+    have it (never annualize silently). EBITDA falls back to
     OperatingIncome + D&A when not reported.
     """
     if stmts is None or stmts.shape[1] < offset + 4:
         return None
     window = stmts.iloc[:, offset : offset + 4]
+    if not _contiguous(list(window.columns)):
+        return None
 
     def ttm(field: str) -> float | None:
         if field not in window.index:
@@ -155,7 +197,35 @@ def inputs_from_canonical(
     notes: list[str] | None = None,
     company_name: str | None = None,
 ) -> FundamentalInputs:
-    """Canonical statements frame -> FundamentalInputs for the indicator engine."""
+    """Canonical statements frame -> FundamentalInputs for the indicator engine.
+
+    Leading partially-populated quarters (core fields missing) are skipped, up
+    to MAX_ANCHOR_SKIP columns, so the TTM windows anchor on the newest
+    COMPLETE quarter with a data note: a ticker with usable history must
+    degrade to "scored as of the prior quarter", never to insufficient_data.
+    A gap in the quarterly history gets its own note (the affected TTM
+    windows return None via the contiguity check in build_ttm).
+    """
+    notes = notes if notes is not None else []
+    anchor = _anchor_offset(stmts)
+    if anchor:
+        skipped = ", ".join(c.date().isoformat() for c in stmts.columns[:anchor])
+        stmts = stmts.iloc[:, anchor:]
+        label = "quarter" if anchor == 1 else "quarters"
+        notes.append(
+            f"{ticker}: newest statement {label} incomplete at the source "
+            f"({skipped}); scored as of {stmts.columns[0].date().isoformat()}"
+        )
+    # note any gap within the span the offset windows consume (offsets 0..8
+    # need up to 12 columns): a deep gap silently degrades the trend windows
+    # to None, which must read as a source gap, not "insufficient history"
+    span = list(stmts.columns[:12])
+    if len(span) >= 4 and not _contiguous(span):
+        notes.append(
+            f"{ticker}: gap in quarterly statement history; TTM windows "
+            "spanning the gap are treated as insufficient data"
+        )
+
     statement_date: date | None = None
     if "revenue" in stmts.index:
         rev = stmts.loc["revenue"]
@@ -179,7 +249,7 @@ def inputs_from_canonical(
         cash=_first_valid(stmts, "cash"),
         statement_date=statement_date,
         annual_revenue=annual_revenue or {},
-        data_notes=notes or [],
+        data_notes=notes,
     )
 
 

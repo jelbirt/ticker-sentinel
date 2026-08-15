@@ -106,9 +106,9 @@ class Change:
     up (improving), down (worsening), info (neutral)."""
 
     ticker: str
-    kind: str      # score | rank | flag_set | flag_cleared | r40_inflection |
-                   # trend_state | new_cross | revisions | short_interest |
-                   # universe_added | universe_removed
+    kind: str      # score | score_basis | rank | flag_set | flag_cleared |
+                   # r40_inflection | trend_state | new_cross | revisions |
+                   # short_interest | universe_added | universe_removed
     detail: str
     direction: str = "info"
 
@@ -126,6 +126,63 @@ class ChangeSet:
 
 _TREND_LEVEL = {"downtrend": 0, "mixed": 1, "uptrend": 2}
 
+# collapse per-ticker basis-flip rows into one line when at least this many
+# tickers AND more than half the compared universe flipped together (a
+# wholesale price outage must not bury real changes under 20 identical rows)
+BASIS_COLLAPSE_MIN = 3
+
+
+def same_score_basis(cur: TickerSnapshot, prior: TickerSnapshot) -> bool:
+    """Composites are only comparable when both were built the same way.
+
+    C = w_f F + w_t T when technicals ran, but C falls back to F alone when
+    they did not (scoring.composite_score), so a day of missing price data
+    shifts every composite by construction, not by anything real. Diffing
+    across that boundary fabricates large score and rank moves.
+    """
+    return (cur.technical_score is None) == (prior.technical_score is None)
+
+
+def _scorecard_basis_matches(sc: Scorecard, snap: TickerSnapshot) -> bool:
+    """same_score_basis for the live-Scorecard vs persisted-snapshot pairing."""
+    return (sc.technical_score is None) == (snap.technical_score is None)
+
+
+def baseline_reference(
+    prior_tickers: set[str] | None, intended: set[str]
+) -> set[str]:
+    """Reference set for the degraded-run gate.
+
+    The prior baseline's names restricted to what this run INTENDED to score
+    (the configured universe, or the fixture set on a dry run). Restricting
+    matters: without it, a deliberate watchlist shrink below the gate fraction
+    would deadlock change detection forever, because a rejected run is never
+    saved and so the stale reference could never shrink. Names removed on
+    purpose drop out of the reference immediately; a wholesale outage leaves
+    the intended set unchanged and still fails the gate.
+    """
+    if not prior_tickers:
+        return intended
+    return prior_tickers & intended
+
+
+def baseline_ok(
+    scored_tickers: set[str], reference: set[str], min_fraction: float
+) -> bool:
+    """Should this run's snapshot be diffed and become tomorrow's baseline?
+
+    Gates on the overlap with `reference`, which the caller sets to the PRIOR
+    baseline's tickers (falling back to the configured universe on a first
+    run): a wholesale fetch outage empties the overlap and is rejected, while
+    a watchlist expansion merely adds unscored NEW names and passes, so
+    change detection keeps running for the names that were diffable
+    yesterday. Rejected runs are reported with a note but neither diffed
+    (wall of universe_removed rows) nor saved (mirror-image wall tomorrow).
+    """
+    if not reference:
+        return True
+    return len(scored_tickers & reference) >= min_fraction * len(reference)
+
 
 def _human(flag: str) -> str:
     return flag.replace("_", " ")
@@ -140,16 +197,39 @@ def _ticker_changes(
 ) -> list[Change]:
     out: list[Change] = []
 
+    basis_same = same_score_basis(cur, prior)
     if cur.composite is not None and prior.composite is not None:
-        delta = cur.composite - prior.composite
-        if abs(delta) >= cfg.score_delta_pts:
-            out.append(Change(
-                ticker, "score",
-                f"composite {cur.composite:.1f} ({delta:+.1f})",
-                "up" if delta > 0 else "down",
-            ))
+        if basis_same:
+            delta = cur.composite - prior.composite
+            if abs(delta) >= cfg.score_delta_pts:
+                out.append(Change(
+                    ticker, "score",
+                    f"composite {cur.composite:.1f} ({delta:+.1f})",
+                    "up" if delta > 0 else "down",
+                ))
+        else:
+            # construction changed (technicals dropped out or came back):
+            # composite deltas are fabrication, so compare F to F instead
+            tech_word = "unavailable" if cur.technical_score is None else "restored"
+            if (
+                cur.score is not None and prior.score is not None
+                and abs(cur.score - prior.score) >= cfg.score_delta_pts
+            ):
+                delta = cur.score - prior.score
+                out.append(Change(
+                    ticker, "score",
+                    f"fundamental score {cur.score:.1f} ({delta:+.1f}); "
+                    f"technicals {tech_word}, composite not comparable",
+                    "up" if delta > 0 else "down",
+                ))
+            else:
+                out.append(Change(
+                    ticker, "score_basis",
+                    f"technicals {tech_word}; composite basis changed, "
+                    "day-over-day move not comparable",
+                ))
 
-    if cur.rank is not None and prior.rank is not None:
+    if cur.rank is not None and prior.rank is not None and basis_same:
         if abs(cur.rank - prior.rank) >= cfg.rank_delta:
             out.append(Change(
                 ticker, "rank",
@@ -218,22 +298,53 @@ def _ticker_changes(
 
 
 def diff_runs(
-    current: RunSnapshot, prior: RunSnapshot | None, cfg: ChangesCfg
+    current: RunSnapshot,
+    prior: RunSnapshot | None,
+    cfg: ChangesCfg,
+    unscored_reasons: dict[str, str] | None = None,
 ) -> ChangeSet:
     """Compare two runs; every threshold comes from config. None on either side of
-    a comparison means unknown and never fabricates a change (spec 3.2)."""
+    a comparison means unknown and never fabricates a change (spec 3.2).
+
+    `unscored_reasons` (ticker -> human-readable reason) lets universe_removed
+    rows say WHY a name left the scored set: "dropped: newest quarter partial"
+    reads very differently from an unexplained disappearance that looks like a
+    delisting.
+    """
     if prior is None:
         return ChangeSet(prior_date=None, changes=[])
 
     changes: list[Change] = []
+    compared = 0
     for ticker in sorted(set(current.tickers) | set(prior.tickers)):
         cur_snap, prior_snap = current.tickers.get(ticker), prior.tickers.get(ticker)
         if cur_snap is None:
-            changes.append(Change(ticker, "universe_removed", "dropped from scored universe"))
+            reason = (unscored_reasons or {}).get(ticker)
+            detail = "dropped from scored universe" + (f" ({reason})" if reason else "")
+            changes.append(Change(ticker, "universe_removed", detail))
         elif prior_snap is None:
             changes.append(Change(ticker, "universe_added", "added to scored universe"))
         else:
+            compared += 1
             changes.extend(_ticker_changes(ticker, cur_snap, prior_snap, cfg))
+
+    # a wholesale technicals outage (or recovery) flips the basis for the whole
+    # universe at once; 20 identical per-ticker rows would bury the real
+    # changes. Only rows in the majority direction collapse, so a mixed day
+    # (some names losing technicals, some regaining) never miscounts: the
+    # minority stays as per-ticker rows.
+    basis_rows = [c for c in changes if c.kind == "score_basis"]
+    if basis_rows:
+        n_gone = sum("unavailable" in c.detail for c in basis_rows)
+        word = "unavailable" if n_gone * 2 >= len(basis_rows) else "restored"
+        collapsed = [c for c in basis_rows if word in c.detail]
+        if len(collapsed) >= BASIS_COLLAPSE_MIN and len(collapsed) * 2 > compared:
+            changes = [c for c in changes if c not in collapsed]
+            changes.append(Change(
+                "watchlist", "score_basis",
+                f"technicals {word} for {len(collapsed)} names; composite "
+                "moves not comparable for them today",
+            ))
 
     def _move(ticker: str) -> float:
         cur_snap, prior_snap = current.tickers.get(ticker), prior.tickers.get(ticker)
@@ -241,6 +352,12 @@ def diff_runs(
             cur_snap is None or prior_snap is None
             or cur_snap.composite is None or prior_snap.composite is None
         ):
+            return 0.0
+        if not same_score_basis(cur_snap, prior_snap):
+            # the composite shift is a construction artifact (see above);
+            # rank flipped tickers by their real F move instead
+            if cur_snap.score is not None and prior_snap.score is not None:
+                return abs(cur_snap.score - prior_snap.score)
             return 0.0
         return abs(cur_snap.composite - prior_snap.composite)
 
@@ -293,6 +410,7 @@ def _negative_signals(
 
     if (
         sc.composite is not None and prior is not None and prior.composite is not None
+        and _scorecard_basis_matches(sc, prior)
         and prior.composite - sc.composite >= cfg.score_delta_pts
     ):
         reasons.append(f"composite fell {prior.composite - sc.composite:.1f} since prior run")
@@ -300,6 +418,7 @@ def _negative_signals(
     if (
         sc.composite is not None and week_ago is not None
         and week_ago.composite is not None
+        and _scorecard_basis_matches(sc, week_ago)
         and week_ago.composite - sc.composite >= cfg.week_drop_pts
     ):
         reasons.append(
@@ -376,12 +495,14 @@ def deterioration_rows(
         delta_1run = (
             sc.composite - prior_snap.composite
             if sc.composite is not None and prior_snap is not None
-            and prior_snap.composite is not None else None
+            and prior_snap.composite is not None
+            and _scorecard_basis_matches(sc, prior_snap) else None
         )
         delta_week = (
             sc.composite - week_snap.composite
             if sc.composite is not None and week_snap is not None
-            and week_snap.composite is not None else None
+            and week_snap.composite is not None
+            and _scorecard_basis_matches(sc, week_snap) else None
         )
         rows.append(DeteriorationRow(
             ticker=sc.ticker,

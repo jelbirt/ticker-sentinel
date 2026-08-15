@@ -208,3 +208,24 @@ class TestCli:
         cfg = load_config()
         assert cfg.bench and ", ".join(cfg.bench) + "." in text
         assert not re.search(r"[–—]", text)
+
+
+def test_basis_rows_never_pollute_noisiest_tickers():
+    # review fix: a universe-wide basis flip inside the window produces a
+    # collapsed pseudo-ticker "watchlist" row; it may appear in change counts
+    # but must not compete in the per-ticker noise ranking
+    from sentinel.config import ChangesCfg
+    from sentinel.digest import build_digest
+    from sentinel.report.changes import RunSnapshot, TickerSnapshot
+
+    def run(date, tech):
+        return RunSnapshot(date, "scheduled", {
+            t: TickerSnapshot(composite=50.0 if tech else 30.0, score=30.0,
+                              technical_score=80.0 if tech else None, rank=i + 1)
+            for i, t in enumerate(["AAA", "BBB", "CCC", "DDD"])
+        })
+
+    runs = [run("2026-08-11", True), run("2026-08-12", False), run("2026-08-13", True)]
+    digest = build_digest(runs, ["AAA", "BBB", "CCC", "DDD"], [], ChangesCfg())
+    assert "score_basis" in digest.change_counts
+    assert all(t != "watchlist" for t, _ in digest.busiest)
