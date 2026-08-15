@@ -14,8 +14,8 @@ permissions:
   contents: write   # scheduled cache + run-history commit
   issues: write     # failure-alert issue
 
-# serialize runs: a dispatch overlapping the cron run would race the same
-# data/cache commit, and two pushes of the same day's baseline conflict
+# serialize runs: a dispatch overlapping the cron run would send the same
+# report twice and double the data-provider calls that Yahoo already rate-limits
 concurrency:
   group: daily-report
   cancel-in-progress: false
@@ -59,6 +59,13 @@ jobs:
       - name: refresh fundamentals cache commit (state-changing runs)
         if: ${{ !cancelled() && github.event_name == 'schedule' }}
         run: |
+          # !cancelled() covers every failure, not just an unsent email, so
+          # confirm the run got as far as a written report before committing
+          # its cache: a crash mid-refresh must not publish a partial baseline
+          if ! ls reports/*/report.html >/dev/null 2>&1; then
+            echo "no report produced, skipping cache commit"
+            exit 0
+          fi
           git config user.name sentinel-bot
           git config user.email bot@users.noreply.github.com
           git add data/cache
@@ -72,6 +79,8 @@ jobs:
           if git pull --rebase origin main && git push; then
             exit 0
           fi
+          # one retry: it clears a push that lost a race, not a real conflict
+          # inside data/cache, which stays red for the owner to resolve
           echo "cache push failed, retrying once after a fresh rebase"
           git rebase --abort 2>/dev/null || true
           git pull --rebase origin main
@@ -98,8 +107,10 @@ jobs:
           existing=$(gh issue list --repo "$GITHUB_REPOSITORY" --label run-failure \
             --state open --limit 1 --json number --jq '.[0].number // empty' || true)
           if [ -n "$existing" ]; then
-            gh issue comment "$existing" --repo "$GITHUB_REPOSITORY" --body "$body"
-            exit 0
+            if gh issue comment "$existing" --repo "$GITHUB_REPOSITORY" --body "$body"; then
+              exit 0
+            fi
+            echo "comment on issue #$existing failed, opening a new issue instead"
           fi
           title="Daily report run failure ($(date -u +%F))"
           gh issue create --repo "$GITHUB_REPOSITORY" --title "$title" --body "$body" \

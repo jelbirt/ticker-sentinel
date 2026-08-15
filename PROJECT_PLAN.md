@@ -173,20 +173,28 @@ jobs:
       - uses: actions/setup-python@v5
         with: {python-version: "3.12", cache: pip}
       - run: pip install -e .
-      - run: python -m sentinel.run ${{ inputs.tickers && format('--tickers {0}', inputs.tickers) || '' }} ${{ inputs.send_email == false && '--no-email' || '' }} ${{ inputs.deep && '--deep' || '' }}
+      - run: python -m sentinel.run ${TICKERS:+--tickers "$TICKERS"} ${{ inputs.send_email == false && '--no-email' || '' }} ${{ inputs.deep && '--deep' || '' }}
         env:
+          TICKERS: ${{ inputs.tickers }}   # via env, never interpolated into the command line
           SMTP_USER: ${{ secrets.SMTP_USER }}
           SMTP_PASS: ${{ secrets.SMTP_PASS }}
           RECIPIENT_EMAILS: ${{ secrets.RECIPIENT_EMAILS }}
           TWELVEDATA_API_KEY: ${{ secrets.TWELVEDATA_API_KEY }}
       - uses: actions/upload-artifact@v4
         with: {name: report, path: reports/}
-      - name: refresh fundamentals cache commit (weekly)
-        if: github.event_name == 'schedule'
+      - name: refresh fundamentals cache commit (state-changing runs)
+        if: ${{ !cancelled() && github.event_name == 'schedule' }}
         run: |
-          git config user.name sentinel-bot && git config user.email bot@users.noreply.github.com
-          git add data/cache && git diff --cached --quiet || git commit -m "cache: refresh fundamentals" && git push
+          git config user.name sentinel-bot
+          git config user.email bot@users.noreply.github.com
+          git add data/cache
+          git diff --cached --quiet || { git commit -m "cache: refresh fundamentals" &&
+            git pull --rebase origin main && git push; }
 ```
+Sketch only: `.github/workflows/daily-report.yml` is authoritative and carries the
+operational hardening (concurrency group, `!cancelled()` gates so a failed send still
+uploads the report and commits the baseline, one push retry after a rebase, step-scoped
+secrets, and the `failure()` step that opens or comments on a `run-failure` issue).
 Notes: US market holidays → job runs but detects "no new bar" and sends nothing (or a one-line "market closed" email — config option). Repo is public (2026-08-06): the watchlist and bot-committed cache are deliberately published; recipient addresses and all credentials live only in Actions secrets.
 ---
 ## 10. Testing & Quality
