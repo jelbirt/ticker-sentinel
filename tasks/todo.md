@@ -47,10 +47,11 @@
   green with the same script.
 
 ## Next gates (owner)
-- Weekly watchlist candidate refresh: once `weekly-refresh-digest` merges, a
-  digest issue opens Saturdays (label `watchlist-refresh`, owner-assigned);
-  do the refresh from the issue. Bench: WDAY, SHOP, TWLO, ZM (now a structured
-  `bench:` key in watchlist.yaml). First 3 refreshes are calibration rounds;
-  refresh #3's checklist adds the automate-vs-manual decision (option 3).
+- Weekly watchlist candidate refresh: live since 2026-08-15. A digest issue
+  opens Saturdays (label `watchlist-refresh`, owner-assigned); do the refresh
+  from the issue. Bench: WDAY, SHOP, TWLO, ZM (a structured `bench:` key in
+  watchlist.yaml). First 3 refreshes are calibration rounds; refresh #3's
+  checklist adds the automate-vs-manual decision (option 3). Refresh #1
+  opened as issue #6 on 2026-08-15 and is awaiting the owner.
 - (done) First scheduled run after merge created `data/cache/run_history.json`
   on 2026-08-07; change detection live since 2026-08-08.
