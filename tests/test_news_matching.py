@@ -64,18 +64,26 @@ class TestShortTickers:
         assert matches_ticker(_entry("SentinelOne (S) beats estimates"), "S")
         assert matches_ticker(_entry("NYSE: S added to the index"), "S")
         assert matches_ticker(_entry("NASDAQ:S halted briefly"), "S")
+        assert matches_ticker(_entry("NYSE:  S added (reformatted wire)"), "S")
+        assert matches_ticker(_entry("NYSE American: S begins trading"), "S")
 
     def test_bare_two_char_symbol_no_longer_matches(self):
-        # deliberate tradeoff: a bare "DT rallies" headline is given up, because
-        # accepting it also means accepting every "U.S."-style abbreviation.
-        # Company-name matching still catches these stories.
+        # deliberate tradeoff: a bare "DT rallies" headline on a general feed is
+        # given up, because accepting it also means accepting every
+        # "U.S."-style abbreviation. Per-ticker feeds skip matching entirely,
+        # so DT still gets its own coverage.
         assert not matches_ticker(_entry("DT rallies on cloud demand"), "DT")
         assert matches_ticker(_entry("Dynatrace (DT) raises outlook"), "DT")
-        # the company-name path is what recovers those stories
-        assert matches_ticker(_entry("Dynatrace rallies on cloud demand"), "DT", "Dynatrace")
 
     def test_company_name_path_is_unchanged(self):
+        # unchanged also means unchanged in its limits: the configured name has
+        # to appear verbatim, and yfinance supplies it with the legal suffix
+        # attached, so it is a partial recovery at best
         assert matches_ticker(_entry("sentinelone wins federal deal"), "S", "SentinelOne")
+        assert matches_ticker(_entry("Dynatrace rallies on cloud demand"), "DT", "Dynatrace")
+        assert not matches_ticker(
+            _entry("SentinelOne wins federal deal"), "S", "SentinelOne, Inc."
+        )
 
     def test_longer_tickers_keep_word_boundary_behavior(self):
         assert matches_ticker(_entry("NET jumped 9% on AI enthusiasm"), "NET")

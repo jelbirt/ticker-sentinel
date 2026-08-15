@@ -21,8 +21,9 @@ class TickerMatch:
 
 SHORT_TICKER_MAX_LEN = 2
 
-# Exchange-prefixed symbol forms seen on the wires: "NYSE: S", "NASDAQ:S".
-_EXCHANGES = "NYSE|NASDAQ|Nasdaq|AMEX"
+# Exchange-prefixed symbol forms seen on the wires: "NYSE: S", "NASDAQ:S",
+# "NYSE American: S" (AMEX's name since 2017; both spellings still circulate).
+_EXCHANGES = r"NYSE(?: American)?|NASDAQ|Nasdaq|AMEX"
 
 
 def ticker_pattern(ticker: str) -> re.Pattern:
@@ -39,16 +40,21 @@ def ticker_pattern(ticker: str) -> re.Pattern:
       macro headline was attributed to SentinelOne (S), filling its item cap
       and poisoning the LLM prompt. Short symbols therefore require explicit
       symbol context: a cashtag ($S), a parenthesized symbol "(S)", or an
-      exchange prefix (NYSE: S). Deliberate tradeoff: a bare "DT rallies"
-      headline no longer matches DT. Company-name matching (see
-      matches_ticker) still catches those stories whenever a name is
-      configured, and a missed headline is far cheaper than a digest of
-      misattributed macro noise.
+      exchange prefix (NYSE: S).
+
+    Deliberate tradeoff: a bare "DT rallies" headline on a general feed no
+    longer matches DT. What still carries these tickers is the PER-TICKER feed,
+    whose entries are pre-attributed and skip matching entirely (see
+    news.pipeline). The company-name path helps only when the configured name
+    appears verbatim: names come from yfinance shortName, so "SentinelOne, Inc."
+    does not substring-match a headline that says "SentinelOne". Even so, a
+    missed general-feed headline is far cheaper than a digest of misattributed
+    macro noise, which is what the bare word boundary produced every single day.
     """
     symbol = re.escape(ticker)
     if len(ticker) <= SHORT_TICKER_MAX_LEN:
         return re.compile(
-            rf"(?:\${symbol}\b|\({symbol}\)|\b(?:{_EXCHANGES}):\s?{symbol}\b)"
+            rf"(?:\${symbol}\b|\({symbol}\)|\b(?:{_EXCHANGES}):\s*{symbol}\b)"
         )
     return re.compile(rf"\b{symbol}\b")
 

@@ -189,11 +189,21 @@ def _sentence_start_symbol(ticker: str) -> re.Pattern:
 
     This is the shape a fabricated claim about a short ticker actually takes,
     because the prompt tells the model to OPEN each paragraph with the symbol
-    ("S fell 30% after a breach."). The trailing lookahead keeps the abbrevi-
-    ations that share the letter out of it: "S&P 500" and "S. Korea" opening a
-    sentence are prose, not a claim about the symbol.
+    ("S fell 30% after a breach."). The separator is deliberately loose (any run
+    of whitespace and quote characters, and any of .!?:; before it) so the
+    ordinary spelling variants of one sentence start all count: two spaces after
+    the period, an indented paragraph, a semicolon, an opening quote.
+
+    The trailing lookahead keeps the abbreviations that share the letter out of
+    it: "S&P 500" and "S. Korea" opening a sentence are prose, not a claim about
+    the symbol. Known limit: a symbol that is also a capitalized English word
+    ("A", "IT", "ON") would veto on ordinary prose at a sentence start. None of
+    the current watchlist or bench symbols are, but check that before adding
+    one.
     """
-    return re.compile(rf"(?:^|(?<=[.!?:]\s)){re.escape(ticker)}\b(?![&.])", re.MULTILINE)
+    return re.compile(
+        rf"(?:^\s*|(?<=[.!?:;])[\s\"']+){re.escape(ticker)}\b(?![&.])", re.MULTILINE
+    )
 
 
 def _narrative_valid(

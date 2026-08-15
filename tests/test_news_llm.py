@@ -339,12 +339,22 @@ class TestNarrativeValidation:
         assert "fell 30%" not in html
         assert any("fell back to 'headlines'" in n for n in notes)
 
-    def test_bare_short_ticker_after_a_sentence_fails_open(self, digest, monkeypatch):
-        html, notes = self._render(
-            digest, monkeypatch,
+    @pytest.mark.parametrize(
+        "narrative",
+        [
             "CRWD beat estimates. S fell 30% after a breach.",
-            {"CRWD", "S"},
-        )
+            "CRWD beat estimates.  S fell 30% after a breach.",     # two spaces
+            "CRWD beat estimates.\n\n  S fell 30% after a breach.",  # indented
+            "CRWD beat estimates; S fell 30% after a breach.",       # semicolon
+            'CRWD beat estimates. "S fell 30%," analysts said.',     # quoted
+            "S fell 30% after a breach. CRWD beat estimates.",       # first thing said
+        ],
+    )
+    def test_sentence_start_claims_fail_open_in_every_spelling(
+        self, digest, monkeypatch, narrative
+    ):
+        # one sentence start has many spellings; all of them are the same claim
+        html, notes = self._render(digest, monkeypatch, narrative, {"CRWD", "S"})
         assert "fell 30%" not in html
         assert any("fell back to 'headlines'" in n for n in notes)
 
