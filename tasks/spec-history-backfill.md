@@ -69,6 +69,20 @@ Signs are normalized to the cache convention: capex is a positive magnitude
   filing wins), because the cache mirrors yfinance's restated view.
 - Columns are labeled by fiscal period_end, matching the cache convention.
 
+### Implementation note: weighted averages are not derived
+
+Added during implementation, not part of the approved text. The approved spec
+groups "income/share facts" together under "Q4 = FY minus (Q1 + Q2 + Q3)", but
+`diluted_shares` is a weighted average, not a flow: differencing a year-to-date
+mean, or subtracting three quarters from a fiscal-year mean, produces nonsense
+(an FY mean of 241M minus three quarterly means near 241M would land at roughly
+-482M). `diluted_shares` therefore accepts DIRECT 3-month facts only and stays
+NaN otherwise. In practice that leaves most backfilled Q4 columns without a
+share count, since a 10-K's income statement carries the annual column rather
+than a Q4 one. `_paired_shares` already degrades to None on a missing reading,
+and the affected columns sit deeper than the yfinance cache, so no live metric
+changes.
+
 ## Verification gate (D2)
 
 Per ticker, before any write:
