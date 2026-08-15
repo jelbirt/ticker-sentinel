@@ -90,7 +90,7 @@ def _rebase_factor(cached: pd.Series, fresh: pd.Series) -> float | None:
     ratios = []
     for col in cached.index.intersection(fresh.index):
         old, new = cached.get(col), fresh.get(col)
-        if pd.notna(old) and pd.notna(new) and float(old) > 0:
+        if pd.notna(old) and pd.notna(new) and float(old) > 0 and float(new) > 0:
             ratios.append(float(new) / float(old))
     if len(ratios) < MIN_REBASE_OVERLAP:
         return None

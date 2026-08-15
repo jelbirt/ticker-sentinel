@@ -6,6 +6,7 @@ change ALIASES, never scatter string literals elsewhere.
 from __future__ import annotations
 
 import logging
+import math
 from datetime import date, datetime, timezone
 from typing import Any
 
@@ -179,8 +180,12 @@ def sanitize_share_counts(
             )
             row[off_scale] = float("nan")
 
-    # neighbour check: the newest reading is the one today's price agrees with,
-    # so a step keeps the newer side and drops everything behind it
+    # neighbour check: a step splits the row into two internally consistent
+    # sides on different bases. The shares-outstanding reference arbitrates
+    # which side is on today's basis (recency alone cannot: a corrupt NEWEST
+    # cell would win and the guard would destroy the correct history behind
+    # it). Without a reference nothing can arbitrate, so every reading drops:
+    # n/a beats a coin flip whose wrong side misprices the market cap.
     valid = row.dropna()
     for i in range(len(valid) - 1):
         newer, older = float(valid.iloc[i]), float(valid.iloc[i + 1])
@@ -188,17 +193,34 @@ def sanitize_share_counts(
             step = float("inf")
         else:
             step = max(newer / older, older / newer)
-        if step > MAX_QUARTER_SHARE_STEP:
-            dropped = list(valid.index[i + 1 :])
-            label = "quarter" if len(dropped) == 1 else "quarters"
+        if step <= MAX_QUARTER_SHARE_STEP:
+            continue
+        if shares_outstanding is None or shares_outstanding <= 0:
             notes.append(
-                f"{ticker}: diluted share count steps {older:,.0f} to {newer:,.0f} "
-                f"at {valid.index[i].date().isoformat()} (a split or a source "
-                f"error, not issuance); {len(dropped)} older {label} dropped as "
-                "a different share basis"
+                f"{ticker}: diluted share count steps {older:,.0f} to "
+                f"{newer:,.0f} at {valid.index[i].date().isoformat()} with no "
+                "shares outstanding reference to arbitrate the basis; all "
+                f"{len(valid)} share readings dropped"
             )
-            row[dropped] = float("nan")
+            row[list(valid.index)] = float("nan")
             break
+        newer_side, older_side = valid.iloc[: i + 1], valid.iloc[i + 1 :]
+
+        def _off_basis(side: pd.Series) -> float:
+            return abs(math.log(float(side.median()) / float(shares_outstanding)))
+
+        keep_newer = _off_basis(newer_side) <= _off_basis(older_side)
+        dropped_side = older_side if keep_newer else newer_side
+        which = "older" if keep_newer else "newer"
+        label = "quarter" if len(dropped_side) == 1 else "quarters"
+        notes.append(
+            f"{ticker}: diluted share count steps {older:,.0f} to {newer:,.0f} "
+            f"at {valid.index[i].date().isoformat()} (a split or a source "
+            f"error, not issuance); {len(dropped_side)} {which} {label} dropped "
+            "as a different share basis"
+        )
+        row[list(dropped_side.index)] = float("nan")
+        break
 
     out.loc["diluted_shares"] = row
     return out
@@ -452,16 +474,18 @@ def get_fundamentals(ticker: str, force_refresh: bool = False) -> tuple[Fundamen
                 notes.append(f"{ticker}: fundamentals unavailable ({exc})")
                 return None, notes
 
-    # guard every path into scoring, cache hits included, so a cache poisoned
-    # before this guard existed heals on the next run rather than on the next
-    # refresh; the scrubbed frame is what gets written back
-    df = sanitize_share_counts(ticker, df, (meta or {}).get("shares_outstanding"), notes)
+    # the cache keeps the UNSANITIZED merge: cells inside Yahoo's served
+    # window self-correct via combine_first regardless, so persisting the
+    # scrub could only ever destroy cache-only history, and a false positive
+    # (a stale or wrong shares-outstanding reference) would destroy it
+    # permanently. Scrubbing at read time protects every path just the same.
     if refetched:
         try:
             cache.save(ticker, df, meta)
         except Exception as exc:  # a disk problem must not cost us the report
             log.warning("cache save failed for %s: %s", ticker, exc)
             notes.append(f"{ticker}: cache not updated ({exc})")
+    df = sanitize_share_counts(ticker, df, (meta or {}).get("shares_outstanding"), notes)
 
     annual_revenue = {
         date.fromisoformat(k): v for k, v in (meta or {}).get("annual_revenue", {}).items()

@@ -141,16 +141,41 @@ class TestShareCountGuard:
         assert np.isnan(row[4]) and np.isnan(row[5])
         assert notes and notes[0].startswith("CRWD: diluted share count implausible")
 
-    def test_step_check_runs_without_a_reference(self):
-        # meta written before shares_outstanding existed: the neighbour check
-        # still has to fire on its own
+    def test_step_without_a_reference_drops_every_reading(self):
+        # meta written before shares_outstanding existed: nothing can
+        # arbitrate which side of the step is on today's basis, and guessing
+        # the newest would trust a corrupt newest cell (the NOW 8/07 slip
+        # landed on the newest quarter), so the whole row degrades to n/a
         df = make_canonical({"diluted_shares": [400.0, 398.0, 100.0, 99.0]})
         notes = []
         out = sanitize_share_counts("X", df, None, notes)
-        row = self._row(out)
-        assert row[:2] == approx([400.0, 398.0])
-        assert np.isnan(row[2]) and np.isnan(row[3])
+        assert all(np.isnan(v) for v in self._row(out))
         assert len(notes) == 1
+        assert "no shares outstanding reference to arbitrate" in notes[0]
+
+    def test_corrupt_newest_cell_without_reference_is_not_trusted(self):
+        # the review finding: a thousands slip on the NEWEST quarter with no
+        # reference must not survive while the correct history is destroyed
+        df = make_canonical(
+            {"diluted_shares": [1_034_334.0, 1_039_884_000.0, 1_047_000_000.0, 1_046_608_000.0]}
+        )
+        notes = []
+        out = sanitize_share_counts("NOW", df, None, notes)
+        assert all(np.isnan(v) for v in self._row(out))
+        assert len(notes) == 1
+
+    def test_reference_arbitrates_against_a_corrupt_newest_cell(self):
+        # a 2x newest-cell slip sits INSIDE the magnitude band, so only the
+        # step check can catch it; the side nearer shares outstanding wins,
+        # which here is the older side, not the newer one
+        df = make_canonical({"diluted_shares": [800.0, 398.0, 400.0, 399.0]})
+        notes = []
+        out = sanitize_share_counts("X", df, 401.0, notes)
+        row = self._row(out)
+        assert np.isnan(row[0])
+        assert row[1:] == approx([398.0, 400.0, 399.0])
+        assert len(notes) == 1
+        assert "1 newer quarter dropped" in notes[0]
 
     def test_gaps_do_not_count_as_steps(self):
         # a missing quarter must not make its neighbours look like a break

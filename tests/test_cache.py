@@ -74,6 +74,15 @@ class TestSplitRebasing:
         merged = merge_statements(cached, fresh)
         assert merged.loc["diluted_shares", pd.Timestamp("2025-10-31")] == approx(248.0)
 
+    def test_zero_fresh_values_never_rebase(self):
+        # a zeroed fresh row (alias drift, source glitch) must not infer a
+        # factor of 0 and zero out the cache-only history
+        cached = self._shares([100.0, 100.0, 100.0, 100.0], self.CACHED_Q)
+        fresh = self._shares([0.0, 0.0, 0.0], self.FRESH_Q)
+        merged = merge_statements(cached, fresh)
+        assert merged.loc["diluted_shares", pd.Timestamp("2025-07-31")] == approx(100.0)
+        assert merged.loc["diluted_shares", pd.Timestamp("2025-04-30")] == approx(100.0)
+
     def test_other_rows_are_never_rebased(self):
         cached = self._shares([100.0, 100.0, 100.0, 100.0], self.CACHED_Q)
         cached.loc["revenue"] = 50.0
@@ -82,6 +91,34 @@ class TestSplitRebasing:
         merged = merge_statements(cached, fresh)
         assert merged.loc["diluted_shares", pd.Timestamp("2025-07-31")] == approx(400.0)
         assert merged.loc["revenue", pd.Timestamp("2025-07-31")] == approx(50.0)
+
+
+class TestScrubIsNeverPersisted:
+    """The saved cache keeps the unsanitized merge: cells inside Yahoo's
+    served window self-correct on the next fetch anyway, so persisting the
+    scrub could only destroy cache-only history, and a false positive (stale
+    shares-outstanding reference) would destroy it permanently."""
+
+    def test_saved_cache_keeps_history_the_read_time_guard_drops(
+        self, tmp_path, monkeypatch
+    ):
+        from sentinel.data import fundamentals as fnd
+        from tests.conftest import make_canonical
+
+        monkeypatch.setenv("SENTINEL_ROOT", str(tmp_path))
+        shape = [400.0, 398.0, 100.0, 99.0]  # basis step, no reference
+        frame = make_canonical(
+            {"revenue": [100.0] * 4, "diluted_shares": shape}
+        )
+        meta = {"fetched_at": "2026-08-15T00:00:00+00:00", "company_name": "X Corp"}
+        monkeypatch.setattr(fnd, "fetch_statements", lambda ticker: (frame, meta))
+
+        inputs, notes = fnd.get_fundamentals("X")
+
+        assert inputs.diluted_shares_now is None  # scoring sees the scrub
+        assert any("no shares outstanding reference" in n for n in notes)
+        saved, _ = cache.load("X")
+        assert list(saved.loc["diluted_shares"]) == approx(shape)  # cache does not
 
 
 class TestPrune:
