@@ -143,7 +143,8 @@ def test_signals_table_rendered(html):
     assert "Between-quarter signals" in html
     assert "▲6" in html                       # ALFA estimate revisions up
     assert "+150k" in html                    # ALFA insider net buying
-    assert "−400k" in html                    # BRVO insider net selling
+    assert "-400k" in html                    # BRVO insider net selling
+    assert "−400k" not in html                # ASCII hyphen, not U+2212
     assert "Insider net 6m" in html           # legend/table header
 
 

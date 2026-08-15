@@ -74,10 +74,13 @@ def _score(v: float | None) -> str:
 
 
 def _shares(v: float | None) -> str:
-    """Signed share counts humanized: +733k, −1.2M."""
+    """Signed share counts humanized: +733k, -1.2M.
+
+    ASCII hyphen, matching _sdelta/_spct: one minus glyph across the report.
+    """
     if v is None:
         return "n/a"
-    sign = "+" if v > 0 else "−" if v < 0 else ""
+    sign = "+" if v > 0 else "-" if v < 0 else ""
     a = abs(v)
     if a >= 1e6:
         return f"{sign}{a / 1e6:.1f}M"
@@ -87,7 +90,7 @@ def _shares(v: float | None) -> str:
 
 
 def _spct(v: float | None) -> str:
-    """Signed percent for deltas: +33%, −6%."""
+    """Signed percent for deltas: +33%, -6%."""
     return "n/a" if v is None else f"{v * 100:+.0f}%"
 
 

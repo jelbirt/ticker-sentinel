@@ -115,8 +115,9 @@ Single JSON document, versioned, runs newest-last:
 ### 3.1 Comparison baselines
 - **Prior run** = newest history entry with `date < today` (a same-day re-run
   compares against yesterday, not itself).
-- **Week-ago run** = entry 5 positions before the prior run (5 runs = one Tue-Sat
-  week); if history is shorter, the oldest entry is used and the section labels the
+- **Week-ago run** = entry 4 positions before the prior run, so today vs the
+  week-ago run spans exactly `week_window_runs` (5) run-steps, one Tue-Sat week;
+  if history is shorter, the oldest entry is used and the section labels the
   actual span ("vs 3 runs ago"). Used only for deterioration windows (section 4).
 - First run ever (no prior): section renders "No prior run state yet; change
   detection starts tomorrow." and everything else proceeds.

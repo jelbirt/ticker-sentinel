@@ -26,7 +26,11 @@ dev = ["pytest>=8.0"]
 where = ["src"]
 
 [tool.setuptools.package-data]
-sentinel = ["report/templates/*.j2", "fixtures/*.json"]
+sentinel = [
+    "report/templates/*.j2",
+    "fixtures/*.json",
+    "fixtures/state/*.json",   # --dry-run change-detection history fixture
+]
 
 [tool.pytest.ini_options]
 testpaths = ["tests"]
