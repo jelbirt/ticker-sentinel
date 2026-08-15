@@ -207,14 +207,19 @@ class TestCanonicalFrame:
 
 
 class TestNarrowedFieldSet:
-    """Amendment 1 change 1: only the fields the history actually feeds."""
+    """Amendments 1 and 2: only the fields the history actually feeds.
+
+    Amendment 2 also drops diluted_shares: dilution reads only the newest
+    five yfinance-served quarters, and EDGAR as-filed counts are on the
+    filing-date basis, which for split tickers would churn against the
+    PR #12 share-basis guard."""
 
     def test_backfill_fields_are_the_r40_trend_inputs(self):
-        assert BACKFILL_FIELDS == ["revenue", "ocf", "capex", "sbc", "diluted_shares"]
+        assert BACKFILL_FIELDS == ["revenue", "ocf", "capex", "sbc"]
 
-    def test_operating_income_and_d_and_a_are_never_derived(self, frame):
-        """Both tags are present in the fixture; the frame still leaves them NaN."""
-        for field in ("operating_income", "d_and_a"):
+    def test_dropped_fields_are_never_derived(self, frame):
+        """Their tags are present in the fixture; the frame leaves them NaN."""
+        for field in ("operating_income", "d_and_a", "diluted_shares"):
             assert frame.loc[field].isna().all()
 
     def test_their_tags_stay_mapped_for_inspection(self, payload):

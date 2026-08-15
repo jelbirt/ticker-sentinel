@@ -56,10 +56,16 @@ CAPEX_BASE_TAGS = [
     "PaymentsToAcquireProductiveAssets",
 ]
 # ADDEND tags are summed on top of the base when the filer reports them.
+# PaymentsForSoftware (purchased software licenses, distinct from both PP&E
+# and capitalized development) is Amendment 2: RBRK, OKTA and DT all file it,
+# and yfinance folds it into Capital Expenditure for them, so the composite
+# came up short by exactly that component. The gate still arbitrates: a filer
+# whose yfinance capex does NOT include it will overshoot and stay rejected.
 CAPEX_ADDEND_TAGS = [
     "PaymentsToDevelopSoftware",
     "PaymentsToCapitalizeInternalUseSoftware",
     "PaymentsToAcquireIntangibleAssets",
+    "PaymentsForSoftware",
 ]
 
 # canonical field -> us-gaap tags, first tag with any usable facts wins
@@ -101,7 +107,13 @@ COMPOSITE_TAGS: dict[str, tuple[list[str], list[str]]] = {
 # nothing while their as-filed-vs-normalized mismatches rejected whole
 # tickers. Their TAG_MAP entries stay as documentation of the EDGAR tags (and
 # keep `facts_for_field` usable for ad-hoc inspection); nothing derives them.
-BACKFILL_FIELDS = ["revenue", "ocf", "capex", "sbc", "diluted_shares"]
+# Amendment 2 (approved 2026-08-15) also drops `diluted_shares`: dilution
+# reads only the newest five quarters, which are always yfinance-served on
+# the current split basis, so deep share history feeds nothing, and EDGAR
+# as-filed counts are on the FILING-DATE basis, which for split tickers would
+# churn against the share-basis guard added by the share-integrity workstream
+# (PR #12). Flow fields are split-independent and unaffected.
+BACKFILL_FIELDS = ["revenue", "ocf", "capex", "sbc"]
 
 # Deliberately NOT backfilled: `ebitda` (build_ttm's OpInc + D&A fallback
 # computes it from the newest quarter), `operating_income` and `d_and_a` (see

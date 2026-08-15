@@ -290,3 +290,30 @@ Amendment 1's prose:
    whole history. The base with the most derivable quarters wins (ties break
    toward the earlier tag); addends still sum on top and nothing is double
    counted, which is what the preference rule existed to guarantee.
+
+## Amendment 2 (approved 2026-08-15)
+
+Two field-mapping changes, both owner-approved on the PR #11 verification
+findings and the PR #12 share-integrity findings:
+
+1. **`diluted_shares` is dropped from the backfill entirely** (fields and
+   gate). Dilution reads only the newest five quarters, which are always
+   yfinance-served on the current split basis, so deep share history feeds no
+   metric. EDGAR as-filed counts are on the FILING-DATE basis: for tickers
+   with a split inside the window (CRWD 4:1 2026-07-02, NOW 5:1 2025-12-18,
+   PANW 2:1 2024-12), refilling would reintroduce pre-split values and churn
+   against the share-basis guard the share-integrity workstream added
+   (PR #12). Flow fields are split-independent and unaffected. Consequence:
+   share mismatches no longer reject a ticker, which is correct because
+   nothing share-shaped is written.
+2. **`PaymentsForSoftware` joins the capex addends.** RBRK, OKTA and DT all
+   file it (purchased software licenses, distinct from PP&E and from
+   capitalized development), and yfinance folds it into their Capital
+   Expenditure, so the composite came up short by exactly that component.
+   The unchanged verification gate still arbitrates: a filer whose yfinance
+   capex does not include the line overshoots and stays rejected.
+
+Apply-time decision, also approved: TEAM's parquet is restored to its
+pre-`2621e02` yfinance-only state inside the next apply commit, so the gate
+verifies TEAM's composite against pure yfinance instead of against the
+round-1 apply's own single-tag output.
