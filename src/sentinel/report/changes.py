@@ -148,6 +148,24 @@ def _scorecard_basis_matches(sc: Scorecard, snap: TickerSnapshot) -> bool:
     return (sc.technical_score is None) == (snap.technical_score is None)
 
 
+def baseline_reference(
+    prior_tickers: set[str] | None, intended: set[str]
+) -> set[str]:
+    """Reference set for the degraded-run gate.
+
+    The prior baseline's names restricted to what this run INTENDED to score
+    (the configured universe, or the fixture set on a dry run). Restricting
+    matters: without it, a deliberate watchlist shrink below the gate fraction
+    would deadlock change detection forever, because a rejected run is never
+    saved and so the stale reference could never shrink. Names removed on
+    purpose drop out of the reference immediately; a wholesale outage leaves
+    the intended set unchanged and still fails the gate.
+    """
+    if not prior_tickers:
+        return intended
+    return prior_tickers & intended
+
+
 def baseline_ok(
     scored_tickers: set[str], reference: set[str], min_fraction: float
 ) -> bool:
@@ -311,17 +329,22 @@ def diff_runs(
             changes.extend(_ticker_changes(ticker, cur_snap, prior_snap, cfg))
 
     # a wholesale technicals outage (or recovery) flips the basis for the whole
-    # universe at once; 20 identical per-ticker rows would bury the real changes
+    # universe at once; 20 identical per-ticker rows would bury the real
+    # changes. Only rows in the majority direction collapse, so a mixed day
+    # (some names losing technicals, some regaining) never miscounts: the
+    # minority stays as per-ticker rows.
     basis_rows = [c for c in changes if c.kind == "score_basis"]
-    if len(basis_rows) >= BASIS_COLLAPSE_MIN and len(basis_rows) * 2 > compared:
+    if basis_rows:
         n_gone = sum("unavailable" in c.detail for c in basis_rows)
         word = "unavailable" if n_gone * 2 >= len(basis_rows) else "restored"
-        changes = [c for c in changes if c.kind != "score_basis"]
-        changes.append(Change(
-            "watchlist", "score_basis",
-            f"technicals {word} for {len(basis_rows)} names; composite moves "
-            "not comparable for them today",
-        ))
+        collapsed = [c for c in basis_rows if word in c.detail]
+        if len(collapsed) >= BASIS_COLLAPSE_MIN and len(collapsed) * 2 > compared:
+            changes = [c for c in changes if c not in collapsed]
+            changes.append(Change(
+                "watchlist", "score_basis",
+                f"technicals {word} for {len(collapsed)} names; composite "
+                "moves not comparable for them today",
+            ))
 
     def _move(ticker: str) -> float:
         cur_snap, prior_snap = current.tickers.get(ticker), prior.tickers.get(ticker)
@@ -329,6 +352,12 @@ def diff_runs(
             cur_snap is None or prior_snap is None
             or cur_snap.composite is None or prior_snap.composite is None
         ):
+            return 0.0
+        if not same_score_basis(cur_snap, prior_snap):
+            # the composite shift is a construction artifact (see above);
+            # rank flipped tickers by their real F move instead
+            if cur_snap.score is not None and prior_snap.score is not None:
+                return abs(cur_snap.score - prior_snap.score)
             return 0.0
         return abs(cur_snap.composite - prior_snap.composite)
 

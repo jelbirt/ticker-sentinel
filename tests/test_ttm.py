@@ -219,3 +219,22 @@ class TestQuarterContiguity:
         cols = pd.to_datetime(["2026-05-02", "2026-01-31", "2025-11-01", "2025-08-02"])
         df = pd.DataFrame(100.0, index=CANONICAL_FIELDS, columns=cols)
         assert build_ttm(df, 0).revenue == approx(400)
+
+
+def test_deep_gap_beyond_first_four_columns_still_noted():
+    # review fix: offsets 2..8 consume up to 12 columns; a gap between
+    # columns 4 and 5 degrades the trend windows and must carry the note
+    import pandas as pd
+
+    from sentinel.data.fundamentals import CANONICAL_FIELDS, inputs_from_canonical
+
+    cols = pd.to_datetime([
+        "2026-06-30", "2026-03-31", "2025-12-31", "2025-09-30",
+        "2025-06-30", "2024-12-31", "2024-09-30", "2024-06-30",  # 2025-03-31 missing
+    ])
+    df = pd.DataFrame(100.0, index=CANONICAL_FIELDS, columns=cols)
+    notes: list[str] = []
+    inp = inputs_from_canonical("X", df, market_cap=None, notes=notes)
+    assert inp.ttm_now is not None            # newest window unaffected
+    assert inp.ttm_minus_4q is None           # spans the gap
+    assert any("gap in quarterly statement history" in n for n in notes)

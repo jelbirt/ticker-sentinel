@@ -216,7 +216,11 @@ def inputs_from_canonical(
             f"{ticker}: newest statement {label} incomplete at the source "
             f"({skipped}); scored as of {stmts.columns[0].date().isoformat()}"
         )
-    if stmts.shape[1] >= 4 and not _contiguous(list(stmts.columns[:4])):
+    # note any gap within the span the offset windows consume (offsets 0..8
+    # need up to 12 columns): a deep gap silently degrades the trend windows
+    # to None, which must read as a source gap, not "insufficient history"
+    span = list(stmts.columns[:12])
+    if len(span) >= 4 and not _contiguous(span):
         notes.append(
             f"{ticker}: gap in quarterly statement history; TTM windows "
             "spanning the gap are treated as insufficient data"

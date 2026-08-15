@@ -85,6 +85,11 @@ def build_digest(
     for prior, current in zip(window, window[1:]):
         for change in diff_runs(current, prior, cfg).changes:
             change_counts[change.kind] = change_counts.get(change.kind, 0) + 1
+            if change.kind == "score_basis":
+                # basis rows describe data availability, not ticker behavior,
+                # and a collapsed row's pseudo-ticker "watchlist" must never
+                # compete in the noisiest-tickers ranking
+                continue
             per_ticker_changes[change.ticker] = per_ticker_changes.get(change.ticker, 0) + 1
             if change.direction == "down":
                 per_ticker_down[change.ticker] = per_ticker_down.get(change.ticker, 0) + 1

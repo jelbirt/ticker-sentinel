@@ -21,6 +21,7 @@ from sentinel.report.builder import build_context, rank_key, render_report, writ
 from sentinel.report.changes import (
     RunSnapshot,
     baseline_ok,
+    baseline_reference,
     deterioration_rows,
     diff_runs,
     select_baselines,
@@ -186,13 +187,16 @@ def main(argv: list[str] | None = None) -> int:
                 (sc for sc in scorecards if sc.score is not None),
                 key=lambda s: rank_key(s, cfg.ranking),
             )
-            # degraded-run gate: reference = the prior baseline's tickers (so a
-            # watchlist expansion with unscored NEW names still passes), falling
-            # back to the universe this run set out to score on a first run
+            # degraded-run gate: reference = prior baseline's tickers restricted
+            # to what this run intended to score (expansion adds unscored new
+            # names without tripping it; a deliberate shrink drops removed names
+            # from the reference instead of deadlocking; an outage still fails)
+            intended = (
+                {inp.ticker for inp in inputs_list} if args.dry_run else set(tickers)
+            )
             eligible = [r for r in prior_runs if r.date < today.isoformat()]
-            reference = (
-                set(eligible[-1].tickers) if eligible
-                else {inp.ticker for inp in inputs_list}
+            reference = baseline_reference(
+                set(eligible[-1].tickers) if eligible else None, intended
             )
             if not baseline_ok(
                 {sc.ticker for sc in ranked}, reference,

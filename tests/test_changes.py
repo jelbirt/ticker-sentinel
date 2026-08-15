@@ -12,6 +12,7 @@ from sentinel.report.changes import (
     RunSnapshot,
     TickerSnapshot,
     baseline_ok,
+    baseline_reference,
     deteriorating,
     deterioration_rows,
     diff_runs,
@@ -558,3 +559,84 @@ class TestBaselineOk:
 
     def test_empty_reference_is_not_a_gate(self):
         assert baseline_ok(set(), set(), 0.5)
+
+
+class TestBaselineReference:
+    """Review fix: the gate references prior-baseline names restricted to the
+    intended universe, so a deliberate watchlist shrink cannot deadlock the
+    gate (rejected runs are never saved, so an unrestricted reference could
+    never shrink)."""
+
+    def test_deliberate_shrink_does_not_deadlock(self):
+        prior = {f"T{i}" for i in range(12)}
+        intended = {"T0", "T1", "T2", "T3", "T4"}  # owner cut 12 -> 5
+        ref = baseline_reference(prior, intended)
+        assert baseline_ok(intended, ref, 0.5)  # all 5 scored: gate passes
+
+    def test_outage_still_fails(self):
+        prior = {f"T{i}" for i in range(20)}
+        intended = prior  # watchlist unchanged; fetches collapsed
+        ref = baseline_reference(prior, intended)
+        assert not baseline_ok({"T1"}, ref, 0.5)
+
+    def test_expansion_keeps_old_names_as_reference(self):
+        prior = {f"T{i}" for i in range(12)}
+        intended = prior | {f"N{i}" for i in range(15)}
+        ref = baseline_reference(prior, intended)
+        assert ref == prior
+        assert baseline_ok(prior, ref, 0.5)  # old names scored, new ones not yet
+
+    def test_first_run_falls_back_to_intended(self):
+        assert baseline_reference(None, {"A", "B"}) == {"A", "B"}
+        assert baseline_reference(set(), {"A", "B"}) == {"A", "B"}
+
+
+class TestBasisCollapseMixedDirections:
+    def _flip_runs(self, gone: int, restored: int, stable: int):
+        prior_t, cur_t = {}, {}
+        names = [f"G{i}" for i in range(gone)] + [f"R{i}" for i in range(restored)] \
+            + [f"S{i}" for i in range(stable)]
+        for i, t in enumerate(names):
+            if t.startswith("G"):
+                prior_t[t] = TickerSnapshot(composite=50.0, score=30.0,
+                                            technical_score=80.0, rank=i + 1)
+                cur_t[t] = TickerSnapshot(composite=30.0, score=30.0,
+                                          technical_score=None, rank=i + 1)
+            elif t.startswith("R"):
+                prior_t[t] = TickerSnapshot(composite=30.0, score=30.0,
+                                            technical_score=None, rank=i + 1)
+                cur_t[t] = TickerSnapshot(composite=50.0, score=30.0,
+                                          technical_score=80.0, rank=i + 1)
+            else:
+                prior_t[t] = TickerSnapshot(composite=40.0, score=40.0,
+                                            technical_score=60.0, rank=i + 1)
+                cur_t[t] = TickerSnapshot(composite=40.0, score=40.0,
+                                          technical_score=60.0, rank=i + 1)
+        return (RunSnapshot("2026-08-06", "scheduled", cur_t),
+                RunSnapshot("2026-08-05", "scheduled", prior_t))
+
+    def test_mixed_day_collapses_majority_only(self):
+        cur, prior = self._flip_runs(gone=5, restored=2, stable=1)
+        cs = diff_runs(cur, prior, CFG)
+        basis = [c for c in cs.changes if c.kind == "score_basis"]
+        agg = [c for c in basis if c.ticker == "watchlist"]
+        assert len(agg) == 1
+        assert "unavailable for 5 names" in agg[0].detail  # never counts the 2 restored
+        assert sum(1 for c in basis if c.ticker.startswith("R")) == 2
+
+    def test_flipped_rows_rank_by_f_move_not_composite_artifact(self):
+        # one real F crash on a same-basis name must outrank a mechanical
+        # basis-flip shift (which diff_runs itself labeled not comparable)
+        prior_t = {
+            "REAL": TickerSnapshot(composite=60.0, score=60.0, technical_score=60.0, rank=1),
+            "FLIP": TickerSnapshot(composite=44.9, score=18.1, technical_score=85.0, rank=2),
+        }
+        cur_t = {
+            "REAL": TickerSnapshot(composite=45.0, score=45.0, technical_score=60.0, rank=2),
+            "FLIP": TickerSnapshot(composite=18.1, score=18.1, technical_score=None, rank=1),
+        }
+        cs = diff_runs(
+            RunSnapshot("2026-08-06", "scheduled", cur_t),
+            RunSnapshot("2026-08-05", "scheduled", prior_t), CFG,
+        )
+        assert cs.changes[0].ticker == "REAL"
