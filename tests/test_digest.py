@@ -139,6 +139,50 @@ class TestChangeActivityAndCoverage:
         assert "no run history yet" in digest.coverage_gaps[0]
 
 
+class TestCoverageUniverse:
+    """build_from_files measures coverage against the scored (r40) names only."""
+
+    def _files(self, tmp_path: Path, universe: str) -> tuple[Path, Path]:
+        cfg_path = tmp_path / "watchlist.yaml"
+        cfg_path.write_text("universe:\n" + universe)
+        hist = tmp_path / "run_history.json"
+        hist.write_text(json.dumps({
+            "version": 1,
+            "runs": [
+                _run(11, {"CRWD": _healthy()}).to_dict(),
+                _run(12, {"CRWD": _healthy()}).to_dict(),
+            ],
+        }))
+        return cfg_path, hist
+
+    def test_tech_only_ticker_is_not_a_coverage_gap(self, tmp_path: Path):
+        from sentinel.digest import build_from_files
+
+        # XOM is configured but not r40-tagged, so it is never scored and never
+        # reaches run history: flagging it weekly would be a standing false alarm
+        cfg_path, hist = self._files(
+            tmp_path,
+            "  - ticker: CRWD\n    tags: [software, r40]\n"
+            "  - ticker: XOM\n    tags: [energy]\n",
+        )
+        digest, _ = build_from_files(cfg_path, hist)
+        assert digest.coverage_gaps == []
+
+    def test_scored_ticker_absent_from_history_is_still_a_gap(self, tmp_path: Path):
+        from sentinel.digest import build_from_files
+
+        cfg_path, hist = self._files(
+            tmp_path,
+            "  - ticker: CRWD\n    tags: [software, r40]\n"
+            "  - ticker: DDOG\n    tags: [software, r40]\n",
+        )
+        digest, _ = build_from_files(cfg_path, hist)
+        assert any(
+            g.startswith("DDOG: configured but absent from every run")
+            for g in digest.coverage_gaps
+        )
+
+
 class TestRendering:
     def _digest(self, **kw):
         runs = [
