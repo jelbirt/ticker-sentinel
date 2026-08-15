@@ -75,3 +75,61 @@ def test_empty_digest_renders_nothing(digest):
     html, notes = render_news(empty, "headlines")
     assert html is None
     assert notes == []
+
+
+@pytest.fixture()
+def hostile_link_digest():
+    """A feed can put anything in <link>: escaping alone still yields a live
+    javascript: href."""
+    return NewsDigest(
+        as_of=NOW,
+        tickers=[
+            TickerNews(
+                ticker="CRWD",
+                company_name="CrowdStrike",
+                items=[
+                    NewsItem(
+                        title="Hostile link story",
+                        link="javascript:alert(1)",
+                        source="https://feeds.example.com/top",
+                        published=NOW - timedelta(hours=1),
+                    ),
+                    NewsItem(
+                        title="Honest story",
+                        link="https://news.example.com/ok",
+                        source="https://feeds.example.com/top",
+                        published=NOW - timedelta(hours=2),
+                    ),
+                ],
+            )
+        ],
+        scanned=5,
+        matched=2,
+    )
+
+
+@pytest.mark.parametrize("style", DETERMINISTIC_STYLES)
+def test_non_http_links_render_as_plain_text(style, hostile_link_digest):
+    html, notes = render_news(hostile_link_digest, style)
+    assert notes == []
+    assert "javascript:" not in html            # never reaches an href
+    assert "Hostile link story" in html         # visible text is unchanged
+    assert "Hostile link story</a>" not in html  # but nothing clickable behind it
+
+
+def test_https_links_still_render_as_links(hostile_link_digest):
+    html, _ = render_news(hostile_link_digest, "headlines")
+    assert '<a href="https://news.example.com/ok"' in html
+
+
+def test_llm_brief_sources_footer_drops_non_http_links(hostile_link_digest, monkeypatch):
+    from sentinel.news import llm
+
+    monkeypatch.setattr(
+        llm, "call_claude", lambda *a, **k: "<REPORT>CRWD had a busy day.</REPORT>"
+    )
+    html, notes = render_news(hostile_link_digest, "llm-brief", model="claude-sonnet-5")
+    assert notes == []
+    assert "javascript:" not in html
+    assert "[1]" in html                                    # the marker still shows
+    assert '<a href="https://news.example.com/ok"' in html  # the safe one still links

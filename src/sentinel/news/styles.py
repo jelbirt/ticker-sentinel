@@ -31,6 +31,28 @@ def _esc(text: str) -> str:
     return html.escape(text, quote=True)
 
 
+_LINK_STYLE = "color:#1f5fa8;text-decoration:none;"
+_SAFE_SCHEMES = {"http", "https"}
+
+
+def _link(url: str, text: str) -> str:
+    """Render `text` as a link, but only behind an http(s) URL.
+
+    Feed items carry attacker-controlled link fields: escaping alone would
+    happily produce href="javascript:alert(1)" or a data: URL. Anything outside
+    the scheme allowlist renders as escaped plain text, so the reader sees the
+    same words with nothing clickable behind them.
+    """
+    esc_text = _esc(text)
+    try:
+        scheme = urlparse(url).scheme.lower()
+    except ValueError:  # malformed URL (e.g. bad IPv6 literal)
+        return esc_text
+    if scheme not in _SAFE_SCHEMES:
+        return esc_text
+    return f'<a href="{_esc(url)}" style="{_LINK_STYLE}">{esc_text}</a>'
+
+
 def _domain(url: str) -> str:
     netloc = urlparse(url).netloc
     return netloc.removeprefix("www.") or "feed"
@@ -64,8 +86,7 @@ def _headlines(
         lines = []
         for item in tn.items:
             lines.append(
-                f'<a href="{_esc(item.link)}" style="color:#1f5fa8;text-decoration:none;">'
-                f"{_esc(item.title)}</a> "
+                f"{_link(item.link, item.title)} "
                 f'<span style="font-size:11px;color:#8a94a0;">({_item_meta(item, digest.as_of)})</span>'
             )
         company = (
@@ -100,8 +121,7 @@ def _brief(
         more = f" · +{len(tn.items) - 1} more" if len(tn.items) > 1 else ""
         lines.append(
             f"<b>{_esc(tn.ticker)}</b>: "
-            f'<a href="{_esc(top.link)}" style="color:#1f5fa8;text-decoration:none;">'
-            f"{_esc(top.title)}</a> "
+            f"{_link(top.link, top.title)} "
             f'<span style="font-size:11px;color:#8a94a0;">({_item_meta(top, digest.as_of)}){_esc(more)}</span>'
         )
     return (
@@ -303,8 +323,7 @@ def _llm_brief(
     source_bits = []
     for tn in digest.tickers:
         links = " ".join(
-            f'<a href="{_esc(item.link)}" style="color:#1f5fa8;text-decoration:none;">[{i}]</a>'
-            for i, item in enumerate(tn.items, start=1)
+            _link(item.link, f"[{i}]") for i, item in enumerate(tn.items, start=1)
         )
         source_bits.append(f"{_esc(tn.ticker)} {links}")
     return (
