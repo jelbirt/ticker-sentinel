@@ -3,13 +3,14 @@ refresh session (spec 7.0). Pure aggregation over committed run history; no
 network, no scoring. The weekly-refresh workflow renders this into a GitHub
 issue; the swap decision itself stays owner-gated.
 
-Run: python -m sentinel.digest [--refresh-number N] [--out PATH]
+Run: python -m sentinel.digest [--refresh-number N] [--out PATH] [--json PATH]
 """
 from __future__ import annotations
 
 import argparse
+import json
 import sys
-from dataclasses import dataclass, field
+from dataclasses import asdict, dataclass, field
 from datetime import date
 from pathlib import Path
 
@@ -19,6 +20,44 @@ from sentinel.report.changes import RunSnapshot, TickerSnapshot, diff_runs
 
 # manual refreshes before the digest starts prompting the automation decision
 CALIBRATION_REFRESHES = 3
+
+# Flag vocabulary split (SPEC 7.0.1 round-1 lesson): a fetch or coverage
+# problem is not a rotation signal, and the attention table has to make that
+# visible per name instead of pooling both kinds in one cell. Membership here
+# is the data-quality side; everything else is business. test_digest pins that
+# every flag constant in the codebase is classified, so a new flag cannot slip
+# in unclassified.
+DATA_QUALITY_FLAGS = frozenset({
+    "insufficient_data",       # fewer than 4 quarters: no TTM at all
+    "insufficient_history",    # trend/growth window unavailable
+    "growth_from_annual",      # growth fell back to FY over FY
+    "stale_fundamentals",      # statements more than 200 days old
+})
+# The business side, listed explicitly so the classification is an inventory a
+# reader can check rather than a silent default. classify_flags() still treats
+# anything unlisted as business, so a new flag renders sensibly before anyone
+# gets round to classifying it; the test enforces that "round to" is the same
+# commit that adds the flag.
+BUSINESS_FLAGS = frozenset({
+    "sbc_inflated",            # r40_fcf minus r40_sbc_adj > 20 pts
+    "high_sbc",                # sbc_intensity > 15%
+    "dilution",                # dilution > 3%/yr
+    "passes_all_r40",          # all three R40 variants clear 40
+    "golden_cross",
+    "death_cross",
+})
+
+
+def classify_flags(flags: list[str]) -> tuple[list[str], list[str]]:
+    """Split persisted flags into (data quality, business), order preserved.
+
+    Unknown flags count as business: a flag nobody classified is more likely a
+    new business signal than a new fetch problem, and putting it where the
+    owner reads rotation evidence is the safer error.
+    """
+    quality = [f for f in flags if f in DATA_QUALITY_FLAGS]
+    business = [f for f in flags if f not in DATA_QUALITY_FLAGS]
+    return quality, business
 
 
 def snapshot_decaying(snap: TickerSnapshot, threshold: float) -> bool:
@@ -36,12 +75,65 @@ class TickerWeek:
     ticker: str
     runs_seen: int
     decay_hits: int                    # runs where snapshot_decaying() held
+    decay_streak: int                  # longest CONSECUTIVE run of those hits
     composite_latest: float | None
     composite_delta: float | None      # latest minus earliest appearance
     rank_earliest: int | None
     rank_latest: int | None
     down_changes: int                  # worsening threshold crossings in window
     flags_latest: list[str] = field(default_factory=list)
+    flags_data_quality: list[str] = field(default_factory=list)
+    flags_business: list[str] = field(default_factory=list)
+
+
+@dataclass(frozen=True)
+class BenchWeek:
+    """One bench name's window-scale composite move, on the same first-vs-last
+    basis as the attention list so the two tables can be read side by side."""
+
+    ticker: str
+    runs_seen: int
+    composite_first: float | None
+    composite_last: float | None
+    composite_delta: float | None
+    flags_latest: list[str] = field(default_factory=list)
+
+
+@dataclass(frozen=True)
+class CoverageGap:
+    """A scored name that is missing, or a history name no longer configured.
+
+    Structured rather than a rendered string because the streak is the point
+    (SPEC 7.0.1 round-1 gap 1): a 2-run streak and a 1-run blip are different
+    evidence, and the JSON digest needs the number, not the prose.
+    """
+
+    ticker: str
+    kind: str                     # absent_all | missing_streak | unconfigured
+    streak: int = 0               # consecutive runs missing at the END of the window
+    runs_seen: int = 0            # runs in the window where the name appeared
+    runs_in_window: int = 0
+    since: str | None = None      # first run date of the missing streak
+    until: str | None = None      # latest run date in the window
+
+    @property
+    def text(self) -> str:
+        if self.kind == "no_history":
+            return f"no run history yet for {self.runs_seen} scored tickers"
+        if self.kind == "unconfigured":
+            return f"{self.ticker}: in run history but no longer configured"
+        if self.kind == "absent_all":
+            return (
+                f"{self.ticker}: configured but absent from every run in the "
+                f"window ({self.streak} runs), check listing status"
+            )
+        if self.streak <= 1:
+            return f"{self.ticker}: missing from the latest run ({self.until})"
+        return (
+            f"{self.ticker}: missing from the latest {self.streak} runs "
+            f"({self.since} to {self.until}), seen in {self.runs_seen} of "
+            f"{self.runs_in_window} runs this window"
+        )
 
 
 @dataclass(frozen=True)
@@ -52,13 +144,75 @@ class WeeklyDigest:
     attention: list[TickerWeek]        # persistent decliners, worst first
     change_counts: dict[str, int]      # change kind -> occurrences in window
     busiest: list[tuple[str, int]]     # (ticker, change count), noisiest first
-    coverage_gaps: list[str]           # human-readable clauses
+    coverage_gaps: list[CoverageGap]
     bench: list[str]
     notes: list[str]                   # degradation notes (unreadable history etc.)
+    bench_weeks: list[BenchWeek] = field(default_factory=list)
 
 
 def _window(runs: list[RunSnapshot], cfg: ChangesCfg) -> list[RunSnapshot]:
     return runs[-max(cfg.week_window_runs, 1):]
+
+
+def _longest_decay_streak(
+    window: list[RunSnapshot], ticker: str, threshold: float
+) -> int:
+    """Longest run of CONSECUTIVE decay-gate hits in the window.
+
+    A run the name is missing from breaks the streak: an absence is not
+    evidence that the gate held. Reported alongside the raw hit count so a
+    persistent decline reads differently from the same number of scattered
+    hits (the gate itself still counts hits, unchanged)."""
+    best = current = 0
+    for run in window:
+        snap = run.tickers.get(ticker)
+        if snap is not None and snapshot_decaying(snap, threshold):
+            current += 1
+            best = max(best, current)
+        else:
+            current = 0
+    return best
+
+
+def _missing_streak(window: list[RunSnapshot], ticker: str) -> int:
+    """Consecutive runs, counting back from the latest, without this ticker."""
+    streak = 0
+    for run in reversed(window):
+        if ticker in run.tickers:
+            break
+        streak += 1
+    return streak
+
+
+def _bench_weeks(
+    window: list[RunSnapshot], bench: list[str]
+) -> list[BenchWeek]:
+    """Window-scale composite move per bench name, first vs last appearance.
+
+    Names configured on the bench but absent from history (every run predating
+    bench shadow-scoring) are simply not returned; the renderer turns an empty
+    list into a warm-up note rather than an error.
+    """
+    seen: list[str] = []
+    for run in window:
+        for ticker in run.bench:
+            if ticker not in seen:
+                seen.append(ticker)
+    order = [t for t in bench if t in seen] + [t for t in sorted(seen) if t not in bench]
+
+    weeks: list[BenchWeek] = []
+    for ticker in order:
+        appearances = [run.bench[ticker] for run in window if ticker in run.bench]
+        valued = [a.composite for a in appearances if a.composite is not None]
+        weeks.append(BenchWeek(
+            ticker=ticker,
+            runs_seen=len(appearances),
+            composite_first=valued[0] if valued else None,
+            composite_last=valued[-1] if valued else None,
+            composite_delta=valued[-1] - valued[0] if len(valued) > 1 else None,
+            flags_latest=list(appearances[-1].flags) if appearances else [],
+        ))
+    return weeks
 
 
 def build_digest(
@@ -81,8 +235,10 @@ def build_digest(
         return WeeklyDigest(
             window_start="n/a", window_end="n/a", runs_in_window=0,
             attention=[], change_counts={}, busiest=[],
-            coverage_gaps=[f"no run history yet for {len(universe)} scored tickers"],
-            bench=list(bench), notes=list(notes or []),
+            coverage_gaps=[
+                CoverageGap(ticker="", kind="no_history", runs_seen=len(universe))
+            ],
+            bench=list(bench), notes=list(notes or []), bench_weeks=[],
         )
 
     change_counts: dict[str, int] = {}
@@ -114,11 +270,15 @@ def build_digest(
         # degraded to None must not null the week-scale evidence around it
         valued = [a.composite for a in appearances if a.composite is not None]
         delta = valued[-1] - valued[0] if len(valued) > 1 else None
+        quality_flags, business_flags = classify_flags(list(latest.flags))
         weeks.append(TickerWeek(
             ticker=ticker,
             runs_seen=len(appearances),
             decay_hits=sum(
                 snapshot_decaying(s, cfg.deteriorating_r40_trend) for s in appearances
+            ),
+            decay_streak=_longest_decay_streak(
+                window, ticker, cfg.deteriorating_r40_trend
             ),
             composite_latest=latest.composite,
             composite_delta=delta,
@@ -126,6 +286,8 @@ def build_digest(
             rank_latest=latest.rank,
             down_changes=per_ticker_down.get(ticker, 0),
             flags_latest=list(latest.flags),
+            flags_data_quality=quality_flags,
+            flags_business=business_flags,
         ))
 
     attention = [
@@ -140,17 +302,31 @@ def build_digest(
     ))
 
     latest_run = window[-1]
-    gaps: list[str] = []
+    gaps: list[CoverageGap] = []
     for ticker in universe:
         if ticker not in seen:
-            gaps.append(
-                f"{ticker}: configured but absent from every run in the window, "
-                "check listing status"
-            )
+            gaps.append(CoverageGap(
+                ticker=ticker, kind="absent_all", streak=len(window),
+                runs_seen=0, runs_in_window=len(window),
+                since=window[0].date, until=latest_run.date,
+            ))
         elif ticker not in latest_run.tickers:
-            gaps.append(f"{ticker}: missing from the latest run ({latest_run.date})")
+            # a streak, not a binary: SPEC 7.0.1 round-1 gap 1, where a 2-run
+            # absence and a 1-run blip read identically and TEAM's real gap
+            # was indistinguishable from noise
+            streak = _missing_streak(window, ticker)
+            gaps.append(CoverageGap(
+                ticker=ticker, kind="missing_streak", streak=streak,
+                runs_seen=sum(1 for r in window if ticker in r.tickers),
+                runs_in_window=len(window),
+                since=window[len(window) - streak].date, until=latest_run.date,
+            ))
     for ticker in sorted(seen - set(universe)):
-        gaps.append(f"{ticker}: in run history but no longer configured")
+        gaps.append(CoverageGap(
+            ticker=ticker, kind="unconfigured",
+            runs_seen=sum(1 for r in window if ticker in r.tickers),
+            runs_in_window=len(window), until=latest_run.date,
+        ))
 
     busiest = sorted(
         per_ticker_changes.items(), key=lambda item: (-item[1], item[0])
@@ -166,11 +342,16 @@ def build_digest(
         coverage_gaps=gaps,
         bench=list(bench),
         notes=list(notes or []),
+        bench_weeks=_bench_weeks(window, list(bench)),
     )
 
 
 def _fmt(value: float | None, spec: str = ".1f") -> str:
     return format(value, spec) if value is not None else "n/a"
+
+
+def _flag_cell(flags: list[str]) -> str:
+    return ", ".join(f.replace("_", " ") for f in flags) or "n/a"
 
 
 def _rank_cell(week: TickerWeek) -> str:
@@ -205,15 +386,22 @@ def render_markdown(
     if digest.attention:
         lines += [
             "",
-            "| ticker | decay-gate hits | composite | window delta | rank | latest flags |",
-            "| --- | --- | --- | --- | --- | --- |",
+            "Flags are split because a fetch or coverage problem is not a "
+            "rotation signal (rubric, round 1): read the business column for "
+            "decay evidence and the data-quality column as a to-fix list.",
+            "",
+            "| ticker | decay-gate hits | decay streak | composite | window delta "
+            "| rank | business flags | data-quality flags |",
+            "| --- | --- | --- | --- | --- | --- | --- | --- |",
         ]
         for w in digest.attention:
-            flags = ", ".join(f.replace("_", " ") for f in w.flags_latest) or "n/a"
+            business = _flag_cell(w.flags_business)
+            quality = _flag_cell(w.flags_data_quality)
             lines.append(
                 f"| {w.ticker} | {w.decay_hits} of {w.runs_seen} | "
+                f"{w.decay_streak} consecutive | "
                 f"{_fmt(w.composite_latest)} | {_fmt(w.composite_delta, '+.1f')} | "
-                f"{_rank_cell(w)} | {flags} |"
+                f"{_rank_cell(w)} | {business} | {quality} |"
             )
     else:
         lines.append("")
@@ -241,7 +429,7 @@ def render_markdown(
     lines.append("## Coverage and liveness")
     lines.append("")
     if digest.coverage_gaps:
-        lines += [f"- {gap}" for gap in digest.coverage_gaps]
+        lines += [f"- {gap.text}" for gap in digest.coverage_gaps]
     else:
         lines.append("All configured tickers present in every run of the window.")
     lines.append("")
@@ -251,6 +439,38 @@ def render_markdown(
         "## Bench (first-call swap candidates)",
         "",
         bench + ".",
+        "",
+    ]
+    if digest.bench_weeks:
+        lines += [
+            "Shadow-scored every run on the same basis as the watchlist, so "
+            "these composites compare directly with the attention list above. "
+            "Unranked, and never part of any watchlist number.",
+            "",
+            "| ticker | runs seen | composite | window delta | latest flags |",
+            "| --- | --- | --- | --- | --- |",
+        ]
+        for b in digest.bench_weeks:
+            lines.append(
+                f"| {b.ticker} | {b.runs_seen} of {digest.runs_in_window} | "
+                f"{_fmt(b.composite_last)} | {_fmt(b.composite_delta, '+.1f')} | "
+                f"{_flag_cell(b.flags_latest)} |"
+            )
+        scored_bench = {b.ticker for b in digest.bench_weeks}
+        unseen = [t for t in digest.bench if t not in scored_bench]
+        if unseen:
+            lines += [
+                "",
+                f"No snapshots this window for: {', '.join(unseen)} "
+                "(newly benched, or its fundamentals did not fetch).",
+            ]
+    else:
+        lines.append(
+            "No bench snapshots in this window yet: bench shadow-scoring "
+            "starts with the first scheduled run after it ships, so early "
+            "windows are warming up rather than failing."
+        )
+    lines += [
         "",
         "## Owner checklist",
         "",
@@ -277,6 +497,27 @@ def render_markdown(
     return "\n".join(lines)
 
 
+def render_json(digest: WeeklyDigest, refresh_number: int, today: date) -> str:
+    """Machine-readable twin of render_markdown.
+
+    Substrate for the refresh #3 automate-vs-manual decision: an agent drafting
+    swap proposals against the written rubric needs the streaks and the flag
+    split as numbers and lists, not parsed out of a table. Stable sorted keys
+    and ISO dates so successive weeks diff cleanly.
+    """
+    payload = asdict(digest)
+    payload["coverage_gaps"] = [
+        {**asdict(gap), "text": gap.text} for gap in digest.coverage_gaps
+    ]
+    payload["busiest"] = [
+        {"ticker": ticker, "changes": n} for ticker, n in digest.busiest
+    ]
+    payload["refresh_number"] = refresh_number
+    payload["generated"] = today.isoformat()
+    payload["calibration_refreshes"] = CALIBRATION_REFRESHES
+    return json.dumps(payload, indent=2, sort_keys=True) + "\n"
+
+
 def build_from_files(
     config_path: Path | None = None, history_path: Path | None = None
 ) -> tuple[WeeklyDigest, Config]:
@@ -298,14 +539,19 @@ def main(argv: list[str] | None = None) -> int:
                         help="digest date (ISO), defaults to today")
     parser.add_argument("--out", type=Path, default=None,
                         help="write markdown here instead of stdout")
+    parser.add_argument("--json", type=Path, default=None, dest="json_out",
+                        help="also write the digest as JSON here (machine-readable)")
     args = parser.parse_args(argv)
 
+    today = args.date or date.today()
     digest, _ = build_from_files(args.config, args.history)
-    text = render_markdown(digest, args.refresh_number, args.date or date.today())
+    text = render_markdown(digest, args.refresh_number, today)
     if args.out:
         args.out.write_text(text)
     else:
         sys.stdout.write(text)
+    if args.json_out:
+        args.json_out.write_text(render_json(digest, args.refresh_number, today))
     return 0
 
 
