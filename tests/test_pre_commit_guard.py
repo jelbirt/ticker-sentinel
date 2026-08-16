@@ -142,13 +142,39 @@ def test_unreadable_quoting_does_not_move_the_commit_to_the_session_cwd(
     guard: Guard, message_form: str
 ) -> None:
     command = f"cd {guard.worktree} && " + message_form.format(c=COMMIT)
+    assert guard.run(command, cwd=guard.repo).returncode == 0
+
+    # exit 0 alone would also be satisfied by "no commit detected at all", so
+    # fail the bar and read the block message back: naming the worktree tree
+    # proves the commit was both seen AND attributed to the right directory.
+    guard.set_checks("exit 1")
     r = guard.run(command, cwd=guard.repo)
-    assert r.returncode == 0, r.stderr
+    assert r.returncode == 2
+    assert f"checks.sh failed for {guard.worktree}" in r.stderr
 
 
 def test_unreadable_quoting_honours_a_relative_cd(guard: Guard) -> None:
-    r = guard.run(f"cd ../wt && git {COMMIT} -m msg --author='O'Brien'")
+    command = f"cd ../wt && git {COMMIT} -m msg --author='O'Brien'"
+    assert guard.run(command).returncode == 0
+
+    guard.set_checks("exit 1")
+    r = guard.run(command)
+    assert r.returncode == 2
+    assert f"checks.sh failed for {guard.worktree}" in r.stderr
+
+
+def test_stripping_the_heredoc_body_keeps_the_command_fully_parseable(
+    guard: Guard,
+) -> None:
+    """`git -C` is only honoured on the parsed path, not by the cd replay, so
+    this passes only when the apostrophe in the body stopped breaking parsing."""
+    r = guard.run(f"git -C {guard.worktree} {COMMIT} -F - <<'EOF'\ndon't break\nEOF")
     assert r.returncode == 0, r.stderr
+
+    guard.set_checks("exit 1")
+    r = guard.run(f"git -C {guard.worktree} {COMMIT} -F - <<'EOF'\ndon't break\nEOF")
+    assert r.returncode == 2
+    assert f"checks.sh failed for {guard.worktree}" in r.stderr
 
 
 def test_unreadable_quoting_without_a_cd_is_still_checked(guard: Guard) -> None:
@@ -182,6 +208,59 @@ def test_a_shift_operator_in_a_message_is_not_read_as_a_heredoc(guard: Guard) ->
 
 def test_a_cd_to_a_missing_directory_does_not_redirect_the_check(guard: Guard) -> None:
     r = guard.run(f"cd {guard.repo / 'no-such-dir'} && git {COMMIT} -m x --author='O'B'")
+    assert r.returncode == 2
+    assert "Commit on main blocked" in r.stderr
+
+
+# --- the cd replay must not out-run shell semantics --------------------------
+# Each of these commits on main for real; a naive "last cd in the text wins"
+# sweep would attribute it to the worktree and let it through.
+
+
+@pytest.mark.parametrize(
+    "command_form",
+    [
+        pytest.param(
+            "git {c} -m msg --author='O'Brien' && cd {wt}",
+            id="cd-after-the-commit",
+        ),
+        pytest.param(
+            "(cd {wt} && git log) && git {c} -m msg --author='O'Brien'",
+            id="cd-scoped-to-a-subshell",
+        ),
+        pytest.param(
+            "git {c} -m \"v$(cd {wt} && cat VERSION)\" --author='O'Brien'",
+            id="cd-inside-command-substitution",
+        ),
+        pytest.param(
+            "git {c} -F - <<'EOF' 2>/dev/null\nfix: don't break\ncd {wt}\nEOF",
+            id="cd-in-a-body-whose-introducer-has-a-redirection",
+        ),
+    ],
+)
+def test_a_cd_the_committing_shell_never_takes_does_not_redirect_the_check(
+    guard: Guard, command_form: str
+) -> None:
+    r = guard.run(command_form.format(c=COMMIT, wt=guard.worktree))
+    assert r.returncode == 2
+    assert "Commit on main blocked" in r.stderr
+
+
+def test_an_unterminated_heredoc_does_not_swallow_the_commands_after_it(
+    guard: Guard,
+) -> None:
+    """A `<<WORD` with no matching terminator must not delete the real commit."""
+    r = guard.run(f'echo "shifted $((1<<N))"\ngit {COMMIT} -m "lands on main"')
+    assert r.returncode == 2
+    assert "Commit on main blocked" in r.stderr
+
+
+def test_an_escape_named_only_inside_a_message_does_not_apply(guard: Guard) -> None:
+    """Documenting an escape in the commit message must not invoke it."""
+    r = guard.run(
+        f"git {COMMIT} -F - <<'EOF'\n"
+        "docs: explain the ALLOW_MAIN_COMMIT=1 escape\nEOF"
+    )
     assert r.returncode == 2
     assert "Commit on main blocked" in r.stderr
 

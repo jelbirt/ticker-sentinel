@@ -73,13 +73,9 @@ def tokenize(text):
         return None
 
 
-# `<<WORD` introducing a heredoc. The trailing lookahead keeps a real
-# introducer (nothing after it but quotes/parens/separators) apart from a `<<`
-# sitting in prose, e.g. git commit -m "handle the << operator": mistaking the
-# latter for a heredoc would swallow the lines that follow it.
-HEREDOC_RE = re.compile(
-    r"<<-?\s*(['\"]?)([A-Za-z_][A-Za-z_0-9]*)\1(?=[\s)|&;]*$)"
-)
+# `<<WORD` introducing a heredoc, in redirection position: preceded by a space
+# or a separator, which excludes `<<<` herestrings and shifts like $((1<<N)).
+HEREDOC_RE = re.compile(r"(?:^|(?<=[\s|&;(]))<<-?\s*(['\"]?)([A-Za-z_][A-Za-z_0-9]*)\1")
 
 
 def strip_heredocs(text):
@@ -90,6 +86,14 @@ def strip_heredocs(text):
     commit message ("don't") reads as an unbalanced quote and kills tokenize().
     Removing the body first keeps the canonical `git commit -F - <<'EOF'`
     message form fully parseable, so its `cd` prefix is honored normally.
+
+    Stripping only happens when the terminator line is actually there. That is
+    the conservative direction on both sides: a `<<` in prose (`-m "the <<
+    shift"`) almost never has one, so its lines survive to be analyzed, and an
+    introducer whose body runs past the end of the text cannot delete the
+    commands that follow it. Only the first heredoc on a line is handled; a
+    second one's body stays as text, where at worst it fails tokenize() and
+    takes the conservative fallback in analyze().
     """
     lines, out, i = text.split("\n"), [], 0
     while i < len(lines):
@@ -99,19 +103,28 @@ def strip_heredocs(text):
         m = HEREDOC_RE.search(line)
         if not m:
             continue
-        word = m.group(2)
-        while i < len(lines) and lines[i].strip() != word:
-            i += 1
-        i += 1  # skip the terminator too (or run off the end when unterminated)
+        word, j = m.group(2), i
+        while j < len(lines) and lines[j].strip() != word:
+            j += 1
+        if j >= len(lines):
+            continue  # unterminated: not a heredoc we can trust, keep the lines
+        i = j + 1  # drop the body and its terminator
     return "\n".join(out)
 
 
-# A `cd` that starts a command: line start or after a separator, optionally
-# behind env-var prefixes. Only used on the tokenizer-failure path below.
+# The `git ... commit` invocation, with no other `git` in between so the match
+# lands on the committing invocation rather than an earlier one.
+GIT_COMMIT_RE = re.compile(r"\bgit\b(?:(?!\bgit\b).)*?\bcommit\b", re.S)
+
+# A `cd` that starts a command (line start or after a separator, optionally
+# behind env-var prefixes), plus the parens that scope one. The separator is
+# matched look-behind so an opening `(` is left for the paren tracking in
+# scan_cd. Only used on the tokenizer-failure path below.
 CD_RE = re.compile(
-    r"(?:^|[\n;&|(])\s*(?:[A-Za-z_][A-Za-z_0-9]*=\S*\s+)*"
+    r"(?:^|(?<=[\n;&|(]))\s*(?:[A-Za-z_][A-Za-z_0-9]*=\S*\s+)*"
     r"cd\s+(?:'([^']*)'|\"([^\"]*)\"|([^\s;&|<>()]+))"
 )
+CD_OR_PAREN_RE = re.compile(r"[()]|" + CD_RE.pattern)
 
 
 def split_segments(tokens):
@@ -142,18 +155,35 @@ def scan_cd(text, cwd):
     The fallback for text tokenize() rejected: without this the commit is
     attributed to the session cwd, so `cd <worktree> && git commit ...` with a
     quote shlex cannot read gets judged against the session's branch (main) and
-    blocked as a commit on main. Only targets that exist as directories count,
-    so a `cd` quoted inside prose cannot redirect the check at a phantom path;
-    a real `cd` to a missing directory would fail in the shell anyway. Tracks
-    `cd` only: a `git -C` here still resolves to the cd'd directory, which is
-    what the session cwd fallback already did.
+    blocked as a commit on main.
+
+    A regex sweep is not shell semantics, so the sweep is bounded to keep every
+    ambiguity resolving toward the session cwd (what the old fallback used, and
+    the stricter answer whenever the session sits on main):
+      - only `cd`s BEFORE the committing `git` count, so a trailing `cd` cannot
+        retroactively move a commit that already ran;
+      - only `cd`s at paren depth 0 count, since a subshell or a `$( )` never
+        moves the shell that commits;
+      - only targets that exist as directories count, so a `cd` quoted inside
+        prose cannot aim the check at a phantom path (and a real `cd` to a
+        missing directory would fail in the shell anyway).
+    Unhandled, both resolving to the session cwd: `cd "$VAR"` (no variable
+    expansion here, so the target is not a directory and is skipped), and
+    `git -C <dir>`, which the session cwd fallback never honored either.
     """
-    cur = cwd
-    for m in CD_RE.finditer(text):
-        target = m.group(1) or m.group(2) or m.group(3)
-        cand = resolve(cur, target)
-        if os.path.isdir(cand):
-            cur = cand
+    m = GIT_COMMIT_RE.search(text)
+    head = text[: m.start()] if m else text
+    cur, depth = cwd, 0
+    for m in CD_OR_PAREN_RE.finditer(head):
+        tok = m.group(0)
+        if tok == "(":
+            depth += 1
+        elif tok == ")":
+            depth = max(0, depth - 1)
+        elif depth == 0:
+            cand = resolve(cur, m.group(1) or m.group(2) or m.group(3))
+            if os.path.isdir(cand):
+                cur = cand
     return cur
 
 
@@ -233,10 +263,13 @@ commits = analyze(cmd, cwd)
 if not commits:
     allow()
 
-# Escapes typed anywhere in the command count: overrides stay visible in the
-# transcript, and the tokenizer-failure path still honors them.
-skip_checks = "SKIP_CHECKS=1" in cmd
-allow_main = "ALLOW_MAIN_COMMIT=1" in cmd
+# Escapes typed anywhere in the COMMAND count: overrides stay visible in the
+# transcript, and the tokenizer-failure path still honors them. Heredoc bodies
+# are excluded, so a commit message that merely documents an escape does not
+# trip it. (A quoted `-m` message still can: pre-existing, tracked separately.)
+escapable = strip_heredocs(cmd)
+skip_checks = "SKIP_CHECKS=1" in escapable
+allow_main = "ALLOW_MAIN_COMMIT=1" in escapable
 
 for gdir, envs in commits:
     if common_dir(gdir) != GUARD_COMMON:
