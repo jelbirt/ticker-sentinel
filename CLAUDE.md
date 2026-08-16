@@ -22,7 +22,7 @@ PROJECT_PLAN.md is the authoritative spec — read it before making changes.
 
 ## Workflow (adopted 2026-08-06)
 - One branch per workstream, created with `scripts/new-worktree.sh <branch>`; main is the review inbox. Merge back via PR (opened for owner review, never merged by the agent). Tear down with `scripts/rm-worktree.sh` or the repo `worktree-cleanup` skill.
-- `scripts/checks.sh` must be green before every commit. The commit guard (`.claude/hooks/pre-commit-guard.sh`) enforces this and blocks agent commits on main. Deliberate overrides, typed into the commit command itself: `ALLOW_MAIN_COMMIT=1` (e.g. a tiny config fix landing direct), `SKIP_CHECKS=1`. If you change `checks.sh`, update the Commands list above in the same commit.
+- `scripts/checks.sh` must be green before every commit. The commit guard (`.claude/hooks/pre-commit-guard.sh`) enforces this and blocks agent commits on main. Deliberate overrides, typed as an env-var prefix on the commit command itself (naming one inside a commit message does not count): `ALLOW_MAIN_COMMIT=1` (e.g. a tiny config fix landing direct), `SKIP_CHECKS=1`. If you change `checks.sh`, update the Commands list above in the same commit.
 - Serialized shared state: `data/cache/` (parquet fundamentals cache AND `run_history.json`, the cross-run change-detection state) is written by the scheduled Actions job, which commits to main daily; the bot holds the pen (registry: `tasks/todo.md`). Never modify `data/cache/` contents on a workstream branch; local real runs write `data/cache/run_history.json`, so discard that change before committing.
 
 ## Gotchas

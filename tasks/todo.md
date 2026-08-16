@@ -48,6 +48,23 @@
   One branch per workstream via `scripts/new-worktree.sh <branch>`; main is the
   review inbox; merge back via PR.
 
+- `guard-escape-anchor` (branch `guard-escape-anchor`, worktree
+  `../ticker-sentinel.guard-escape-anchor`, stacked on
+  `claude/brave-swirles-3ab2f3` / PR #16): the last escape-detection hole in
+  `.claude/hooks/pre-commit-guard.sh`, found 2026-08-16. The scan for the two
+  escapes was a substring test over the whole command, so merely NAMING one in
+  a `-m` message silently switched the guard off, which bites hardest in the
+  repo whose agents write commit messages about the guard. An escape now counts
+  only in command-prefix position (line start or after a shell separator,
+  optionally behind other assignments), quoted spans are masked out before the
+  scan, and the escape scan drops heredoc bodies unconditionally rather than
+  keeping the ones that smell like a command. Every ambiguous case is decided
+  toward NOT escaping, since an escape only ever makes the guard more
+  permissive. Touches the hook, `tests/test_pre_commit_guard.py`, and one
+  CLAUDE.md wording line. Does NOT write `data/cache/`.
+
+  Retarget the PR to main once PR #16 merges.
+
 ## Done
 - `backfill-amendment` (2026-08-15, merged as PR #11, worktree torn down;
   final apply commit `4cd9d67`): Amendments 1+2 to the backfill spec, plus

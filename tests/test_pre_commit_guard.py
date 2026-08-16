@@ -25,8 +25,12 @@ HOOK_SRC = REPO_ROOT / ".claude" / "hooks" / "pre-commit-guard.sh"
 
 # Built at import time so no source line of this file contains the literal
 # phrase the guard pre-filters on; otherwise editing these tests through an
-# agent shell trips the very guard under test.
+# agent shell trips the very guard under test. The escape names get the same
+# treatment: spelled out at the start of a line they are an escape in prefix
+# position, on the very shell command an agent uses to write this file.
 COMMIT = "com" + "mit"
+SKIP = "SKIP_" + "CHECKS=1"
+ALLOW = "ALLOW_MAIN_" + "COMMIT=1"
 
 
 @pytest.fixture(scope="module")
@@ -277,7 +281,7 @@ def test_a_fake_introducer_in_prose_cannot_hide_a_real_commit(guard: Guard) -> N
 
 
 def test_an_escape_on_a_command_line_survives_a_fake_introducer(guard: Guard) -> None:
-    r = guard.run(f'echo "a << b"\nALLOW_MAIN_COMMIT=1 git {COMMIT} -m ok\nb')
+    r = guard.run(f'echo "a << b"\n{ALLOW} git {COMMIT} -m ok\nb')
     assert r.returncode == 0, r.stderr
 
 
@@ -305,7 +309,7 @@ def test_an_escape_named_only_inside_a_message_does_not_apply(guard: Guard) -> N
     """Documenting an escape in the commit message must not invoke it."""
     r = guard.run(
         f"git {COMMIT} -F - <<'EOF'\n"
-        "docs: explain the ALLOW_MAIN_COMMIT=1 escape\nEOF"
+        f"docs: explain the {ALLOW} escape\nEOF"
     )
     assert r.returncode == 2
     assert "Commit on main blocked" in r.stderr
@@ -315,14 +319,14 @@ def test_an_escape_named_only_inside_a_message_does_not_apply(guard: Guard) -> N
 
 
 def test_allow_main_commit_escape_unblocks_main(guard: Guard) -> None:
-    r = guard.run(f'ALLOW_MAIN_COMMIT=1 git {COMMIT} -m "direct to main"')
+    r = guard.run(f'{ALLOW} git {COMMIT} -m "direct to main"')
     assert r.returncode == 0, r.stderr
 
 
 def test_allow_main_commit_escape_works_on_the_unreadable_quoting_path(
     guard: Guard,
 ) -> None:
-    r = guard.run(f"ALLOW_MAIN_COMMIT=1 git {COMMIT} -m msg --author='O'Brien'")
+    r = guard.run(f"{ALLOW} git {COMMIT} -m msg --author='O'Brien'")
     assert r.returncode == 0, r.stderr
 
 
@@ -336,8 +340,139 @@ def test_failing_checks_block_the_commit(guard: Guard) -> None:
 def test_skip_checks_escape_works_on_the_unreadable_quoting_path(guard: Guard) -> None:
     guard.set_checks("exit 1")
     r = guard.run(
-        f"SKIP_CHECKS=1 cd {guard.worktree} && git {COMMIT} -m msg --author='O'Brien'"
+        f"{SKIP} cd {guard.worktree} && git {COMMIT} -m msg --author='O'Brien'"
     )
+    assert r.returncode == 0, r.stderr
+
+
+# --- an escape counts only in command-prefix position ------------------------
+# An escape only ever makes the guard MORE permissive, so it must come from
+# shell syntax, never from message text that merely names one.
+
+
+def test_an_escape_in_a_single_quoted_message_does_not_skip_a_failing_bar(
+    guard: Guard,
+) -> None:
+    guard.set_checks("exit 1")
+    r = guard.run(f"cd {guard.worktree} && git {COMMIT} -m 'note: {SKIP} is fine'")
+    assert r.returncode == 2
+    assert "checks.sh failed" in r.stderr
+
+
+def test_an_escape_in_a_double_quoted_message_does_not_unblock_main(
+    guard: Guard,
+) -> None:
+    r = guard.run(f'git {COMMIT} -m "docs: the {ALLOW} escape"')
+    assert r.returncode == 2
+    assert "Commit on main blocked" in r.stderr
+
+
+@pytest.mark.parametrize(
+    "message_form",
+    [
+        pytest.param("wip; {a} was not used", id="semicolon-before-the-escape"),
+        pytest.param("wip\n{a} was not used", id="newline-before-the-escape"),
+        pytest.param("wip ({a})", id="open-paren-before-the-escape"),
+        pytest.param("wip && then {a}", id="and-before-the-escape"),
+        pytest.param("wip | pipe {a}", id="pipe-before-the-escape"),
+    ],
+)
+def test_a_separator_inside_a_message_does_not_put_an_escape_in_prefix_position(
+    guard: Guard, message_form: str
+) -> None:
+    """Quoted spans are masked before the scan, so a separator a message merely
+    contains cannot promote a named escape into a command prefix."""
+    r = guard.run(f'git {COMMIT} -m "{message_form.format(a=ALLOW)}"')
+    assert r.returncode == 2
+    assert "Commit on main blocked" in r.stderr
+
+
+def test_an_escape_in_a_message_does_not_apply_on_the_unreadable_quoting_path(
+    guard: Guard,
+) -> None:
+    """Masking must hold up when the command as a whole will not tokenize."""
+    r = guard.run(f"git {COMMIT} -m 'docs: the {ALLOW} escape' --author='O'Brien'")
+    assert r.returncode == 2
+    assert "Commit on main blocked" in r.stderr
+
+
+def test_a_plain_prefix_escape_still_skips_a_failing_bar(guard: Guard) -> None:
+    guard.set_checks("exit 1")
+    assert guard.run(f"git {COMMIT} -m ok", cwd=guard.worktree).returncode == 2
+
+    r = guard.run(f"{SKIP} git {COMMIT} -m ok", cwd=guard.worktree)
+    assert r.returncode == 0, r.stderr
+
+
+@pytest.mark.parametrize(
+    "command_form",
+    [
+        pytest.param("cd {wt} && {s} git {c} -m ok", id="behind-a-cd"),
+        pytest.param("cd {wt} ; {s} git {c} -m ok", id="after-a-semicolon"),
+        pytest.param("cd {wt}\n{s} git {c} -m ok", id="on-a-second-line"),
+        pytest.param("{s} {a} git {c} -m ok", id="combined-with-the-main-escape"),
+        pytest.param("{a} {s} git {c} -m ok", id="combined-in-the-other-order"),
+        pytest.param(
+            "X='a b' {s} {a} git {c} -m ok", id="behind-a-quoted-assignment-value"
+        ),
+    ],
+)
+def test_a_prefix_escape_still_skips_a_failing_bar(
+    guard: Guard, command_form: str
+) -> None:
+    """The documented forms, each of which would block without the escape: the
+    cd variants land on the worktree branch, the rest carry the main escape.
+
+    Swapping the escapes for inert assignments is the control: exit 0 alone
+    would also be satisfied by "no commit detected here at all"."""
+    guard.set_checks("exit 1")
+    control = command_form.format(s="X=1", a="Y=1", c=COMMIT, wt=guard.worktree)
+    assert guard.run(control).returncode == 2
+
+    r = guard.run(command_form.format(s=SKIP, a=ALLOW, c=COMMIT, wt=guard.worktree))
+    assert r.returncode == 0, r.stderr
+
+
+def test_an_escape_starting_a_heredoc_body_does_not_apply(guard: Guard) -> None:
+    """The body here also mentions a commit, which the analysis strip KEEPS (it
+    cannot tell a real command line from a message quoting one). The escape
+    scan drops it anyway: this is the shape of a normal message in a repo whose
+    agents write about the guard, and keeping it would switch the guard off."""
+    r = guard.run(
+        f"git {COMMIT} -F - <<'EOF'\n"
+        f"{ALLOW} git {COMMIT} is how it landed\nEOF"
+    )
+    assert r.returncode == 2
+    assert "Commit on main blocked" in r.stderr
+
+
+def test_a_prefix_escape_after_a_heredoc_terminator_still_applies(guard: Guard) -> None:
+    """The apostrophe in the body would read as an unbalanced quote and hide the
+    escape, if the quote masking ran before the heredoc body was dropped."""
+    guard.set_checks("exit 1")
+    command = (
+        f"cd {guard.worktree}\n"
+        f"cat <<'EOF' > note.txt\ndon't\nEOF\n"
+        "{prefix}git " + COMMIT + " -F note.txt"
+    )
+    assert guard.run(command.format(prefix="")).returncode == 2  # control
+
+    r = guard.run(command.format(prefix=SKIP + " "))
+    assert r.returncode == 0, r.stderr
+
+
+def test_prefix_escapes_still_work_when_the_command_will_not_tokenize(
+    guard: Guard,
+) -> None:
+    """envs is empty on this path, so only the textual scan can see the escapes;
+    a failing bar on main needs both of them to allow, and dropping either one
+    is a control that must go back to blocking."""
+    guard.set_checks("exit 1")
+    tail = f"git {COMMIT} -m msg --author='O'Brien'"
+    assert guard.run(f"{SKIP} {tail}").returncode == 2
+    assert guard.run(f"{ALLOW} {tail}").returncode == 2
+
+    r = guard.run(f"{SKIP} {ALLOW} {tail}")
     assert r.returncode == 0, r.stderr
 
 
