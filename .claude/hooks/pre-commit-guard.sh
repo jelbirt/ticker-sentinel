@@ -63,13 +63,55 @@ if GUARD_COMMON is None:
 
 def tokenize(text):
     """Shell-aware token list, or None when the text will not tokenize
-    (unbalanced quotes: common with multi-line/heredoc commit messages)."""
+    (unbalanced quotes: shlex's quoting rules are simpler than the shell's, so
+    e.g. --author='O'Brien' or $'it don\\'t' is valid shell it cannot read)."""
     lex = shlex.shlex(text, posix=True, punctuation_chars=True)
     lex.whitespace_split = True
     try:
         return list(lex)
     except ValueError:
         return None
+
+
+# `<<WORD` introducing a heredoc. The trailing lookahead keeps a real
+# introducer (nothing after it but quotes/parens/separators) apart from a `<<`
+# sitting in prose, e.g. git commit -m "handle the << operator": mistaking the
+# latter for a heredoc would swallow the lines that follow it.
+HEREDOC_RE = re.compile(
+    r"<<-?\s*(['\"]?)([A-Za-z_][A-Za-z_0-9]*)\1(?=[\s)|&;]*$)"
+)
+
+
+def strip_heredocs(text):
+    """Drop heredoc BODIES (and their terminator lines) before analysis.
+
+    A heredoc body is data, never command syntax, but the newline rewrite in
+    analyze() flattens it onto the command line, where an apostrophe in a
+    commit message ("don't") reads as an unbalanced quote and kills tokenize().
+    Removing the body first keeps the canonical `git commit -F - <<'EOF'`
+    message form fully parseable, so its `cd` prefix is honored normally.
+    """
+    lines, out, i = text.split("\n"), [], 0
+    while i < len(lines):
+        line = lines[i]
+        out.append(line)
+        i += 1
+        m = HEREDOC_RE.search(line)
+        if not m:
+            continue
+        word = m.group(2)
+        while i < len(lines) and lines[i].strip() != word:
+            i += 1
+        i += 1  # skip the terminator too (or run off the end when unterminated)
+    return "\n".join(out)
+
+
+# A `cd` that starts a command: line start or after a separator, optionally
+# behind env-var prefixes. Only used on the tokenizer-failure path below.
+CD_RE = re.compile(
+    r"(?:^|[\n;&|(])\s*(?:[A-Za-z_][A-Za-z_0-9]*=\S*\s+)*"
+    r"cd\s+(?:'([^']*)'|\"([^\"]*)\"|([^\s;&|<>()]+))"
+)
 
 
 def split_segments(tokens):
@@ -94,12 +136,38 @@ def resolve(base, path):
     return path if os.path.isabs(path) else os.path.normpath(os.path.join(base, path))
 
 
+def scan_cd(text, cwd):
+    """Directory a command would run in, by replaying its `cd`s with a regex.
+
+    The fallback for text tokenize() rejected: without this the commit is
+    attributed to the session cwd, so `cd <worktree> && git commit ...` with a
+    quote shlex cannot read gets judged against the session's branch (main) and
+    blocked as a commit on main. Only targets that exist as directories count,
+    so a `cd` quoted inside prose cannot redirect the check at a phantom path;
+    a real `cd` to a missing directory would fail in the shell anyway. Tracks
+    `cd` only: a `git -C` here still resolves to the cd'd directory, which is
+    what the session cwd fallback already did.
+    """
+    cur = cwd
+    for m in CD_RE.finditer(text):
+        target = m.group(1) or m.group(2) or m.group(3)
+        cand = resolve(cur, target)
+        if os.path.isdir(cand):
+            cur = cand
+    return cur
+
+
 def analyze(text, cwd, depth=0):
     """Return list of (target_dir, env_prefix_dict) for every git commit found.
-    A segment that will not tokenize is treated conservatively as a commit in
-    the current directory when it smells like one, never skipped."""
+    Text that will not tokenize is treated conservatively as a commit when it
+    smells like one, never skipped: it is attributed to the directory its `cd`s
+    lead to (the session cwd when there are none), so quoting inside a commit
+    message cannot move the check to the wrong directory."""
     if depth > 4:
         return []
+    # A heredoc body is data; strip it before the newline rewrite below can
+    # flatten its punctuation onto the command line.
+    text = strip_heredocs(text)
     # shlex treats a bare newline as whitespace, which would merge multi-line
     # commands (the canonical `git add` / `git commit` two-liner) into one
     # undetectable segment. The text is only analyzed, never executed, so
@@ -108,7 +176,7 @@ def analyze(text, cwd, depth=0):
     tokens = tokenize(text.replace("\n", " ; "))
     if tokens is None:
         if "git" in text and "commit" in text:
-            return [(cwd, {})]
+            return [(scan_cd(text, cwd), {})]
         return []
     commits = []
     cur = cwd
@@ -189,7 +257,7 @@ for gdir, envs in commits:
         # the tree being committed is judged by ITS OWN checks.sh, so a branch
         # that changes the bar is measured against its own version; a tree
         # without one (branched before the scaffold landed) is not measured
-        # against a DIFFERENT tree's state — fail open instead
+        # against a DIFFERENT tree's state: fail open instead
         checks = os.path.join(tree, "scripts", "checks.sh")
         if os.path.isfile(checks):
             try:
