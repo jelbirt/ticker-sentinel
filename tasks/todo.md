@@ -10,7 +10,14 @@
   `run_history.json`; discard that change rather than committing it.
 
 ## Active workstreams
-- none open.
+- `twelvedata-check` (opened 2026-08-16): audit of the Twelve Data price
+  fallback against the yfinance primary. Two divergences found and fixed in
+  `src/sentinel/data/prices.py`: the request never asked for an adjustment
+  basis, so it took Twelve Data's `adjust=splits` default while yfinance runs
+  `auto_adjust=True` (split and dividend adjusted); and the bar count was
+  hardcoded at 260, so a `--deep` run (2y) recovered half the history it asked
+  for. Scope is `prices.py` plus `tests/test_prices.py`; no cache, config or
+  `run.py` changes.
 
   One branch per workstream via `scripts/new-worktree.sh <branch>`; main is the
   review inbox; merge back via PR.
