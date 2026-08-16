@@ -42,61 +42,100 @@ class TickerSnapshot:
     shares_short: float | None = None
 
 
+def _snapshots(raw: object) -> dict[str, TickerSnapshot]:
+    """Parse one persisted ticker->snapshot mapping, tolerating garbage.
+
+    Anything that is not a mapping of objects is dropped rather than raised:
+    the bench block in particular must never be able to take change detection
+    for the scored universe down with it.
+    """
+    known = {f.name for f in fields(TickerSnapshot)}
+    out: dict[str, TickerSnapshot] = {}
+    if not isinstance(raw, dict):
+        return out
+    for ticker, snap in raw.items():
+        if not isinstance(snap, dict):
+            continue
+        kw = {k: v for k, v in snap.items() if k in known}
+        if not isinstance(kw.get("flags"), list):  # null/garbage never crashes a diff
+            kw["flags"] = []
+        out[str(ticker)] = TickerSnapshot(**kw)
+    return out
+
+
 @dataclass(frozen=True)
 class RunSnapshot:
     date: str                 # ISO date; one entry per calendar date
     run_type: str
     tickers: dict[str, TickerSnapshot] = field(default_factory=dict)
+    # shadow-scored bench names: a SIBLING of `tickers`, never merged into it.
+    # Nothing that ranks, diffs, gates or alerts reads this key; it exists so
+    # the weekly digest can compare rotation candidates on the same basis as
+    # the attention list (spec 7.0.1).
+    bench: dict[str, TickerSnapshot] = field(default_factory=dict)
 
     def to_dict(self) -> dict:
         return {
             "date": self.date,
             "run_type": self.run_type,
             "tickers": {t: asdict(snap) for t, snap in sorted(self.tickers.items())},
+            "bench": {t: asdict(snap) for t, snap in sorted(self.bench.items())},
         }
 
     @classmethod
     def from_dict(cls, raw: dict) -> "RunSnapshot":
-        known = {f.name for f in fields(TickerSnapshot)}
-        tickers = {}
-        for t, snap in (raw.get("tickers") or {}).items():
-            kw = {k: v for k, v in snap.items() if k in known}
-            if not isinstance(kw.get("flags"), list):  # null/garbage never crashes a diff
-                kw["flags"] = []
-            tickers[t] = TickerSnapshot(**kw)
         return cls(
             date=str(raw.get("date", "")),
             run_type=str(raw.get("run_type", "")),
-            tickers=tickers,
+            tickers=_snapshots(raw.get("tickers")),
+            bench=_snapshots(raw.get("bench")),
         )
+
+
+def _ticker_snapshot(sc: Scorecard, rank: int | None) -> TickerSnapshot:
+    tech = sc.tech
+    signals = sc.signals
+    return TickerSnapshot(
+        composite=sc.composite,
+        score=sc.score,
+        technical_score=sc.technical_score,
+        rank=rank,
+        r40_fcf=sc.r40_fcf,
+        r40_trend=sc.r40_trend,
+        trend_state=tech.trend_state if tech is not None else None,
+        golden_cross=bool(tech.golden_cross_recent) if tech is not None else False,
+        death_cross=bool(tech.death_cross_recent) if tech is not None else False,
+        flags=sorted(sc.flags),
+        valuation=sc.valuation,
+        net_revisions_30d=net_revisions_30d(signals) if signals is not None else None,
+        short_pct_float=signals.short_pct_float if signals is not None else None,
+        shares_short=signals.shares_short if signals is not None else None,
+    )
 
 
 def snapshot_from_scorecards(
-    ranked: list[Scorecard], today: date, run_type: str
+    ranked: list[Scorecard], today: date, run_type: str,
+    bench: list[Scorecard] | None = None,
 ) -> RunSnapshot:
     """Snapshot the scored universe. `ranked` must already be in rank order
-    (the caller sorts with the configured ranking mode); rank = position."""
-    tickers: dict[str, TickerSnapshot] = {}
-    for position, sc in enumerate(ranked, start=1):
-        tech = sc.tech
-        signals = sc.signals
-        tickers[sc.ticker] = TickerSnapshot(
-            composite=sc.composite,
-            score=sc.score,
-            technical_score=sc.technical_score,
-            rank=position,
-            r40_fcf=sc.r40_fcf,
-            r40_trend=sc.r40_trend,
-            trend_state=tech.trend_state if tech is not None else None,
-            golden_cross=bool(tech.golden_cross_recent) if tech is not None else False,
-            death_cross=bool(tech.death_cross_recent) if tech is not None else False,
-            flags=sorted(sc.flags),
-            valuation=sc.valuation,
-            net_revisions_30d=net_revisions_30d(signals) if signals is not None else None,
-            short_pct_float=signals.short_pct_float if signals is not None else None,
-            shares_short=signals.shares_short if signals is not None else None,
-        )
-    return RunSnapshot(date=today.isoformat(), run_type=run_type, tickers=tickers)
+    (the caller sorts with the configured ranking mode); rank = position.
+
+    `bench` names are shadow-scored comparison references: they land in the
+    sibling `bench` block with rank None, because they were never ranked
+    against anything. Between-quarter signals are not fetched for them, so
+    their signal-derived fields persist as null.
+    """
+    tickers = {
+        sc.ticker: _ticker_snapshot(sc, position)
+        for position, sc in enumerate(ranked, start=1)
+    }
+    bench_snaps = {
+        sc.ticker: _ticker_snapshot(sc, None) for sc in (bench or [])
+    }
+    return RunSnapshot(
+        date=today.isoformat(), run_type=run_type,
+        tickers=tickers, bench=bench_snaps,
+    )
 
 
 @dataclass(frozen=True)

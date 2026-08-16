@@ -6,6 +6,7 @@ import json
 import pytest
 
 from sentinel.data import cache, history
+from sentinel.report.changes import RunSnapshot, TickerSnapshot
 
 
 @pytest.fixture()
@@ -127,6 +128,59 @@ class TestDegradation:
         history.save_run(_run("2026-08-06"), retention=12)
         runs, notes = history.load_history()
         assert [r["date"] for r in runs] == ["2026-08-06"] and notes == []
+
+
+class TestBenchBlock:
+    """The `bench` sibling key is additive: new code reads old files, old code
+    reads new ones (it ignores unknown keys), so SCHEMA_VERSION does not move."""
+
+    def test_round_trip_with_bench(self, isolated_root):
+        run = _run("2026-08-06")
+        run["bench"] = {"WDAY": {"composite": 61.0, "rank": None, "flags": []}}
+        history.save_run(run, retention=12)
+        runs, notes = history.load_history()
+        assert notes == []
+        assert runs[0]["bench"]["WDAY"]["composite"] == 61.0
+        assert runs[0]["tickers"]["AAA"]["composite"] == 50.0
+
+    def test_old_entry_without_bench_still_loads(self, isolated_root):
+        history.history_path().write_text(
+            json.dumps({"version": 1, "runs": [_run("2026-08-06")]})
+        )
+        runs, notes = history.load_history()
+        assert notes == []
+        assert "bench" not in runs[0]
+
+        snap = RunSnapshot.from_dict(runs[0])
+        assert snap.bench == {} and set(snap.tickers) == {"AAA"}
+
+    def test_new_entry_parses_bench_into_its_own_block(self, isolated_root):
+        run = _run("2026-08-06")
+        run["bench"] = {"WDAY": {"composite": 61.0, "rank": None, "flags": ["dilution"]}}
+        snap = RunSnapshot.from_dict(run)
+        assert set(snap.tickers) == {"AAA"}          # bench never merged in
+        assert snap.bench["WDAY"].composite == 61.0
+        assert snap.bench["WDAY"].rank is None
+
+    def test_garbled_bench_does_not_reset_change_detection(self, isolated_root):
+        # a bench block is digest evidence only: it must never be able to take
+        # the scored universe's diffs down with it
+        history.history_path().write_text(json.dumps({
+            "version": 1,
+            "runs": [{**_run("2026-08-06"), "bench": "nope"}],
+        }))
+        runs, notes = history.load_history()
+        assert notes == [] and len(runs) == 1
+        snap = RunSnapshot.from_dict(runs[0])
+        assert snap.bench == {} and set(snap.tickers) == {"AAA"}
+
+    def test_snapshot_round_trip_preserves_bench(self):
+        original = RunSnapshot(
+            date="2026-08-06", run_type="scheduled",
+            tickers={"AAA": TickerSnapshot(composite=50.0, rank=1)},
+            bench={"WDAY": TickerSnapshot(composite=61.0)},
+        )
+        assert RunSnapshot.from_dict(original.to_dict()) == original
 
 
 class TestPruneSafety:
