@@ -3,7 +3,7 @@ from __future__ import annotations
 
 import logging
 
-from sentinel.config import load_config
+from sentinel.config import ChangesCfg, load_config
 
 
 def _write_cfg(tmp_path, news_block: str):
@@ -38,7 +38,7 @@ def test_repo_config_ships_all_five_tones():
 def test_changes_defaults_when_block_absent(tmp_path):
     path = _write_cfg(tmp_path, "")
     ch = load_config(path).changes
-    assert ch.retention_runs == 12
+    assert ch.retention_runs == 25   # 5 weeks at the Tue-Sat cadence
     assert ch.week_window_runs == 5
     assert ch.score_delta_pts == 3.0
     assert ch.rank_delta == 2
@@ -48,6 +48,14 @@ def test_changes_defaults_when_block_absent(tmp_path):
     assert ch.revision_cut == 2
     assert ch.min_signals == 2
     assert ch.deteriorating_r40_trend == -0.10
+
+
+def test_default_retention_spans_several_digest_windows():
+    """Retention and the digest window are independent knobs: history must
+    outlive one week_window_runs window by enough runs that a rotation
+    decision can look back over several weeks, not just the current one."""
+    ch = ChangesCfg()
+    assert ch.retention_runs >= 5 * ch.week_window_runs
 
 
 def test_changes_partial_block_overrides_only_given_keys(tmp_path):

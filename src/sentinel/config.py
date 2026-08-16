@@ -51,7 +51,10 @@ class NewsCfg:
 class ChangesCfg:
     """Day-over-day change detection thresholds (SPEC.md sections 3, 4)."""
 
-    retention_runs: int = 12        # history entries kept in data/cache/run_history.json
+    retention_runs: int = 25        # history entries kept in data/cache/run_history.json
+                                    # (5 weeks at the Tue-Sat cadence: rotation
+                                    # decisions look back further than one
+                                    # week_window_runs digest window)
     week_window_runs: int = 5       # "week" lookback in runs (Tue-Sat cadence)
     score_delta_pts: float = 3.0    # composite move worth reporting (0-100 scale)
     rank_delta: int = 2             # rank move worth reporting

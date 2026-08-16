@@ -95,11 +95,17 @@ Single JSON document, versioned, runs newest-last:
 - Corrupt/unreadable state degrades to "no prior state" with a data note, never a
   crash; the next successful run rewrites the file.
 
-### 2.4 Retention (D3: decided, 12 runs)
-- Keep the most recent `changes.retention_runs` entries (config; default 12,
-  about 2.5 weeks at Tue-Sat cadence). Pruned on every write.
-- Size envelope: ~26 tickers x ~14 fields x 12 runs, pretty-printed, is roughly
-  100-150 KB; bounded and small next to the existing parquet cache.
+### 2.4 Retention (D3: decided, 12 runs; raised to 25 on 2026-08-16)
+- Keep the most recent `changes.retention_runs` entries (config; default 25,
+  5 weeks at Tue-Sat cadence). Pruned on every write.
+- Raised from 12 (about 2.5 weeks) because rotation decisions read back over
+  several weekly digest windows, not one: at 12 the third-oldest refresh round
+  had already aged out of the file it was supposed to be evidence for.
+  Retention and `week_window_runs` stay independent knobs, and the digest
+  window is unchanged at 5.
+- Size envelope: ~26 tickers x ~14 fields x 25 runs, plus a 4-name bench block
+  per run, pretty-printed, is roughly 250-350 KB; still bounded and small next
+  to the existing parquet cache.
 
 ### 2.5 Module layout
 - `src/sentinel/data/history.py`: I/O only. `load_history()`,
@@ -187,7 +193,7 @@ PROJECT_PLAN.md section 7 gets the updated ordering; section 11 gains a phase en
 
 ```yaml
 changes:
-  retention_runs: 12       # history entries kept in data/cache/run_history.json
+  retention_runs: 25       # history entries kept in data/cache/run_history.json
   week_window_runs: 5      # "week" lookback, in runs (Tue-Sat cadence)
   score_delta_pts: 3.0     # composite move worth reporting (0-100 scale)
   rank_delta: 2            # rank move worth reporting
@@ -317,6 +323,48 @@ vs staying manual.
 - Open item: the unscored-reason disclosure from PR #7 merged after the
   2026-08-15 run, so the first run to name TEAM's cause is 2026-08-18. Revisit
   at refresh #2.
+
+**What the digest carries as of 2026-08-16** (branch `rotation-evidence`,
+answering round-1 gaps 1 and 2 and preparing the refresh #3 decision):
+
+- **Coverage streaks.** Coverage gaps are structured (`CoverageGap`), not
+  prose: each carries a consecutive-runs-missing streak counted back from the
+  latest run, the dates it spans, and how many runs the name was actually seen
+  in. A 1-run blip keeps the old wording; 2 or more names the streak
+  explicitly, so TEAM's real 2-run absence can no longer read as noise
+  (round-1 gap 1).
+- **Decay streaks.** Attention entries carry the longest CONSECUTIVE run of
+  decay-gate hits beside the raw hit count. The gate itself is unchanged and
+  still counts hits; the streak is what separates persistent decay from the
+  same number of scattered hits. A run the name is missing from breaks the
+  streak, because an absence is not evidence the gate held.
+- **Flag split.** The attention table has separate business-flag and
+  data-quality-flag columns (round-1 gap 2). Data quality means
+  `insufficient_data`, `insufficient_history`, `growth_from_annual`,
+  `stale_fundamentals`: fetch and coverage problems, a to-fix list, never a
+  rotation signal. Business means `sbc_inflated`, `high_sbc`, `dilution`,
+  `passes_all_r40`, `golden_cross`, `death_cross`. Unclassified flags render
+  as business, and a test pins that every `FLAG_` constant in the codebase is
+  classified.
+- **Bench evidence.** The bench section now carries a table of window-scale
+  composite moves (first vs last appearance in the window, the same basis as
+  the attention list), read from the `bench` block that shadow-scored runs
+  write into `run_history.json`. So "is this candidate better than the name I
+  would drop" is now a comparison of two numbers built the same way, rather
+  than a guess. Windows predating the feature render a warm-up note, not an
+  error, and configured bench names with no snapshots are named.
+- **JSON twin.** `python -m sentinel.digest --json PATH` writes the whole
+  digest as sorted-key JSON (dates ISO, dataclasses serialized, coverage gaps
+  carrying both their fields and their rendered text), and the weekly-refresh
+  workflow uploads it as an artifact next to the issue. This is the
+  machine-readable substrate the refresh #3 automate-vs-manual decision needs:
+  an agent drafting swap proposals against this rubric reads the streaks and
+  the flag split as data instead of parsing a markdown table.
+- **Retention.** `changes.retention_runs` 12 -> 25 (section 2.4), so the file
+  holds five digest windows rather than two and a half.
+
+The digest remains read-only over history: no network, no scoring, no cache
+writes.
 
 ### 7.1 Capacity verification at ~22-28 tickers
 - **Batched price pull**: unchanged, still one yfinance `download()` call for the
