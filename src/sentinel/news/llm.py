@@ -70,6 +70,15 @@ def _parse_response(stdout: str) -> str | None:
 
 def call_claude(prompt: str, model: str, timeout: int = TIMEOUT_SECONDS) -> str | None:
     """One headless Claude call. Returns the text response, or None on any failure."""
+    if len(prompt) > MAX_PROMPT_CHARS:
+        # Callers fit the prompt by construction (styles._build_llm_prompt trims
+        # the headline block to the real budget), so this slice is a backstop
+        # that should never bite. If it does, tail content is being cut blind.
+        log.warning(
+            "prompt of %s chars exceeds the %s-char cap and was hard-truncated; "
+            "the caller should have trimmed it to fit",
+            len(prompt), MAX_PROMPT_CHARS,
+        )
     cmd = [
         "claude", "-p", "--model", model,
         "--output-format", "stream-json", "--verbose",  # stream-json requires verbose
