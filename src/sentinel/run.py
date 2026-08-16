@@ -152,17 +152,30 @@ def main(argv: list[str] | None = None) -> int:
     if args.tickers:
         tickers = [t.strip().upper() for t in args.tickers.split(",") if t.strip()]
         tech_only_tickers: list[str] = []
+        # a subset run has no full universe to compare a bench against, and it
+        # already skips change detection: shadow-scoring here would only spend
+        # API calls on a table nobody can read in context
+        bench_tickers: list[str] = []
     else:
         tickers = cfg.r40_tickers
         tech_only_tickers = [t.ticker for t in cfg.universe if not t.is_r40]
+        bench_tickers = list(cfg.bench)
 
     # --- data: fundamentals + prices -------------------------------------------------
+    bench_inputs: list[FundamentalInputs] = []
     if args.dry_run:
-        from sentinel.data.fixtures import fixture_signals, load_fixture_inputs, synthetic_prices
+        from sentinel.data.fixtures import (
+            fixture_signals,
+            load_fixture_bench_inputs,
+            load_fixture_inputs,
+            synthetic_prices,
+        )
 
         inputs_list = load_fixture_inputs()
         close, volume = synthetic_prices()
         signals = fixture_signals()
+        if not args.tickers:
+            bench_inputs = load_fixture_bench_inputs()
         notes.append("dry run: committed fixture data, no network access")
     else:
         from sentinel.data.fundamentals import get_fundamentals
@@ -180,7 +193,23 @@ def main(argv: list[str] | None = None) -> int:
             notes.extend(s_notes)
             if snap is not None:
                 signals[ticker] = snap
-        price_universe = sorted({*tickers, *tech_only_tickers, cfg.benchmark})
+        # bench: the cached fundamentals path only. Between-quarter signals
+        # (estimates, short interest, insiders) are informational and never
+        # score inputs, so bench names skip those per-ticker calls entirely
+        # and render n/a wherever a signal would have gone.
+        for ticker in bench_tickers:
+            try:
+                inputs, b_notes = get_fundamentals(ticker)
+            except Exception as exc:  # bench never breaks a run
+                notes.append(f"bench {ticker}: fundamentals unavailable ({exc})")
+                continue
+            notes.extend(b_notes)
+            if inputs is not None:
+                bench_inputs.append(inputs)
+        # bench rides the SAME batched price call: 4 extra symbols, 1 request
+        price_universe = sorted(
+            {*tickers, *tech_only_tickers, *bench_tickers, cfg.benchmark}
+        )
         close, volume, price_notes = fetch_prices(
             price_universe, period="2y" if args.deep else "1y"
         )
@@ -220,6 +249,36 @@ def main(argv: list[str] | None = None) -> int:
     warmup = _trend_warmup_note(scorecards)
     if warmup:
         notes.append(warmup)
+
+    # --- bench: shadow-scored comparison references, quarantined ---------------------
+    # Scored exactly like universe names (same F, T, composite, flags) so a
+    # rotation decision compares like with like, but kept in their own list:
+    # nothing downstream ranks, diffs, alerts on or gates against them, and a
+    # bench failure degrades to a note without touching the report's spine.
+    bench_cards: list = []
+    if bench_inputs:
+        try:
+            bench_tech = {
+                inp.ticker: compute_technicals(
+                    _column(close, inp.ticker), _column(volume, inp.ticker), bench_close
+                )
+                for inp in bench_inputs
+            }
+            bench_stale = _reprice_market_cap(bench_inputs, close)
+            bench_cards = apply_scores(
+                [compute_scorecard(inp) for inp in bench_inputs],
+                bench_tech,
+                cfg.fundamentals_weight,
+                cfg.technicals_weight,
+            )
+            if bench_stale:
+                notes.append(
+                    "bench valuation from cached market cap (no fresh price): "
+                    + ", ".join(bench_stale)
+                )
+        except Exception as exc:  # a bench-only failure is never a run failure
+            notes.append(f"bench scoring skipped ({exc})")
+            bench_cards = []
 
     # --- day-over-day change detection vs committed run history ----------------------
     today = date.today()
@@ -271,7 +330,8 @@ def main(argv: list[str] | None = None) -> int:
                     for sc in scorecards if sc.score is None
                 }
                 current_run = snapshot_from_scorecards(
-                    ranked, today=today, run_type=_run_type(args)
+                    ranked, today=today, run_type=_run_type(args),
+                    bench=bench_cards,
                 )
                 prior, week_ago, week_span = select_baselines(
                     prior_runs, current_run.date, cfg.changes.week_window_runs
@@ -368,11 +428,16 @@ def main(argv: list[str] | None = None) -> int:
         change_set=change_set,
         deterioration=det_rows,
         week_span=week_span,
+        bench=bench_cards,
     )
     context["deep"] = args.deep
 
     sparks: dict[str, bytes] = {}
-    for ticker in [sc.ticker for sc in scorecards] + [row["ticker"] for row in tech_only]:
+    for ticker in (
+        [sc.ticker for sc in scorecards]
+        + [row["ticker"] for row in tech_only]
+        + [sc.ticker for sc in bench_cards]
+    ):
         png = sparkline_png(_column(close, ticker))
         if png is not None:
             sparks[ticker] = png

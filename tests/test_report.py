@@ -244,6 +244,67 @@ def test_small_watchlist_still_splits_strong_and_weak(scored):
     assert not strong & weak
 
 
+# --- Bench (unranked) shadow-scored reserve ------------------------------------
+
+
+@pytest.fixture()
+def bench_cards():
+    from sentinel.data.fixtures import load_fixture_bench_inputs
+
+    return apply_scores(
+        [compute_scorecard(inp, today=FIXED_TODAY) for inp in load_fixture_bench_inputs()]
+    )
+
+
+def _bench_ctx_html(scored, bench_cards):
+    ctx = build_context(
+        scored, _cfg(), run_type="dry", notes=[], today=FIXED_TODAY, bench=bench_cards
+    )
+    return ctx, render_report(ctx)
+
+
+def test_bench_table_renders_with_its_disclaimer(scored, bench_cards):
+    _, html = _bench_ctx_html(scored, bench_cards)
+    assert "Bench (unranked)" in html
+    assert "comparison references, not recommendations" in html
+    bench_block = html.split("Bench (unranked)")[1]
+    assert "DLTA" in bench_block
+    assert "Delta Networks Inc." in bench_block
+    assert "36.7" in bench_block       # DLTA r40_fcf in points: a strong-table column
+
+
+def test_bench_absent_when_no_bench_rows(html):
+    assert "Bench (unranked)" not in html
+
+
+def test_bench_never_enters_a_ranked_or_alerting_section(scored, bench_cards):
+    ctx, html = _bench_ctx_html(scored, bench_cards)
+    for key in ("strongest", "weakest", "all_scored", "unscored", "signal_rows"):
+        assert all(sc.ticker != "DLTA" for sc in ctx[key]), key
+    assert all(row["ticker"] != "DLTA" for row in ctx["tech_only"])
+    assert all("DLTA" not in m for m in ctx["movers"])
+    # the bench table is the only place the name appears in the email
+    assert html.count("DLTA") == 1
+    assert "DLTA" not in html.split("Bench (unranked)")[0]
+
+
+def test_bench_stays_out_of_the_watchlist_breadth_numbers(scored, bench_cards):
+    plain = build_context(scored, _cfg(), run_type="dry", notes=[], today=FIXED_TODAY)
+    with_bench, _ = _bench_ctx_html(scored, bench_cards)
+    assert with_bench["median_r40"] == plain["median_r40"]
+    assert with_bench["n_total"] == plain["n_total"]
+
+
+def test_bench_rows_are_alphabetical_not_ranked(scored):
+    from sentinel.indicators.fundamentals import Scorecard
+
+    rows = [Scorecard(ticker=t, composite=c) for t, c in (("ZZB", 90.0), ("AAB", 10.0))]
+    ctx = build_context(
+        scored, _cfg(), run_type="dry", notes=[], today=FIXED_TODAY, bench=rows
+    )
+    assert [sc.ticker for sc in ctx["bench_rows"]] == ["AAB", "ZZB"]
+
+
 def test_no_em_or_en_dashes_in_report(html):
     assert "—" not in html and "–" not in html
     assert "&mdash;" not in html and "&#8212;" not in html
@@ -360,6 +421,29 @@ def test_dry_run_renders_change_sections_from_fixture_state(tmp_path):
 
     after = state.read_bytes() if state.exists() else None
     assert after == before
+
+
+def test_dry_run_shadow_scores_the_bench_without_ranking_it(tmp_path, capsys):
+    from sentinel.run import main
+
+    assert main(["--dry-run", "--no-email", "--out-dir", str(tmp_path)]) == 0
+    html = (tmp_path / "report.html").read_text()
+    assert "Bench (unranked)" in html and "DLTA" in html
+
+    # quarantine end to end: not in the CSV/JSON artifacts, not in the stdout
+    # ranking table, not in any section above the bench table
+    with (tmp_path / "scores.csv").open() as fh:
+        assert {r["ticker"] for r in csv.DictReader(fh)} == {"ALFA", "BRVO", "CHRL"}
+    assert "DLTA" not in (tmp_path / "raw.json").read_text()
+    assert "DLTA" not in capsys.readouterr().out
+    assert "DLTA" not in html.split("Bench (unranked)")[0]
+
+
+def test_dry_run_subset_skips_the_bench_too(tmp_path):
+    from sentinel.run import main
+
+    assert main(["--dry-run", "--tickers", "ALFA", "--no-email", "--out-dir", str(tmp_path)]) == 0
+    assert "Bench (unranked)" not in (tmp_path / "report.html").read_text()
 
 
 def test_dry_run_subset_skips_change_detection(tmp_path):

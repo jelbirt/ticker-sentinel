@@ -166,6 +166,15 @@
         </table>
       </td></tr>
       {% endif %}
+      {% if bench_rows %}
+      <tr><td style="padding:12px 24px 6px;font-family:Arial,Helvetica,sans-serif;font-size:16px;font-weight:bold;color:#4a5a6a;">Bench (unranked)</td></tr>
+      <tr><td style="padding:0 24px 6px;font-family:Arial,Helvetica,sans-serif;font-size:12px;color:#66727f;">
+        Reserve swap candidates, scored on the same basis for comparison only. They are not ranked, not part of the watchlist median, and never appear above: comparison references, not recommendations. Between-quarter signals are not fetched for bench names, so those columns read n/a.
+      </td></tr>
+      <tr><td style="padding:0 24px 12px;">
+        {{ scorecard_table(bench_rows) }}
+      </td></tr>
+      {% endif %}
       {% if unscored %}
       <tr><td style="padding:12px 24px 6px;font-family:Arial,Helvetica,sans-serif;font-size:16px;font-weight:bold;color:#1f2d3d;">Not scored</td></tr>
       <tr><td style="padding:0 24px 12px;">
@@ -241,7 +250,8 @@
         <b>Insider net 6m</b>: shares bought minus sold by the company's own officers &amp; directors over 6 months; net buying is rare and notable, some selling is normal.{% if change_set %}<br>
         <b>What changed today</b>: every move since the prior run that cleared a reporting threshold (score/rank moves, flag changes, trend shifts, new crosses, estimate and short-interest swings); ▲ improving, ▼ worsening. A quiet line means nothing cleared a threshold, which is itself information.{% endif %}{% if deterioration %}<br>
         <b>Deterioration watch</b>: names showing several negative signals at once (score drops over one run and the week window, deep R40 trend decline, technical breakdown, estimate cuts, worsening short interest); the &ldquo;Why&rdquo; column lists each triggered signal.{% endif %}{% if news_sections %}<br>
-        <b>What mattered today</b>: recent headlines from your configured feeds, matched to watchlist names by ticker or company name; each labeled block is the same news written in a different configured voice.{% endif %}
+        <b>What mattered today</b>: recent headlines from your configured feeds, matched to watchlist names by ticker or company name; each labeled block is the same news written in a different configured voice.{% endif %}{% if bench_rows %}<br>
+        <b>Bench (unranked)</b>: reserve swap candidates, scored the same way as the watchlist so a rotation decision compares like with like. They are excluded from every ranking, the watchlist median, change detection and the alerts above, and carry no recommendation.{% endif %}
         {% if deep %}
         <br><br><u>Deep-dive grid</u><br>
         <b>Rule of X</b>: 2 &times; growth + FCF margin: like R40 but growth counts double; target &ge; 50.<br>
