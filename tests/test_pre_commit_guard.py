@@ -246,6 +246,52 @@ def test_a_cd_the_committing_shell_never_takes_does_not_redirect_the_check(
     assert "Commit on main blocked" in r.stderr
 
 
+def test_a_second_commit_after_the_first_is_still_judged(guard: Guard) -> None:
+    """The fallback judges every commit-shaped span, not just the first: a
+    second commit that lands on main must not ride behind an earlier one."""
+    r = guard.run(
+        f"cd {guard.worktree} && git {COMMIT} -m a --author='O'Brien' ; "
+        f"cd {guard.repo} ; git {COMMIT} -m b"
+    )
+    assert r.returncode == 2
+    assert "Commit on main blocked" in r.stderr
+
+
+def test_prose_matching_the_pattern_does_not_end_the_cd_replay(guard: Guard) -> None:
+    """An earlier `git ... {COMMIT}`-shaped span in prose must not become the
+    replay boundary that hides the cd back toward main."""
+    r = guard.run(
+        f"cd {guard.worktree} && git log --grep {COMMIT} && "
+        f"cd {guard.repo} && git {COMMIT} -m x --author='O'Brien'"
+    )
+    assert r.returncode == 2
+    assert "Commit on main blocked" in r.stderr
+
+
+def test_a_fake_introducer_in_prose_cannot_hide_a_real_commit(guard: Guard) -> None:
+    """A quoted `<<` that happens to pair with a later matching line must not
+    strip the real commands between them from analysis."""
+    r = guard.run(f'echo "a << b"\ngit {COMMIT} -m "lands on main"\nb')
+    assert r.returncode == 2
+    assert "Commit on main blocked" in r.stderr
+
+
+def test_an_escape_on_a_command_line_survives_a_fake_introducer(guard: Guard) -> None:
+    r = guard.run(f'echo "a << b"\nALLOW_MAIN_COMMIT=1 git {COMMIT} -m ok\nb')
+    assert r.returncode == 0, r.stderr
+
+
+@pytest.mark.parametrize("empty", ["''", '""'], ids=["single-quoted", "double-quoted"])
+def test_an_empty_cd_target_neither_crashes_nor_moves_the_check(
+    guard: Guard, empty: str
+) -> None:
+    """`cd ''` is a no-op in the shell; it must not crash the replay (a
+    traceback exits 1, which fails open) and must not move the check."""
+    r = guard.run(f"cd {empty} && git {COMMIT} -m x --author='O'Brien'")
+    assert r.returncode == 2
+    assert "Commit on main blocked" in r.stderr
+
+
 def test_an_unterminated_heredoc_does_not_swallow_the_commands_after_it(
     guard: Guard,
 ) -> None:

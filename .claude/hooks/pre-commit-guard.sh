@@ -77,6 +77,10 @@ def tokenize(text):
 # or a separator, which excludes `<<<` herestrings and shifts like $((1<<N)).
 HEREDOC_RE = re.compile(r"(?:^|(?<=[\s|&;(]))<<-?\s*(['\"]?)([A-Za-z_][A-Za-z_0-9]*)\1")
 
+# The `git ... commit` invocation, with no other `git` in between so the match
+# lands on the committing invocation rather than an earlier one.
+GIT_COMMIT_RE = re.compile(r"\bgit\b(?:(?!\bgit\b).)*?\bcommit\b", re.S)
+
 
 def strip_heredocs(text):
     """Drop heredoc BODIES (and their terminator lines) before analysis.
@@ -87,13 +91,16 @@ def strip_heredocs(text):
     Removing the body first keeps the canonical `git commit -F - <<'EOF'`
     message form fully parseable, so its `cd` prefix is honored normally.
 
-    Stripping only happens when the terminator line is actually there. That is
-    the conservative direction on both sides: a `<<` in prose (`-m "the <<
-    shift"`) almost never has one, so its lines survive to be analyzed, and an
-    introducer whose body runs past the end of the text cannot delete the
-    commands that follow it. Only the first heredoc on a line is handled; a
-    second one's body stays as text, where at worst it fails tokenize() and
-    takes the conservative fallback in analyze().
+    Stripping only happens when the terminator line is actually there, and
+    never when the body itself smells like a commit. Both are the conservative
+    direction: a `<<` in prose (`-m "the << shift"`) almost never has a
+    terminator, so its lines survive to be analyzed, and when quoted prose DOES
+    pair with a later matching line (HEREDOC_RE cannot see shell quoting), a
+    real `git commit` between them is kept rather than deleted as "body"; a
+    genuine message body that merely mentions git commit then degrades to the
+    conservative fallback, which blocks toward the session cwd. Only the first
+    heredoc on a line is handled; a second one's body stays as text, where at
+    worst it fails tokenize() and takes the conservative fallback in analyze().
     """
     lines, out, i = text.split("\n"), [], 0
     while i < len(lines):
@@ -108,13 +115,11 @@ def strip_heredocs(text):
             j += 1
         if j >= len(lines):
             continue  # unterminated: not a heredoc we can trust, keep the lines
+        if GIT_COMMIT_RE.search("\n".join(lines[i:j])):
+            continue  # the "body" smells like a commit: keep it, per above
         i = j + 1  # drop the body and its terminator
     return "\n".join(out)
 
-
-# The `git ... commit` invocation, with no other `git` in between so the match
-# lands on the committing invocation rather than an earlier one.
-GIT_COMMIT_RE = re.compile(r"\bgit\b(?:(?!\bgit\b).)*?\bcommit\b", re.S)
 
 # A `cd` that starts a command (line start or after a separator, optionally
 # behind env-var prefixes), plus the parens that scope one. The separator is
@@ -149,8 +154,9 @@ def resolve(base, path):
     return path if os.path.isabs(path) else os.path.normpath(os.path.join(base, path))
 
 
-def scan_cd(text, cwd):
-    """Directory a command would run in, by replaying its `cd`s with a regex.
+def scan_cd(text, cwd, end):
+    """Directory the command at text[end:] would run in, by replaying the
+    `cd`s in text[:end] with a regex.
 
     The fallback for text tokenize() rejected: without this the commit is
     attributed to the session cwd, so `cd <worktree> && git commit ...` with a
@@ -160,39 +166,42 @@ def scan_cd(text, cwd):
     A regex sweep is not shell semantics, so the sweep is bounded to keep every
     ambiguity resolving toward the session cwd (what the old fallback used, and
     the stricter answer whenever the session sits on main):
-      - only `cd`s BEFORE the committing `git` count, so a trailing `cd` cannot
+      - only `cd`s BEFORE the commit being attributed count (the caller passes
+        that commit's match start as `end`), so a trailing `cd` cannot
         retroactively move a commit that already ran;
       - only `cd`s at paren depth 0 count, since a subshell or a `$( )` never
         moves the shell that commits;
       - only targets that exist as directories count, so a `cd` quoted inside
         prose cannot aim the check at a phantom path (and a real `cd` to a
-        missing directory would fail in the shell anyway).
+        missing directory would fail in the shell anyway); an empty target
+        (`cd ''`) is skipped, matching the shell, where it does not move.
     Unhandled, both resolving to the session cwd: `cd "$VAR"` (no variable
     expansion here, so the target is not a directory and is skipped), and
     `git -C <dir>`, which the session cwd fallback never honored either.
     """
-    m = GIT_COMMIT_RE.search(text)
-    head = text[: m.start()] if m else text
     cur, depth = cwd, 0
-    for m in CD_OR_PAREN_RE.finditer(head):
+    for m in CD_OR_PAREN_RE.finditer(text, 0, end):
         tok = m.group(0)
         if tok == "(":
             depth += 1
         elif tok == ")":
             depth = max(0, depth - 1)
         elif depth == 0:
-            cand = resolve(cur, m.group(1) or m.group(2) or m.group(3))
-            if os.path.isdir(cand):
-                cur = cand
+            target = next(g for g in m.group(1, 2, 3) if g is not None)
+            if target:
+                cand = resolve(cur, target)
+                if os.path.isdir(cand):
+                    cur = cand
     return cur
 
 
 def analyze(text, cwd, depth=0):
     """Return list of (target_dir, env_prefix_dict) for every git commit found.
-    Text that will not tokenize is treated conservatively as a commit when it
-    smells like one, never skipped: it is attributed to the directory its `cd`s
-    lead to (the session cwd when there are none), so quoting inside a commit
-    message cannot move the check to the wrong directory."""
+    Text that will not tokenize is treated conservatively as commits when it
+    smells like one, never skipped: every commit-shaped span is attributed to
+    the directory its own preceding `cd`s lead to (the session cwd when there
+    are none), so quoting inside a commit message cannot move the check to the
+    wrong directory."""
     if depth > 4:
         return []
     # A heredoc body is data; strip it before the newline rewrite below can
@@ -205,8 +214,16 @@ def analyze(text, cwd, depth=0):
     # alters a message token's content, which detection never inspects.
     tokens = tokenize(text.replace("\n", " ; "))
     if tokens is None:
+        # judge EVERY commit-shaped span, each against the directory its own
+        # preceding cds lead to: a single record for the first span would let
+        # a second commit later in the same command escape unjudged
+        found = [
+            (scan_cd(text, cwd, m.start()), {}) for m in GIT_COMMIT_RE.finditer(text)
+        ]
+        if found:
+            return found
         if "git" in text and "commit" in text:
-            return [(scan_cd(text, cwd), {})]
+            return [(cwd, {})]
         return []
     commits = []
     cur = cwd
