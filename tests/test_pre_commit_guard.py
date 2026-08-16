@@ -476,6 +476,52 @@ def test_prefix_escapes_still_work_when_the_command_will_not_tokenize(
     assert r.returncode == 0, r.stderr
 
 
+def test_an_escaped_quote_in_a_message_does_not_expose_an_escape(
+    guard: Guard,
+) -> None:
+    """A backslash-escaped quote does not close a double-quoted span, so the
+    message text after it must stay masked: a message quoting an escape name in
+    literal quotes is exactly the shape a guard-documenting repo produces."""
+    r = guard.run(
+        f'git {COMMIT} -m "note: \\"{SKIP}\\" was not used; {ALLOW} neither"'
+    )
+    assert r.returncode == 2
+    assert "Commit on main blocked" in r.stderr
+
+
+def test_an_ansi_c_quoted_message_does_not_expose_an_escape(guard: Guard) -> None:
+    """In $'...' a backslash-escaped quote does not close the span either."""
+    r = guard.run(f"git {COMMIT} -m $'don\\'t ; {ALLOW} x'")
+    assert r.returncode == 2
+    assert "Commit on main blocked" in r.stderr
+
+
+def test_an_escape_in_an_unterminated_heredoc_body_does_not_apply(
+    guard: Guard,
+) -> None:
+    """bash runs an unterminated heredoc anyway, taking the rest of the input
+    as body: for the escape scan that body is data and must be dropped."""
+    r = guard.run(f"git {COMMIT} -F - <<'EOF'\n{ALLOW} explained here")
+    assert r.returncode == 2
+    assert "Commit on main blocked" in r.stderr
+
+
+def test_a_prefix_escape_after_an_ansi_c_quoted_word_still_applies(
+    guard: Guard,
+) -> None:
+    """The $'...' span must mask as balanced, or everything after it (a typed
+    escape included) would be blanked as the tail of an unbalanced quote."""
+    guard.set_checks("exit 1")
+    command = (
+        f"cd {guard.worktree} && echo $'don\\'t' > f.txt ; "
+        "{prefix}git " + COMMIT + " -am ok"
+    )
+    assert guard.run(command.format(prefix="")).returncode == 2  # control
+
+    r = guard.run(command.format(prefix=SKIP + " "))
+    assert r.returncode == 0, r.stderr
+
+
 # --- things the guard must keep ignoring -------------------------------------
 
 

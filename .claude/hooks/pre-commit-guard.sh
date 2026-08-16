@@ -102,8 +102,12 @@ def mask_quoted(text):
 
     Only quoting is modeled, not the shell's full grammar: a backslash outside
     quotes masks the character it escapes (which is how `\\;` stops being a
-    separator, and how a `\\`-newline line continuation stops being one), while
-    inside single quotes a backslash stays literal, per POSIX.
+    separator, and how a `\\`-newline line continuation stops being one).
+    Inside a span the backslash follows POSIX: in double quotes and in ANSI-C
+    `$'...'` it escapes the next character, so `\\"` and `\\'` do NOT close
+    their span (a message quoting an escape name in literal quotes must stay
+    masked); in plain single quotes nothing escapes and the next quote always
+    closes.
     """
     out, i, n = [], 0, len(text)
     while i < n:
@@ -112,8 +116,11 @@ def mask_quoted(text):
             out.append("QQ")
             i += 2
         elif ch in "'\"":
-            j = text.find(ch, i + 1)
-            if j < 0:
+            escapes = ch == '"' or (ch == "'" and i > 0 and text[i - 1] == "$")
+            j = i + 1
+            while j < n and text[j] != ch:
+                j += 2 if escapes and text[j] == "\\" else 1
+            if j >= n:
                 out.append("Q" * (n - i))  # unbalanced: the rest is quoted
                 break
             out.append("Q" * (j - i + 1))
@@ -150,11 +157,13 @@ def strip_heredocs(text, strict=False):
     whose agents write about this guard) switches the guard off. Quoting is
     what tells the two cases apart, so strict mode trusts it: an introducer
     inside a quoted span is prose (`echo "a << b"`), not an introducer, and its
-    lines survive; an unquoted one is real, so its terminated body is dropped
-    unconditionally. The mask is taken per line, so an apostrophe elsewhere in
-    the command cannot move the answer. Both directions stay conservative here:
-    a body wrongly kept can only fail to hide an escape, and a body wrongly
-    dropped can only hide one.
+    lines survive; an unquoted one is real, so its body is dropped even when it
+    never terminates (bash runs an unterminated heredoc anyway, taking the rest
+    of the input as body, so there are no commands after it to lose). The mask
+    is taken per line, so an apostrophe elsewhere in the command cannot move
+    the answer. Kept lines are still scanned, so every doubt here resolves by
+    dropping: a body wrongly dropped can only hide an escape, while one wrongly
+    kept could activate an escape from message data.
     """
     lines, out, i = text.split("\n"), [], 0
     while i < len(lines):
@@ -170,6 +179,9 @@ def strip_heredocs(text, strict=False):
         while j < len(lines) and lines[j].strip() != word:
             j += 1
         if j >= len(lines):
+            if strict:
+                break  # unterminated: bash takes the REST of the input as the
+                # body, so for the escape scan drop it all; dropping only hides
             continue  # unterminated: not a heredoc we can trust, keep the lines
         if not strict and GIT_COMMIT_RE.search("\n".join(lines[i:j])):
             continue  # the "body" smells like a commit: keep it, per above
