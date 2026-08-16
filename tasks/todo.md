@@ -33,6 +33,17 @@
   weekly-refresh artifact), and `retention_runs` 12 -> 25. Touches
   `config/watchlist.yaml` under a one-line scoped exception (the retention
   line only); the file otherwise stays owner-pen.
+- `commit-guard-attribution` (branch `claude/brave-swirles-3ab2f3`, agent
+  worktree): false positive in `.claude/hooks/pre-commit-guard.sh`, found
+  2026-08-16. A commit into a worktree via `cd <worktree> && git commit ...`
+  was blocked as a commit on main whenever the message carried quoting shlex
+  could not read (an apostrophe in a heredoc body, `--author='O'Brien'`,
+  `$'...'`): tokenization failed and the fallback attributed the commit to the
+  session cwd, the main checkout. The fix strips heredoc bodies before parsing
+  and, when parsing still fails, replays the command's `cd`s to attribute the
+  commit to the directory it would actually run in. Conservative stance kept:
+  an unparseable commit with no `cd` is still judged against the session cwd.
+  Adds `tests/test_pre_commit_guard.py`. Does NOT write `data/cache/`.
 
   One branch per workstream via `scripts/new-worktree.sh <branch>`; main is the
   review inbox; merge back via PR.
