@@ -46,3 +46,36 @@ jobs:
             --body-file digest.md \
             --label watchlist-refresh \
             --assignee "${{ github.repository_owner }}"
+      - name: alert on failure
+        if: ${{ failure() }}
+        env:
+          GH_TOKEN: ${{ github.token }}
+          OWNER: ${{ github.repository_owner }}
+        run: |
+          # same alert channel as daily-report (one run-failure label, one open
+          # issue): every gh call here is best-effort, because a label or
+          # assignee problem must not swallow the only signal this run went red
+          gh label create run-failure --repo "$GITHUB_REPOSITORY" --force \
+            --color b60205 --description "Automated run failure" || true
+          run_url="$GITHUB_SERVER_URL/$GITHUB_REPOSITORY/actions/runs/$GITHUB_RUN_ID"
+          body=$(printf '%s\n' \
+            "The weekly-refresh run failed." \
+            "" \
+            "- Run: $run_url" \
+            "- Event: $GITHUB_EVENT_NAME" \
+            "- Time (UTC): $(date -u '+%Y-%m-%d %H:%M:%S')" \
+            "" \
+            "Impact: no watchlist-refresh digest issue was opened this week, so the rotation reminder and its evidence summary are missing. Nothing else is affected: the digest is pure aggregation over committed run history, so re-running this workflow (workflow_dispatch) rebuilds the same week once the cause is fixed.")
+          existing=$(gh issue list --repo "$GITHUB_REPOSITORY" --label run-failure \
+            --state open --limit 1 --json number --jq '.[0].number // empty' || true)
+          if [ -n "$existing" ]; then
+            if gh issue comment "$existing" --repo "$GITHUB_REPOSITORY" --body "$body"; then
+              exit 0
+            fi
+            echo "comment on issue #$existing failed, opening a new issue instead"
+          fi
+          title="Weekly refresh run failure ($(date -u +%F))"
+          gh issue create --repo "$GITHUB_REPOSITORY" --title "$title" --body "$body" \
+            --label run-failure --assignee "$OWNER" \
+          || gh issue create --repo "$GITHUB_REPOSITORY" --title "$title" --body "$body" \
+            --label run-failure

@@ -17,16 +17,20 @@ Style contract:
 from __future__ import annotations
 
 import html
+import logging
 import re
 from datetime import datetime
 from urllib.parse import urlparse
 
+from sentinel.news.llm import MAX_PROMPT_CHARS
 from sentinel.news.matching import (
     SHORT_TICKER_MAX_LEN,
     company_name_matches,
     ticker_pattern,
 )
 from sentinel.news.pipeline import NewsDigest, NewsItem
+
+log = logging.getLogger(__name__)
 
 _FONT = "font-family:Arial,Helvetica,sans-serif;"
 
@@ -294,15 +298,76 @@ DEFAULT_TONE = "neutral-analyst"
 LLM_STYLES = {"llm-brief"}  # styles that consume the tone/model options
 
 
-def _digest_text(digest: NewsDigest) -> str:
-    lines = []
+def _digest_blocks(digest: NewsDigest) -> list[tuple[str, list[str]]]:
+    """One (header, headline lines) pair per ticker, ranked as the pipeline
+    ranked them (newest first)."""
+    blocks: list[tuple[str, list[str]]] = []
     for tn in digest.tickers:
         name = f" ({tn.company_name})" if tn.company_name else ""
-        lines.append(f"{tn.ticker}{name}:")
+        lines = []
         for item in tn.items:
             age = _age(item.published, digest.as_of)
             lines.append(f"- {item.title}" + (f" [{age}]" if age else ""))
-    return "\n".join(lines)
+        blocks.append((f"{tn.ticker}{name}:", lines))
+    return blocks
+
+
+def _render_blocks(blocks: list[tuple[str, list[str]]], counts: list[int]) -> str:
+    out: list[str] = []
+    for (header, lines), keep in zip(blocks, counts):
+        out.append(header)
+        out.extend(lines[:keep])
+    return "\n".join(out)
+
+
+def _digest_text(digest: NewsDigest, budget: int | None = None) -> str | None:
+    """The headlines block handed to the model, trimmed to `budget` characters.
+
+    Trimming, never expanding, keeps the style contract: the pipeline owns
+    selection, a style may show less. Depth comes off the ticker that currently
+    carries the most headlines, lowest-ranked (last) item first, so the cut goes
+    round-robin and EVERY ticker keeps at least one headline for as long as the
+    budget allows. Coverage is what the prompt demands and what _narrative_valid
+    checks, so breadth is worth more here than depth.
+
+    Degenerate case (one headline per ticker still over budget): returns None.
+    The model could not honor the coverage rule from a block that does not fit,
+    so the caller skips the LLM call entirely and render_news fails open to the
+    deterministic headlines style, which shows every ticker and every item.
+    """
+    blocks = _digest_blocks(digest)
+    counts = [len(lines) for _, lines in blocks]
+    text = _render_blocks(blocks, counts)
+    if budget is None or len(text) <= budget:
+        return text
+    while len(text) > budget and max(counts, default=0) > 1:
+        # highest count wins, ties break on digest order: dropping one item
+        # makes another ticker the deepest, which is the round-robin
+        deepest = max(range(len(counts)), key=lambda i: (counts[i], -i))
+        counts[deepest] -= 1
+        text = _render_blocks(blocks, counts)
+    if len(text) > budget:
+        return None
+    log.info(
+        "news prompt: trimmed headlines to %s of %s items across %s tickers to "
+        "fit the %s-char budget",
+        sum(counts), sum(len(lines) for _, lines in blocks), len(blocks), budget,
+    )
+    return text
+
+
+def _build_llm_prompt(digest: NewsDigest, tone: str) -> str | None:
+    """Format the prompt so it fits MAX_PROMPT_CHARS by construction.
+
+    The budget is the real one: the cap minus this voice's formatted overhead,
+    measured rather than guessed, so a longer tone preset buys itself less room
+    for headlines instead of pushing the tail tickers off the end.
+    """
+    overhead = len(_LLM_PROMPT.format(voice=TONES[tone], headlines=""))
+    headlines = _digest_text(digest, budget=max(MAX_PROMPT_CHARS - overhead, 0))
+    if headlines is None:
+        return None
+    return _LLM_PROMPT.format(voice=TONES[tone], headlines=headlines)
 
 
 def _llm_brief(
@@ -322,7 +387,14 @@ def _llm_brief(
     if not model:
         return None
     tone = tone if tone in TONES else DEFAULT_TONE
-    prompt = _LLM_PROMPT.format(voice=TONES[tone], headlines=_digest_text(digest))
+    prompt = _build_llm_prompt(digest, tone)
+    if prompt is None:
+        log.warning(
+            "news prompt: %s tickers do not fit in %s chars at one headline each; "
+            "skipping the LLM call and failing open to the deterministic style",
+            len(digest.tickers), MAX_PROMPT_CHARS,
+        )
+        return None
     raw = call_claude(prompt, model=model)
     if not raw:
         return None

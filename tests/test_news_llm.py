@@ -205,6 +205,117 @@ class TestLlmBriefStyle:
         assert "investment advice" in captured["prompt"]
 
 
+def _wide_digest(tickers: int, items_per_ticker: int, title_chars: int) -> NewsDigest:
+    """A digest with `tickers` names, deterministic long headlines. The real
+    watchlist is 20+ names, which is where the old blind prompt slice cut the
+    tail tickers out of the prompt entirely."""
+    names = []
+    for t in range(tickers):
+        ticker = f"TK{t:02d}"
+        items = [
+            NewsItem(
+                title=f"{ticker} story {i} " + "x" * max(title_chars, 1),
+                link=f"https://news.example.com/{ticker}/{i}",
+                source="https://feeds.example.com/top",
+                published=NOW - timedelta(hours=i + 1),
+            )
+            for i in range(items_per_ticker)
+        ]
+        names.append(TickerNews(ticker=ticker, company_name=f"{ticker} Corp", items=items))
+    return NewsDigest(
+        as_of=NOW, tickers=names, scanned=100, matched=tickers * items_per_ticker
+    )
+
+
+def _kept_headlines(prompt: str) -> dict[str, list[str]]:
+    """Per-ticker headline lines as they reached the model, in prompt order."""
+    block = prompt.split("HEADLINES:\n", 1)[1]
+    kept: dict[str, list[str]] = {}
+    current = None
+    for line in block.splitlines():
+        if line.startswith("- "):
+            kept[current].append(line)
+        else:
+            current = line.split(" ", 1)[0].rstrip(":")
+            kept[current] = []
+    return kept
+
+
+class TestPromptBudget:
+    """The prompt fits MAX_PROMPT_CHARS by construction, so no ticker is ever
+    silently sliced off the end (which then fails the coverage validator)."""
+
+    def _capture(self, digest, monkeypatch, tone=None):
+        captured = {}
+
+        def fake(prompt, model, **k):
+            captured["prompt"] = prompt
+            return "<REPORT>covered</REPORT>"
+
+        monkeypatch.setattr(llm, "call_claude", fake)
+        render_news(digest, "llm-brief", model="claude-sonnet-5", tone=tone)
+        return captured.get("prompt")
+
+    def test_wide_digest_fits_the_cap_with_every_ticker_present(self, monkeypatch):
+        digest = _wide_digest(tickers=24, items_per_ticker=3, title_chars=120)
+        prompt = self._capture(digest, monkeypatch)
+        assert len(prompt) <= llm.MAX_PROMPT_CHARS
+        for tn in digest.tickers:
+            assert f"{tn.ticker} ({tn.company_name}):" in prompt
+        kept = _kept_headlines(prompt)
+        assert all(len(lines) >= 1 for lines in kept.values())
+
+    def test_depth_comes_off_round_robin_keeping_rank_order(self, monkeypatch):
+        # sized so trimming bites but does not strip everyone to one item
+        digest = _wide_digest(tickers=22, items_per_ticker=3, title_chars=80)
+        prompt = self._capture(digest, monkeypatch)
+        assert len(prompt) <= llm.MAX_PROMPT_CHARS
+        kept = _kept_headlines(prompt)
+        counts = [len(lines) for lines in kept.values()]
+        assert min(counts) >= 1
+        assert max(counts) - min(counts) <= 1     # round-robin, not front-loaded
+        assert 1 < sum(counts) / len(counts) < 3  # partial trim, not a floor slam
+        for tn in digest.tickers:
+            titles = [line for line in kept[tn.ticker]]
+            # the kept items are the TOP ranked ones, in pipeline order
+            for line, item in zip(titles, tn.items):
+                assert item.title in line
+
+    def test_a_longer_voice_buys_itself_less_headline_room(self, monkeypatch):
+        digest = _wide_digest(tickers=22, items_per_ticker=3, title_chars=80)
+        short = self._capture(digest, monkeypatch, tone="brief-wire")
+        long = self._capture(digest, monkeypatch, tone="barrons")
+        assert len(TONES["barrons"]) > len(TONES["brief-wire"])
+        assert len(short) <= llm.MAX_PROMPT_CHARS
+        assert len(long) <= llm.MAX_PROMPT_CHARS
+        short_items = sum(len(v) for v in _kept_headlines(short).values())
+        long_items = sum(len(v) for v in _kept_headlines(long).values())
+        assert long_items <= short_items
+
+    def test_digest_that_already_fits_is_not_trimmed(self, digest, monkeypatch):
+        prompt = self._capture(digest, monkeypatch)
+        assert "CRWD (CrowdStrike):" in prompt
+        assert "CRWD beats estimates" in prompt
+        assert len(prompt) <= llm.MAX_PROMPT_CHARS
+
+    def test_degenerate_digest_skips_the_call_and_fails_open(self, monkeypatch):
+        # even one headline per ticker cannot fit: the model could not honor the
+        # coverage rule, so no LLM call is spent and the deterministic style,
+        # which shows everything, renders instead
+        calls = []
+
+        def fake(prompt, model, **k):
+            calls.append(prompt)
+            return "<REPORT>covered</REPORT>"
+
+        monkeypatch.setattr(llm, "call_claude", fake)
+        digest = _wide_digest(tickers=60, items_per_ticker=2, title_chars=200)
+        html, notes = render_news(digest, "llm-brief", model="claude-sonnet-5")
+        assert calls == []
+        assert any("fell back to 'headlines'" in n for n in notes)
+        assert "TK59 story 0" in html   # headlines style still shows every name
+
+
 class TestReportExtraction:
     """The output contract: only marker-wrapped content ever reaches the email."""
 

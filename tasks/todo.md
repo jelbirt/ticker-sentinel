@@ -18,6 +18,10 @@
   hardcoded at 260, so a `--deep` run (2y) recovered half the history it asked
   for. Scope is `prices.py` plus `tests/test_prices.py`; no cache, config or
   `run.py` changes.
+- `ops-hygiene-2` (opened 2026-08-16): weekly-refresh failure alerting, an
+  LLM news prompt that fits the char cap by construction, and the rotation
+  promotion step (seed plus backfill) written into SPEC 7.0 and the digest
+  checklist. Touches no `data/cache/`.
 
   One branch per workstream via `scripts/new-worktree.sh <branch>`; main is the
   review inbox; merge back via PR.

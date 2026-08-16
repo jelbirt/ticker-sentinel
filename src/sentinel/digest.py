@@ -260,6 +260,10 @@ def render_markdown(
         "- [ ] If no swaps, note \"no changes\" here and close the issue",
         "- [ ] Any watchlist.yaml edit lands via an owner-reviewed PR "
         "(the list stays owner-gated)",
+        "- [ ] For any promoted name, seed and backfill its history so it does "
+        "not restart the r40_trend warm-up: dry run "
+        "`python -m sentinel.backfill --dry-run --tickers NEW` with the swap PR, "
+        "then the owner-gated `--apply` on main after it merges (SPEC.md 7.0)",
         "- [ ] Record what evidence mattered (and what was noise) in SPEC.md "
         "section 7.0, building the rotation rubric",
     ]
