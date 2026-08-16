@@ -243,6 +243,42 @@ small week to week. This is a process cadence recorded in PROJECT_PLAN.md
 (roadmap), not code; every actual `config/watchlist.yaml` edit remains
 owner-gated. Cache pruning already cleans up dropped tickers automatically.
 
+**Promotion step (seed and backfill the incoming name).** A promoted bench name
+or a new candidate starts with no cached history, so growth (needs 8 quarters)
+and `r40_trend` (needs 12) would read `n/a` for roughly a year while the
+committed cache deepens 4 quarters per year. The one-time backfill tool closes
+that gap, and it is idempotent: re-running it on a name already deep is a no-op
+accept. The exact sequence, from `tasks/spec-history-backfill.md` and
+`sentinel/backfill.py`:
+
+1. Land the `config/watchlist.yaml` swap through the owner-reviewed PR as usual.
+   That branch must not touch `data/cache/`.
+2. Dry run, safe on any branch (fetches SEC EDGAR live, writes nothing):
+   `python -m sentinel.backfill --dry-run --tickers NEW` (comma separated for
+   several names). Read the per-ticker report: ACCEPT with quarters gained, or
+   REJECT with the overlap checks that failed.
+3. Apply, owner-gated because `data/cache/` is the scheduled bot's pen: run it
+   on main after the swap PR merges and land it as its own commit (the pattern
+   of apply commits `2621e02` and `4cd9d67`):
+   `python -m sentinel.backfill --apply --tickers NEW`. Keep `--tickers` scoped
+   to the incoming names: with no `--tickers` the tool sweeps the whole r40
+   universe plus the bench and rewrites every parquet that passes.
+
+What decides the outcome:
+- A name with no parquet is SEEDED automatically: the tool fetches its current
+  yfinance statements to create the overlap the verification gate needs. In
+  `--dry-run` that stays in memory; only `--apply` writes it, and the per-ticker
+  line says `seeded`.
+- The gate is all or nothing per ticker: one field disagreeing beyond 1 percent
+  or 100,000 absolute on any overlapping quarter rejects that ticker and writes
+  nothing for it. A reject is information, not something to work around.
+- Foreign private issuers file no 10-Q XBRL quarterly facts and are skipped a
+  priori (MNDY today, in `backfill.SKIPPED`). Promoting one means accepting the
+  warm-up gap: say so in the swap PR.
+- Standing requirement from the share-count-guard workstream: `diluted_shares`
+  stays out of the backfilled field set (Amendment 2), because the overlap gate
+  cannot see split-driven basis breaks outside its window.
+
 #### 7.0.1 Rotation rubric (built round by round from the weekly digests)
 The first 3 refreshes are calibration rounds: each one records which digest
 evidence actually drove a decision and which was noise, so the rubric below is

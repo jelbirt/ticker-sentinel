@@ -201,6 +201,7 @@ class TestRendering:
         assert "| BBB | 2 of 2 |" in text
         assert "WDAY, SHOP." in text
         assert "SPEC.md" in text and "- [ ]" in text
+        assert "sentinel.backfill --dry-run" in text  # promotion step (spec 7.0)
         assert "high sbc" in text  # flags humanized, no underscores
 
     def test_automation_decision_appears_after_calibration_rounds(self):
