@@ -111,6 +111,6 @@ def test_series_request_asks_for_the_yfinance_price_basis(monkeypatch):
 def test_fallback_note_records_the_basis(fallback_env):
     _, _, notes = prices.fetch_prices(["AAA"])
     note = next(n for n in notes if "Twelve Data" in n)
-    assert "split and dividend adjusted" in note
+    assert "split and dividend adjusted basis requested" in note
     assert "AAA" in note
     assert "—" not in note and "–" not in note        # no em or en dashes in output

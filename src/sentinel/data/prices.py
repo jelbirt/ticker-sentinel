@@ -139,8 +139,8 @@ def fetch_prices(
                     recovered.append(t)
             if recovered:
                 notes.append(
-                    "prices via Twelve Data fallback (split and dividend adjusted, "
-                    f"matching yfinance): {', '.join(recovered)}"
+                    "prices via Twelve Data fallback (split and dividend adjusted "
+                    f"basis requested, to match yfinance): {', '.join(recovered)}"
                 )
             still = sorted(set(missing) - set(recovered))
             if still:
