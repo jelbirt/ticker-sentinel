@@ -15,7 +15,14 @@ made every second merge conflict here.
   `run_history.json`; discard that change rather than committing it.
 
 ## Active workstreams
-- none open.
+- `ops-hygiene-3` (opened 2026-08-16, registry entry by the coordinating
+  session per the new convention): audit backlog closer. Constraints file for
+  the workflows' floating pip installs (daily-report, weekly-refresh, ci),
+  `report.timezone` wired into the report header display (owner chose wiring
+  over dropping the key; display only, run dates and file naming untouched),
+  and the MNDY skip-reason wording corrected to the 2026-08-16 investigation
+  finding (20-F/6-K filer, XBRL annual and half-year only). Touches no
+  `data/cache/` and no `config/watchlist.yaml`.
 
   One branch per workstream via `scripts/new-worktree.sh <branch>`; main is the
   review inbox; merge back via PR.
