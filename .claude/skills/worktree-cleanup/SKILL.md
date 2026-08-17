@@ -21,8 +21,14 @@ exists.
 
 1. `git worktree list --porcelain` to enumerate worktrees (skip the main
    checkout).
-2. For each: merged into main (`git merge-base --is-ancestor <branch> main`)
-   and clean (`git -C <dir> status --porcelain` empty)?
+2. For each: merged into main — `git merge-base --is-ancestor
+   refs/heads/<branch> refs/heads/main`, or the same against
+   `refs/remotes/origin/main` (fetch first) — and clean
+   (`git -C <dir> status --porcelain` empty)? Use fully-qualified refs: a
+   bare name lets a same-named tag win the lookup and make an unmerged
+   branch look merged. Check origin too — branches here merge by PR, so
+   local `main` is routinely behind and a local-only test would drop merged
+   branches off this list.
 3. List the qualifying worktrees, confirm ONCE with the user, then run
    `scripts/rm-worktree.sh <branch>` for each.
 
