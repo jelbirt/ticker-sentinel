@@ -327,7 +327,11 @@ class TestBackfillTicker:
 
         result = backfill_ticker("MNDY", boom, boom)
         assert result.status == SKIP
+        # the reason names the real blocker (period granularity), not missing
+        # or untrustworthy data: MNDY does file US-GAAP XBRL, just never on a
+        # 3-month period (read-only EDGAR check, CIK 1845338, 2026-08-16)
         assert "20-F" in result.reason
+        assert "no 3-month periods" in result.reason
         assert not list(cache_root.iterdir())
 
     def test_accept_reports_the_gain_without_writing(self, cache_root):

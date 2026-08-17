@@ -78,9 +78,11 @@ class Config:
     benchmark: str = "SPY"
     top_n: int = 10
     bottom_n: int = 5
-    # accepted and reserved: parsed so `report.timezone` is a known key, but no
-    # code reads it yet (the report renders plain ISO dates). Keep it declared
-    # so the owner's watchlist.yaml does not trip the unknown-key warning.
+    # display only (IANA zone name): the report header renders its wall-clock
+    # "built HH:MM ZONE" stamp in this zone. It never touches the run date, so
+    # run_history.json, the reports/YYYY-MM-DD directory and change-detection
+    # dates are all unaffected by changing it. An unloadable value degrades to
+    # a UTC stamp plus a data note (see report.builder.local_timestamp).
     timezone: str = "America/New_York"
     ranking: str = "breadth"  # "breadth": most R40 variants ≥ 40 first; "score": plain F-score
     fundamentals_weight: float = 0.6

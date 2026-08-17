@@ -18,13 +18,13 @@ fi
 
 if ! "$PY" -c 'import sys; raise SystemExit(0 if sys.version_info >= (3, 12) else 1)' 2>/dev/null; then
   echo "checks.sh: Python >= 3.12 required (repo pins requires-python >= 3.12)." >&2
-  echo "checks.sh: bootstrap with: python3 -m venv .venv && .venv/bin/pip install -e '.[dev]'" >&2
+  echo "checks.sh: bootstrap with: python3 -m venv .venv && .venv/bin/pip install -e '.[dev]' -c constraints.txt" >&2
   exit 1
 fi
 
 if ! "$PY" -c 'import pytest' 2>/dev/null; then
   echo "checks.sh: pytest not importable with $PY." >&2
-  echo "checks.sh: bootstrap with: python3 -m venv .venv && .venv/bin/pip install -e '.[dev]'" >&2
+  echo "checks.sh: bootstrap with: python3 -m venv .venv && .venv/bin/pip install -e '.[dev]' -c constraints.txt" >&2
   exit 1
 fi
 

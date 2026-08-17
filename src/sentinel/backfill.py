@@ -52,9 +52,12 @@ TARGET_QUARTERS = 12  # what r40_trend needs; MAX_QUARTERS (16) is the cap
 # (52/53-week calendars). Quarter ends this close are the same quarter.
 COLUMN_ALIGN_DAYS = 7
 
-# Documented a-priori skips: no 10-Q XBRL quarterly facts exist to derive from.
+# Documented a-priori skips: the filer publishes no 3-month XBRL periods, so
+# there is nothing quarterly to derive. Not a data-quality judgement: MNDY's
+# US-GAAP facts reconcile with the cache to the dollar (read-only EDGAR check,
+# CIK 1845338, 2026-08-16); the blocker is period granularity alone.
 SKIPPED: dict[str, str] = {
-    "MNDY": "foreign private issuer, files 20-F; no 10-Q XBRL quarterly facts",
+    "MNDY": "20-F/6-K filer; XBRL facts are annual and half-year only, no 3-month periods",
 }
 
 ACCEPT, REJECT, SKIP, ERROR = "ACCEPT", "REJECT", "SKIP", "ERROR"

@@ -423,6 +423,9 @@ def main(argv: list[str] | None = None) -> int:
         run_type=_run_type(args),
         notes=notes,
         benchmark_line=_benchmark_line(close, cfg.benchmark),
+        # the same `today` the run history and the output directory use, so the
+        # header date and the persisted date cannot disagree across midnight
+        today=today,
         tech_only=tech_only,
         news_sections=news_sections,
         change_set=change_set,

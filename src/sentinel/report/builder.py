@@ -3,9 +3,10 @@ from __future__ import annotations
 
 import json
 from dataclasses import asdict
-from datetime import date
+from datetime import date, datetime, timezone
 from pathlib import Path
 from statistics import median
+from zoneinfo import ZoneInfo, ZoneInfoNotFoundError
 
 import pandas as pd
 from jinja2 import Environment, FileSystemLoader, select_autoescape
@@ -111,6 +112,37 @@ def _env() -> Environment:
     return env
 
 
+def local_timestamp(now: datetime, tz_name: str) -> tuple[str, str | None]:
+    """The header's wall-clock stamp, rendered in the configured display zone.
+
+    `report.timezone` moves this string and nothing else. The run date written
+    to run_history.json, the reports/YYYY-MM-DD directory and every
+    change-detection date come from the run's own `date.today()`, so a config
+    change can never shift which day a run belongs to. The zone label is part
+    of the string precisely because the two can disagree: the runner is on UTC
+    and a 6am ET report is written by a job that started the same calendar day
+    in UTC, but nothing guarantees that for an ad hoc run near midnight.
+
+    Returns (stamp, note). `note` is a data note when the zone could not be
+    loaded, in which case the stamp falls back to UTC (what the report showed
+    before the zone was wired in) instead of raising: a config typo degrades
+    the header, it never costs the run.
+    """
+    if now.tzinfo is None:   # naive input is treated as UTC, never as local
+        now = now.replace(tzinfo=timezone.utc)
+    try:
+        zone = ZoneInfo(tz_name)
+    except (ZoneInfoNotFoundError, ValueError):
+        return now.astimezone(timezone.utc).strftime("%H:%M UTC"), (
+            f"unknown report.timezone '{tz_name}'; header time shown in UTC "
+            "(expects an IANA zone name, e.g. America/New_York)"
+        )
+    local = now.astimezone(zone)
+    # %Z is empty for a few zones with no abbreviation; the IANA name still tells
+    # the reader which clock they are looking at
+    return f"{local.strftime('%H:%M')} {local.strftime('%Z') or tz_name}", None
+
+
 def flag_labels(sc: Scorecard) -> list[str]:
     return [FLAG_LABELS.get(f, f) for f in sc.flags]
 
@@ -191,7 +223,13 @@ def build_context(
     deterioration: list[DeteriorationRow] | None = None,
     week_span: int = 0,
     bench: list[Scorecard] | None = None,
+    now: datetime | None = None,
 ) -> dict:
+    report_time, tz_note = local_timestamp(
+        now or datetime.now(timezone.utc), cfg.timezone
+    )
+    if tz_note:   # new list: the caller's notes are not ours to mutate
+        notes = [*notes, tz_note]
     scored = sorted(
         (sc for sc in scorecards if sc.score is not None),
         key=lambda s: rank_key(s, cfg.ranking),
@@ -212,7 +250,11 @@ def build_context(
         sc.reason = weakness_reason(sc, r40_threshold)
     r40_values = [sc.r40_fcf for sc in scorecards if sc.r40_fcf is not None]
     return {
+        # the run's own date: what names reports/YYYY-MM-DD and what change
+        # detection diffs on. Deliberately NOT converted to cfg.timezone.
         "report_date": (today or date.today()).isoformat(),
+        # display only, in cfg.timezone, zone-labelled
+        "report_time": report_time,
         "run_type": run_type,
         "notes": notes,
         "benchmark_line": benchmark_line,

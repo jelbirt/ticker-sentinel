@@ -98,8 +98,13 @@ Per ticker, before any write:
 5. Any mismatch -> REJECT the whole ticker, with a report line naming the
    field, the quarter, and both values. No partial trust.
 
-MNDY is excluded a priori (foreign private issuer, files 20-F, no 10-Q XBRL
-quarterly facts) with a documented skip.
+MNDY is excluded a priori with a documented skip: it is a 20-F/6-K filer whose
+XBRL facts are annual and half-year only, with no 3-month periods to derive
+quarters from. Corrected 2026-08-16 from "no 10-Q XBRL quarterly facts", which
+read as missing or untrustworthy data: MNDY does file US-GAAP XBRL, and a
+read-only EDGAR check (CIK 1845338) found it reconciles with our cache to the
+dollar. The blocker is period granularity, not disagreement, so the skip itself
+stands.
 
 ## CLI
 

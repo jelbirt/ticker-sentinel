@@ -2,12 +2,13 @@
 from __future__ import annotations
 
 import csv
+from datetime import datetime, timezone
 
 import pytest
 
 from sentinel.config import ChangesCfg, Config
 from sentinel.indicators.fundamentals import compute_scorecard
-from sentinel.report.builder import build_context, render_report, write_outputs
+from sentinel.report.builder import build_context, local_timestamp, render_report, write_outputs
 from sentinel.scoring import apply_scores
 from tests.conftest import FIXED_TODAY
 
@@ -309,6 +310,91 @@ def test_no_em_or_en_dashes_in_report(html):
     assert "—" not in html and "–" not in html
     assert "&mdash;" not in html and "&#8212;" not in html
     assert "&ndash;" not in html and "&#8211;" not in html
+
+
+# --- report.timezone: header display only ---------------------------------------
+
+# 16:30 UTC on the run's own date. Chosen so the same instant lands on the prior
+# calendar day in no zone and on the NEXT one in Pacific/Kiritimati (UTC+14).
+RUN_INSTANT = datetime(2026, 7, 5, 16, 30, tzinfo=timezone.utc)
+
+
+def _tz_ctx(scored, tz: str, now: datetime = RUN_INSTANT, notes=None):
+    return build_context(
+        scored, _cfg(timezone=tz), run_type="dry", notes=notes if notes is not None else [],
+        today=FIXED_TODAY, now=now,
+    )
+
+
+class TestHeaderTimezone:
+    """`report.timezone` moves the header's wall-clock stamp and nothing else."""
+
+    def test_default_zone_renders_a_labelled_local_time(self, scored):
+        ctx = _tz_ctx(scored, "America/New_York")
+        assert ctx["report_time"] == "12:30 EDT"
+        assert "12:30 EDT" in render_report(ctx)
+
+    def test_a_non_default_zone_moves_the_stamp(self, scored):
+        # same instant, two configured zones, two labelled wall clocks
+        assert _tz_ctx(scored, "Europe/Berlin")["report_time"] == "18:30 CEST"
+        assert _tz_ctx(scored, "Asia/Kolkata")["report_time"] == "22:00 IST"
+
+    def test_zone_label_is_always_present(self, scored):
+        # zones with no abbreviation fall back to the IANA name, never to a
+        # bare time the reader cannot place
+        assert _tz_ctx(scored, "Pacific/Kiritimati")["report_time"] == "06:30 +14"
+
+    def test_unknown_zone_degrades_to_utc_with_a_data_note(self, scored):
+        ctx = _tz_ctx(scored, "Mars/Olympus_Mons", notes=["prior note"])
+        assert ctx["report_time"] == "16:30 UTC"
+        assert ctx["notes"][0] == "prior note"      # existing notes survive
+        note = ctx["notes"][-1]
+        assert "Mars/Olympus_Mons" in note and "UTC" in note
+        assert "—" not in note and "–" not in note
+        assert "16:30 UTC" in render_report(ctx)    # still a full report
+
+    def test_empty_zone_string_degrades_too(self, scored):
+        # ZoneInfo raises ValueError (not ZoneInfoNotFoundError) for this one
+        assert _tz_ctx(scored, "")["report_time"] == "16:30 UTC"
+
+    def test_caller_notes_are_not_mutated(self, scored):
+        notes: list[str] = []
+        _tz_ctx(scored, "Mars/Olympus_Mons", notes=notes)
+        assert notes == []
+
+    def test_naive_input_is_read_as_utc_not_as_local(self):
+        naive = RUN_INSTANT.replace(tzinfo=None)
+        assert local_timestamp(naive, "America/New_York") == ("12:30 EDT", None)
+
+
+class TestRunDateIgnoresTheDisplayZone:
+    """The persisted run date is what names reports/YYYY-MM-DD, keys change
+    detection and lands in run_history.json. Presentation must not touch it."""
+
+    def test_report_date_is_the_run_date_even_when_local_time_is_tomorrow(self, scored):
+        # Kiritimati is UTC+14: 16:30 UTC is already 06:30 the NEXT day there
+        ctx = _tz_ctx(scored, "Pacific/Kiritimati")
+        assert ctx["report_time"].startswith("06:30")
+        assert ctx["report_date"] == "2026-07-05" == FIXED_TODAY.isoformat()
+
+    def test_report_date_is_identical_across_extreme_zones(self, scored):
+        dates = {
+            _tz_ctx(scored, tz)["report_date"]
+            for tz in ("Pacific/Kiritimati", "Pacific/Midway", "UTC", "Mars/Olympus_Mons")
+        }
+        assert dates == {FIXED_TODAY.isoformat()}
+
+    def test_persisted_snapshot_date_is_untouched_by_the_zone(self, scored):
+        from sentinel.report.changes import snapshot_from_scorecards
+
+        ctx = _tz_ctx(scored, "Pacific/Kiritimati")
+        snap = snapshot_from_scorecards(
+            [sc for sc in scored if sc.score is not None],
+            today=FIXED_TODAY, run_type="dry",
+        )
+        # what gets written to run_history.json, on the run date, not the
+        # display zone's date, and matching the header's date
+        assert snap.to_dict()["date"] == FIXED_TODAY.isoformat() == ctx["report_date"]
 
 
 # --- What changed today + Deterioration watch (phase 4) -------------------------

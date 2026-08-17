@@ -25,7 +25,9 @@ jobs:
       - uses: actions/checkout@v4
       - uses: actions/setup-python@v5
         with: {python-version: "3.12", cache: pip}
-      - run: pip install -e .
+      # -c constraints.txt: same committed pin set as the daily run, so the
+      # digest cannot break on a transitive release (see constraints.txt)
+      - run: pip install -e . -c constraints.txt
       # known limitation: the count drifts if a digest issue is deleted or the
       # label is applied elsewhere; the number is cosmetic except that the
       # calibration checklist keys off it (see sentinel/digest.py)
