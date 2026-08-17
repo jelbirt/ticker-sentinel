@@ -6,11 +6,17 @@ import re
 from datetime import date
 from pathlib import Path
 
+import pytest
+
 from sentinel.config import ChangesCfg
 from sentinel.digest import (
+    BUSINESS_FLAGS,
     CALIBRATION_REFRESHES,
+    DATA_QUALITY_FLAGS,
     build_digest,
+    classify_flags,
     main,
+    render_json,
     render_markdown,
     snapshot_decaying,
 )
@@ -124,19 +130,19 @@ class TestChangeActivityAndCoverage:
             _run(12, {"AAA": _healthy()}),
         ]
         digest = build_digest(runs, ["AAA", "GONE", "NEVER"], [], CFG)
-        gaps = " ".join(digest.coverage_gaps)
+        gaps = " ".join(g.text for g in digest.coverage_gaps)
         assert "NEVER: configured but absent from every run" in gaps
         assert "GONE: missing from the latest run (2026-08-12)" in gaps
 
     def test_stale_history_ticker_reported(self):
         runs = [_run(12, {"AAA": _healthy(), "OLD": _healthy(rank=2)})]
         digest = build_digest(runs, ["AAA"], [], CFG)
-        assert any(g.startswith("OLD: in run history") for g in digest.coverage_gaps)
+        assert any(g.text.startswith("OLD: in run history") for g in digest.coverage_gaps)
 
     def test_empty_history_degrades_to_note_not_crash(self):
         digest = build_digest([], ["AAA", "BBB"], ["WDAY"], CFG)
         assert digest.runs_in_window == 0
-        assert "no run history yet" in digest.coverage_gaps[0]
+        assert "no run history yet" in digest.coverage_gaps[0].text
 
 
 class TestCoverageUniverse:
@@ -178,9 +184,264 @@ class TestCoverageUniverse:
         )
         digest, _ = build_from_files(cfg_path, hist)
         assert any(
-            g.startswith("DDOG: configured but absent from every run")
+            g.text.startswith("DDOG: configured but absent from every run")
             for g in digest.coverage_gaps
         )
+
+
+class TestCoverageStreaks:
+    """SPEC 7.0.1 round-1 gap 1: a 2-run absence and a 1-run blip must read
+    differently, in line with digest_decay_runs."""
+
+    def _gap(self, digest, ticker):
+        return next(g for g in digest.coverage_gaps if g.ticker == ticker)
+
+    def test_one_run_blip_reads_as_a_blip(self):
+        runs = [
+            _run(10, {"AAA": _healthy(), "TEAM": _healthy(rank=2)}),
+            _run(11, {"AAA": _healthy(), "TEAM": _healthy(rank=2)}),
+            _run(12, {"AAA": _healthy()}),
+        ]
+        gap = self._gap(build_digest(runs, ["AAA", "TEAM"], [], CFG), "TEAM")
+        assert gap.kind == "missing_streak" and gap.streak == 1
+        assert gap.text == "TEAM: missing from the latest run (2026-08-12)"
+
+    def test_two_run_streak_reads_as_a_streak(self):
+        runs = [
+            _run(10, {"AAA": _healthy(), "TEAM": _healthy(rank=2)}),
+            _run(11, {"AAA": _healthy()}),
+            _run(12, {"AAA": _healthy()}),
+        ]
+        gap = self._gap(build_digest(runs, ["AAA", "TEAM"], [], CFG), "TEAM")
+        assert gap.streak == 2 and gap.runs_seen == 1 and gap.runs_in_window == 3
+        assert "missing from the latest 2 runs (2026-08-11 to 2026-08-12)" in gap.text
+        assert "seen in 1 of 3 runs" in gap.text
+
+    def test_an_earlier_gap_that_healed_is_not_reported(self):
+        runs = [
+            _run(10, {"AAA": _healthy()}),
+            _run(11, {"AAA": _healthy(), "TEAM": _healthy(rank=2)}),
+            _run(12, {"AAA": _healthy(), "TEAM": _healthy(rank=2)}),
+        ]
+        digest = build_digest(runs, ["AAA", "TEAM"], [], CFG)
+        assert digest.coverage_gaps == []
+
+    def test_absent_from_every_run_carries_the_window_length(self):
+        runs = [_run(11, {"AAA": _healthy()}), _run(12, {"AAA": _healthy()})]
+        gap = self._gap(build_digest(runs, ["AAA", "NEVER"], [], CFG), "NEVER")
+        assert gap.kind == "absent_all" and gap.streak == 2 and gap.runs_seen == 0
+        assert "(2 runs), check listing status" in gap.text
+
+
+class TestDecayStreak:
+    def test_consecutive_hits_are_a_streak(self):
+        runs = [
+            _run(10, {"BBB": _decaying(composite=44.0)}),
+            _run(11, {"BBB": _decaying(composite=43.0)}),
+            _run(12, {"BBB": _decaying(composite=42.0)}),
+        ]
+        week = build_digest(runs, ["BBB"], [], CFG).attention[0]
+        assert week.decay_hits == 3 and week.decay_streak == 3
+
+    def test_scattered_hits_are_not_a_streak(self):
+        # same hit count, very different evidence: the gate still counts hits,
+        # the streak is what tells the owner it is persistent
+        runs = [
+            _run(10, {"BBB": _decaying(composite=44.0)}),
+            _run(11, {"BBB": _healthy(rank=2, composite=44.0)}),
+            _run(12, {"BBB": _decaying(composite=44.0)}),
+        ]
+        week = build_digest(runs, ["BBB"], [], CFG).attention[0]
+        assert week.decay_hits == 2 and week.decay_streak == 1
+
+    def test_a_missing_run_breaks_the_streak(self):
+        # an absence is not evidence the gate held
+        runs = [
+            _run(10, {"BBB": _decaying(composite=44.0)}),
+            _run(11, {"AAA": _healthy()}),
+            _run(12, {"BBB": _decaying(composite=44.0)}),
+        ]
+        week = next(
+            w for w in build_digest(runs, ["AAA", "BBB"], [], CFG).attention
+            if w.ticker == "BBB"
+        )
+        assert week.decay_hits == 2 and week.decay_streak == 1
+
+
+class TestFlagClassification:
+    def test_data_quality_and_business_flags_are_split(self):
+        quality, business = classify_flags(
+            ["insufficient_history", "high_sbc", "growth_from_annual", "dilution"]
+        )
+        assert quality == ["insufficient_history", "growth_from_annual"]
+        assert business == ["high_sbc", "dilution"]
+
+    def test_unknown_flags_land_in_the_business_column(self):
+        assert classify_flags(["brand_new_flag"]) == ([], ["brand_new_flag"])
+
+    def test_every_flag_the_codebase_emits_is_classified(self):
+        # guard: a new flag constant must be classified deliberately, not
+        # silently default into the business column
+        import sentinel.indicators.fundamentals as f
+        import sentinel.scoring as s
+
+        emitted = {
+            getattr(mod, name) for mod in (f, s)
+            for name in dir(mod) if name.startswith("FLAG_")
+        }
+        assert emitted, "no FLAG_ constants found; the guard would be vacuous"
+        classified = DATA_QUALITY_FLAGS | BUSINESS_FLAGS
+        assert emitted <= classified, sorted(emitted - classified)
+
+    def test_attention_table_separates_the_two_columns(self):
+        decaying_mixed = TickerSnapshot(
+            composite=40.0, rank=2, r40_trend=-0.20, trend_state="downtrend",
+            flags=["high_sbc", "insufficient_history"],
+        )
+        runs = [
+            _run(11, {"BBB": decaying_mixed}),
+            _run(12, {"BBB": decaying_mixed}),
+        ]
+        digest = build_digest(runs, ["BBB"], [], CFG)
+        week = digest.attention[0]
+        assert week.flags_business == ["high_sbc"]
+        assert week.flags_data_quality == ["insufficient_history"]
+        text = render_markdown(digest, 1, date(2026, 8, 15))
+        assert "| business flags | data-quality flags |" in text
+        assert "| high sbc | insufficient history |" in text
+
+
+class TestBenchSection:
+    def _bench_runs(self):
+        return [
+            RunSnapshot("2026-08-11", "scheduled", {"AAA": _healthy()},
+                        {"WDAY": TickerSnapshot(composite=61.0, flags=["dilution"])}),
+            RunSnapshot("2026-08-12", "scheduled", {"AAA": _healthy()},
+                        {"WDAY": TickerSnapshot(composite=57.0, flags=["dilution"])}),
+        ]
+
+    def test_bench_week_is_first_vs_last_in_window(self):
+        digest = build_digest(self._bench_runs(), ["AAA"], ["WDAY"], CFG)
+        assert len(digest.bench_weeks) == 1
+        b = digest.bench_weeks[0]
+        assert b.ticker == "WDAY" and b.runs_seen == 2
+        assert b.composite_first == 61.0 and b.composite_last == 57.0
+        assert b.composite_delta == pytest.approx(-4.0)
+        assert b.flags_latest == ["dilution"]
+
+    def test_bench_table_renders_next_to_the_names(self):
+        text = render_markdown(
+            build_digest(self._bench_runs(), ["AAA"], ["WDAY"], CFG),
+            1, date(2026, 8, 15),
+        )
+        assert "WDAY." in text                      # the configured-names line
+        assert "| WDAY | 2 of 2 | 57.0 | -4.0 | dilution |" in text
+        assert "compare directly with the attention list" in text
+
+    def test_configured_bench_name_without_snapshots_is_named(self):
+        digest = build_digest(self._bench_runs(), ["AAA"], ["WDAY", "ZM"], CFG)
+        assert [b.ticker for b in digest.bench_weeks] == ["WDAY"]
+        text = render_markdown(digest, 1, date(2026, 8, 15))
+        assert "No snapshots this window for: ZM" in text
+
+    def test_bench_absent_from_history_is_a_warm_up_note(self):
+        # every run predating the feature has no bench block at all
+        runs = [_run(11, {"AAA": _healthy()}), _run(12, {"AAA": _healthy()})]
+        digest = build_digest(runs, ["AAA"], ["WDAY", "SHOP"], CFG)
+        assert digest.bench_weeks == []
+        text = render_markdown(digest, 1, date(2026, 8, 15))
+        assert "warming up rather than failing" in text
+        assert "WDAY, SHOP." in text                # names still listed
+
+    def test_bench_never_reaches_the_attention_list_or_coverage(self):
+        runs = [
+            RunSnapshot("2026-08-11", "scheduled", {"AAA": _healthy()},
+                        {"WDAY": _decaying(composite=40.0)}),
+            RunSnapshot("2026-08-12", "scheduled", {"AAA": _healthy()},
+                        {"WDAY": _decaying(composite=20.0)}),
+        ]
+        digest = build_digest(runs, ["AAA"], ["WDAY"], CFG)
+        assert digest.attention == []          # decaying hard, still not ranked
+        assert digest.coverage_gaps == []      # not a scored name, not a gap
+        assert digest.change_counts == {}      # never diffed
+
+    def test_bench_order_follows_config_then_leftovers(self):
+        runs = [
+            RunSnapshot("2026-08-12", "scheduled", {"AAA": _healthy()}, {
+                "ZM": TickerSnapshot(composite=30.0),
+                "WDAY": TickerSnapshot(composite=61.0),
+                "OLDBENCH": TickerSnapshot(composite=50.0),
+            }),
+        ]
+        digest = build_digest(runs, ["AAA"], ["WDAY", "ZM"], CFG)
+        assert [b.ticker for b in digest.bench_weeks] == ["WDAY", "ZM", "OLDBENCH"]
+
+
+class TestJsonOutput:
+    def _digest(self):
+        runs = [
+            RunSnapshot("2026-08-11", "scheduled",
+                        {"AAA": _healthy(), "BBB": _decaying(composite=42.0)},
+                        {"WDAY": TickerSnapshot(composite=61.0)}),
+            RunSnapshot("2026-08-12", "scheduled",
+                        {"AAA": _healthy(), "BBB": _decaying(composite=40.0)},
+                        {"WDAY": TickerSnapshot(composite=57.0)}),
+        ]
+        return build_digest(runs, ["AAA", "BBB", "MISSING"], ["WDAY"], CFG)
+
+    def test_payload_shape_is_stable_and_sorted(self):
+        text = render_json(self._digest(), 4, date(2026, 8, 15))
+        assert text == json.dumps(json.loads(text), indent=2, sort_keys=True) + "\n"
+        payload = json.loads(text)
+        assert payload["refresh_number"] == 4
+        assert payload["generated"] == "2026-08-15"
+        assert payload["window_start"] == "2026-08-11"
+        assert payload["runs_in_window"] == 2
+
+    def test_streaks_and_flag_split_survive_serialization(self):
+        payload = json.loads(render_json(self._digest(), 1, date(2026, 8, 15)))
+        week = next(w for w in payload["attention"] if w["ticker"] == "BBB")
+        assert week["decay_hits"] == 2 and week["decay_streak"] == 2
+        assert week["flags_business"] == ["high_sbc"]
+        assert week["flags_data_quality"] == []
+        gap = next(g for g in payload["coverage_gaps"] if g["ticker"] == "MISSING")
+        assert gap["kind"] == "absent_all" and gap["streak"] == 2
+        assert gap["text"].startswith("MISSING: configured but absent")
+
+    def test_bench_and_busiest_are_named_objects(self):
+        payload = json.loads(render_json(self._digest(), 1, date(2026, 8, 15)))
+        assert payload["bench"] == ["WDAY"]
+        assert payload["bench_weeks"][0]["ticker"] == "WDAY"
+        assert payload["bench_weeks"][0]["composite_delta"] == pytest.approx(-4.0)
+        assert all({"ticker", "changes"} == set(b) for b in payload["busiest"])
+
+    def test_cli_writes_markdown_and_json_together(self, tmp_path: Path):
+        cfg_path = tmp_path / "watchlist.yaml"
+        cfg_path.write_text(
+            "universe:\n  - ticker: CRWD\n    tags: [r40]\nbench: [WDAY]\n"
+        )
+        hist = tmp_path / "run_history.json"
+        hist.write_text(json.dumps({"version": 1, "runs": [
+            RunSnapshot("2026-08-11", "scheduled", {"CRWD": _decaying()},
+                        {"WDAY": TickerSnapshot(composite=61.0)}).to_dict(),
+            RunSnapshot("2026-08-12", "scheduled", {"CRWD": _decaying()},
+                        {"WDAY": TickerSnapshot(composite=57.0)}).to_dict(),
+        ]}))
+        md, js = tmp_path / "digest.md", tmp_path / "digest.json"
+        rc = main([
+            "--config", str(cfg_path), "--history", str(hist),
+            "--refresh-number", "2", "--date", "2026-08-15",
+            "--out", str(md), "--json", str(js),
+        ])
+        assert rc == 0
+        assert "Watchlist candidate refresh #2" in md.read_text()
+        payload = json.loads(js.read_text())
+        assert payload["refresh_number"] == 2
+        assert payload["bench_weeks"][0]["ticker"] == "WDAY"
+        # read-only over history: the CLI wrote only what it was asked to
+        assert sorted(p.name for p in tmp_path.iterdir()) == [
+            "digest.json", "digest.md", "run_history.json", "watchlist.yaml",
+        ]
 
 
 class TestRendering:

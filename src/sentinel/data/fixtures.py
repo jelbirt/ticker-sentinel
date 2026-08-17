@@ -11,6 +11,9 @@ from sentinel.data.fundamentals import CANONICAL_FIELDS, inputs_from_canonical
 from sentinel.indicators.fundamentals import FundamentalInputs
 
 FIXTURES_DIR = Path(__file__).resolve().parents[1] / "fixtures"
+# Bench fixtures live in their own directory so load_fixture_inputs() (which
+# globs the top level) can never pull a bench name into the scored universe.
+BENCH_FIXTURES_DIR = FIXTURES_DIR / "bench"
 
 
 def fixture_history_path() -> Path:
@@ -36,6 +39,8 @@ def _target_latest_close(ticker: str) -> float | None:
     a distorted one built from raw (unscaled) synthetic price levels."""
     path = FIXTURES_DIR / f"{ticker}.json"
     if not path.exists():
+        path = BENCH_FIXTURES_DIR / f"{ticker}.json"
+    if not path.exists():
         return None
     raw = json.loads(path.read_text())
     market_cap = raw.get("market_cap")
@@ -49,7 +54,8 @@ def synthetic_prices() -> tuple[pd.DataFrame, pd.DataFrame]:
     """Deterministic daily close/volume for fixture tickers + benchmark (no randomness).
 
     ALFA: steady uptrend. BRVO: drifting/oscillating (ambiguous trend).
-    CHRL: flat then breaking down, with a recent volume spike.
+    CHRL: flat then breaking down, with a recent volume spike. DLTA: the
+    bench reserve, a mild uptrend (never scored or ranked with the others).
 
     Each ticker's series is scaled so its latest close, times the fixture's
     diluted_shares_now, reproduces the fixture's own market_cap - preserving
@@ -62,6 +68,7 @@ def synthetic_prices() -> tuple[pd.DataFrame, pd.DataFrame]:
             "ALFA": 100.0 * (1 + 0.002 * i),
             "BRVO": 100.0 + 0.05 * i + 4.0 * np.sin(i / 6.0),
             "CHRL": np.where(i < 240, 100.0, 100.0 - 0.5 * (i - 240)),
+            "DLTA": 100.0 * (1 + 0.001 * i),
             FIXTURE_BENCHMARK: 100.0 * (1 + 0.0005 * i),
         },
         index=idx,
@@ -168,6 +175,17 @@ def fixture_news() -> tuple[list, dict[str, list]]:
         ]
     }
     return generic, per_ticker
+
+
+def load_fixture_bench_inputs() -> list[FundamentalInputs]:
+    """Bench reserve fixtures for --dry-run.
+
+    Deliberately independent of `cfg.bench`: the live bench (WDAY, SHOP, TWLO,
+    ZM) has no committed fixtures, and a dry run must exercise the bench path
+    offline and deterministically whatever the owner's watchlist currently
+    says.
+    """
+    return load_fixture_inputs(BENCH_FIXTURES_DIR)
 
 
 def load_fixture_inputs(fixtures_dir: Path = FIXTURES_DIR) -> list[FundamentalInputs]:

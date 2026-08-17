@@ -36,7 +36,22 @@ jobs:
             --state all --limit 500 --json number --jq length)
           echo "n=$(( prior + 1 ))" >> "$GITHUB_OUTPUT"
       - name: build digest from committed run history
-        run: python -m sentinel.digest --refresh-number "${{ steps.seq.outputs.n }}" --out digest.md
+        run: |
+          python -m sentinel.digest --refresh-number "${{ steps.seq.outputs.n }}" \
+            --out digest.md --json digest.json
+      # machine-readable twin of the issue body: the substrate for the refresh
+      # #3 automate-vs-manual call, since an agent drafting swaps against the
+      # written rubric needs the streaks and the flag split as data rather than
+      # parsed back out of a markdown table. Uploaded before the issue step so
+      # a gh failure still leaves the evidence behind.
+      - name: upload the machine-readable digest
+        if: ${{ !cancelled() }}
+        uses: actions/upload-artifact@v4
+        with:
+          name: digest-${{ steps.seq.outputs.n }}
+          path: |
+            digest.json
+            digest.md
       - name: open the refresh issue (assignment notifies the owner)
         run: |
           gh label create watchlist-refresh --repo "$GITHUB_REPOSITORY" --force \

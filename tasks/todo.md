@@ -22,6 +22,17 @@
   LLM news prompt that fits the char cap by construction, and the rotation
   promotion step (seed plus backfill) written into SPEC 7.0 and the digest
   checklist. Touches no `data/cache/`.
+- `rotation-evidence` (worktree `../ticker-sentinel.rotation-evidence`, branch
+  `rotation-evidence`): rotation-decision evidence. Item A shadow-scores the
+  bench every run (structurally quarantined from ranking, diffs, alerts and
+  the baseline gate; persisted under a new sibling `bench` key in
+  `run_history.json`) and renders a "Bench (unranked)" email table plus a
+  digest bench section. Item B is rotation-rubric groundwork: coverage-gap and
+  decay-streak counters, a data-quality vs business flag split in the
+  attention table, `python -m sentinel.digest --json PATH` (uploaded as a
+  weekly-refresh artifact), and `retention_runs` 12 -> 25. Touches
+  `config/watchlist.yaml` under a one-line scoped exception (the retention
+  line only); the file otherwise stays owner-pen.
 
   One branch per workstream via `scripts/new-worktree.sh <branch>`; main is the
   review inbox; merge back via PR.

@@ -59,7 +59,7 @@ scoring:               # weights, overridable without code changes
   fundamentals_weight: 0.6
   technicals_weight: 0.4
 changes:                 # day-over-day change detection (defaults shown; all optional)
-  retention_runs: 12     # runs kept in data/cache/run_history.json (bot-committed)
+  retention_runs: 25     # runs kept in data/cache/run_history.json (bot-committed); 5 weeks at the Tue-Sat cadence
   week_window_runs: 5    # "week" lookback in runs (Tue-Sat cadence)
   score_delta_pts: 3.0   # composite move worth reporting (0-100 scale)
   rank_delta: 2          # rank move worth reporting

@@ -16,6 +16,12 @@ from pathlib import Path
 
 from sentinel.data.cache import cache_dir
 
+# Bumped only when an OLD reader would misinterpret a NEW file, because the
+# guard below is deliberately blunt: a reader seeing a higher version resets
+# change detection entirely. Purely additive keys (the `bench` block added
+# 2026-08-16) do not qualify: old readers ignore unknown keys and keep
+# diffing the scored universe correctly, so bumping would have thrown away
+# working change detection on every deployed reader for nothing.
 SCHEMA_VERSION = 1
 
 
@@ -50,6 +56,10 @@ def load_history(path: Path | None = None) -> tuple[list[dict], list[str]]:
                 isinstance(snap, dict) for snap in tickers.values()
             ):
                 raise ValueError("tickers is not a mapping of objects")
+            # `bench` is deliberately NOT validated here: it feeds the weekly
+            # digest only, and a garbled bench block must not reset change
+            # detection for the scored universe. RunSnapshot.from_dict drops
+            # whatever it cannot parse.
     except Exception as exc:
         return [], [f"run history unreadable, change detection reset ({exc})"]
     return sorted(runs, key=lambda r: str(r.get("date", ""))), []

@@ -97,6 +97,71 @@ class TestSnapshot:
         assert run.tickers["AAA"].rank is None
 
 
+class TestBenchQuarantine:
+    """Bench names are shadow-scored comparison references. They live in a
+    sibling block and nothing that ranks, diffs, gates or alerts may see them."""
+
+    def test_bench_snapshot_is_unranked_and_separate(self):
+        run = snapshot_from_scorecards(
+            [_sc("AAA", composite=70.0)],
+            today=date(2026, 8, 6), run_type="scheduled",
+            bench=[_sc("WDAY", composite=61.0, score=55.0)],
+        )
+        assert set(run.tickers) == {"AAA"}          # never merged into the scored set
+        assert run.tickers["AAA"].rank == 1
+        assert run.bench["WDAY"].composite == 61.0
+        assert run.bench["WDAY"].rank is None       # ranked against nothing
+
+    def test_bench_names_never_produce_changes(self):
+        prior = RunSnapshot(
+            "2026-08-05", "scheduled",
+            {"AAA": TickerSnapshot(composite=70.0, rank=1)},
+            {"WDAY": TickerSnapshot(composite=70.0, flags=["dilution"])},
+        )
+        # every bench field moves hard: score, flags, trend, cross, revisions
+        current = RunSnapshot(
+            "2026-08-06", "scheduled",
+            {"AAA": TickerSnapshot(composite=70.0, rank=1)},
+            {"WDAY": TickerSnapshot(
+                composite=20.0, trend_state="downtrend", death_cross=True,
+                net_revisions_30d=-9, flags=["high_sbc"],
+            )},
+        )
+        cs = diff_runs(current, prior, CFG)
+        assert cs.changes == [] and cs.quiet
+
+    def test_bench_only_presence_is_not_a_universe_change(self):
+        # a bench name added or dropped must not read as universe churn
+        prior = RunSnapshot("2026-08-05", "scheduled",
+                            {"AAA": TickerSnapshot(composite=70.0, rank=1)}, {})
+        current = RunSnapshot("2026-08-06", "scheduled",
+                              {"AAA": TickerSnapshot(composite=70.0, rank=1)},
+                              {"WDAY": TickerSnapshot(composite=61.0)})
+        assert diff_runs(current, prior, CFG).changes == []
+
+    def test_bench_never_counts_toward_the_baseline_gate(self):
+        # the gate arithmetic reads the SCORED set only: four healthy bench
+        # names must not rescue a run that lost most of its universe
+        prior = RunSnapshot(
+            "2026-08-05", "scheduled",
+            {t: TickerSnapshot(composite=50.0, rank=i + 1)
+             for i, t in enumerate(["AAA", "BBB", "CCC", "DDD"])},
+            {t: TickerSnapshot(composite=50.0) for t in ["WDAY", "SHOP", "TWLO", "ZM"]},
+        )
+        reference = baseline_reference(set(prior.tickers), {"AAA", "BBB", "CCC", "DDD"})
+        assert reference == {"AAA", "BBB", "CCC", "DDD"}   # bench absent
+        assert not baseline_ok({"AAA"}, reference, CFG.baseline_min_fraction)
+
+    def test_deterioration_watch_only_sees_the_scorecards_it_is_given(self):
+        # run.py passes the ranked (scored) list; a decaying bench name reaches
+        # deterioration_rows only if a caller wrongly merges it in
+        prior = RunSnapshot(
+            "2026-08-05", "scheduled", {},
+            {"WDAY": TickerSnapshot(composite=70.0, trend_state="uptrend")},
+        )
+        assert deterioration_rows([], prior, None, CFG) == []
+
+
 class TestDiffScoreAndRank:
     def test_composite_move_at_threshold(self):
         cur, prior = _runs({"composite": 50.0}, {"composite": 53.0})

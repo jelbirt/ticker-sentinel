@@ -190,6 +190,7 @@ def build_context(
     change_set: ChangeSet | None = None,
     deterioration: list[DeteriorationRow] | None = None,
     week_span: int = 0,
+    bench: list[Scorecard] | None = None,
 ) -> dict:
     scored = sorted(
         (sc for sc in scorecards if sc.score is not None),
@@ -226,6 +227,10 @@ def build_context(
         "deterioration": deterioration or [],
         "week_span": week_span,
         "change_arrows": CHANGE_ARROWS,
+        # bench: shadow-scored reserve names, alphabetical because they are
+        # deliberately unranked. They are NOT in scorecards, so they never
+        # reach strongest/weakest, movers, the signals table or median_r40.
+        "bench_rows": sorted(bench or [], key=lambda s: s.ticker),
         "tech_only": tech_only or [],
         "news_sections": news_sections or [],  # [{label, html}] per configured tone
         "signal_rows": sorted(
