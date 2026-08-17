@@ -14,6 +14,9 @@
 # and visible in the transcript (documented in CLAUDE.md):
 #   SKIP_CHECKS=1        git commit ...   skip the checks.sh gate
 #   ALLOW_MAIN_COMMIT=1  git commit ...   permit a commit on main
+# They count only as an env-var PREFIX on a command (line start or just after a
+# shell separator, optionally behind other assignments), so naming one inside a
+# commit message does not invoke it. See escape_prefixes() for the details.
 set -uo pipefail
 
 HOOK_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
@@ -82,7 +85,53 @@ HEREDOC_RE = re.compile(r"(?:^|(?<=[\s|&;(]))<<-?\s*(['\"]?)([A-Za-z_][A-Za-z_0-
 GIT_COMMIT_RE = re.compile(r"\bgit\b(?:(?!\bgit\b).)*?\bcommit\b", re.S)
 
 
-def strip_heredocs(text):
+def mask_quoted(text):
+    """Blank every quoted span to a placeholder letter, position for position.
+
+    Lets the escape scan below tell shell syntax from message text: without it
+    a quoted `-m` message is just more characters, and an escape merely NAMED
+    in one (`-m "wip; SKIP_CHECKS=1 was not used"`) would invoke it. Both
+    failure modes land conservatively: an unbalanced quote masks everything to
+    the end of the text, hiding escapes rather than inventing them, and a
+    quoted assignment value collapses to one word so `X='a b' SKIP_CHECKS=1
+    git commit ...` still reads as a prefix run. The placeholder is a letter,
+    not a space, so masking can never splice a separator up against an escape
+    that was not in prefix position (`; "X=foo" SKIP_CHECKS=1` stays inert,
+    matching the shell, where a quoted word is a command name, not a prefix).
+    Lengths are preserved so offsets into the mask index the original text.
+
+    Only quoting is modeled, not the shell's full grammar: a backslash outside
+    quotes masks the character it escapes (which is how `\\;` stops being a
+    separator, and how a `\\`-newline line continuation stops being one).
+    Inside a span the backslash follows POSIX: in double quotes and in ANSI-C
+    `$'...'` it escapes the next character, so `\\"` and `\\'` do NOT close
+    their span (a message quoting an escape name in literal quotes must stay
+    masked); in plain single quotes nothing escapes and the next quote always
+    closes.
+    """
+    out, i, n = [], 0, len(text)
+    while i < n:
+        ch = text[i]
+        if ch == "\\" and i + 1 < n:
+            out.append("QQ")
+            i += 2
+        elif ch in "'\"":
+            escapes = ch == '"' or (ch == "'" and i > 0 and text[i - 1] == "$")
+            j = i + 1
+            while j < n and text[j] != ch:
+                j += 2 if escapes and text[j] == "\\" else 1
+            if j >= n:
+                out.append("Q" * (n - i))  # unbalanced: the rest is quoted
+                break
+            out.append("Q" * (j - i + 1))
+            i = j + 1
+        else:
+            out.append(ch)
+            i += 1
+    return "".join(out)
+
+
+def strip_heredocs(text, strict=False):
     """Drop heredoc BODIES (and their terminator lines) before analysis.
 
     A heredoc body is data, never command syntax, but the newline rewrite in
@@ -101,6 +150,20 @@ def strip_heredocs(text):
     conservative fallback, which blocks toward the session cwd. Only the first
     heredoc on a line is handled; a second one's body stays as text, where at
     worst it fails tokenize() and takes the conservative fallback in analyze().
+
+    strict=True is the escape scan's variant, because for escapes the keep runs
+    the WRONG way: keeping the body means a commit message whose line starts
+    with `SKIP_CHECKS=1 git commit ...` (an entirely normal message in a repo
+    whose agents write about this guard) switches the guard off. Quoting is
+    what tells the two cases apart, so strict mode trusts it: an introducer
+    inside a quoted span is prose (`echo "a << b"`), not an introducer, and its
+    lines survive; an unquoted one is real, so its body is dropped even when it
+    never terminates (bash runs an unterminated heredoc anyway, taking the rest
+    of the input as body, so there are no commands after it to lose). The mask
+    is taken per line, so an apostrophe elsewhere in the command cannot move
+    the answer. Kept lines are still scanned, so every doubt here resolves by
+    dropping: a body wrongly dropped can only hide an escape, while one wrongly
+    kept could activate an escape from message data.
     """
     lines, out, i = text.split("\n"), [], 0
     while i < len(lines):
@@ -110,12 +173,17 @@ def strip_heredocs(text):
         m = HEREDOC_RE.search(line)
         if not m:
             continue
+        if strict and "Q" in mask_quoted(line)[m.start():m.start() + 2]:
+            continue  # the `<<` is inside quotes on this line: prose
         word, j = m.group(2), i
         while j < len(lines) and lines[j].strip() != word:
             j += 1
         if j >= len(lines):
+            if strict:
+                break  # unterminated: bash takes the REST of the input as the
+                # body, so for the escape scan drop it all; dropping only hides
             continue  # unterminated: not a heredoc we can trust, keep the lines
-        if GIT_COMMIT_RE.search("\n".join(lines[i:j])):
+        if not strict and GIT_COMMIT_RE.search("\n".join(lines[i:j])):
             continue  # the "body" smells like a commit: keep it, per above
         i = j + 1  # drop the body and its terminator
     return "\n".join(out)
@@ -276,17 +344,35 @@ def analyze(text, cwd, depth=0):
     return commits
 
 
+# An escape counts only in command-prefix position: at the start of the text or
+# just after a shell separator, optionally behind other env-var assignments
+# (`SKIP_CHECKS=1 ALLOW_MAIN_COMMIT=1 git commit ...`). Same separator class as
+# CD_RE, and deliberately no more: `{` (group command) and a backtick are left
+# out, as is a leading `env` word, because the parsed path already reads those
+# through envs, so all the textual scan would add there is another way for text
+# to turn an escape on. Every such call is decided toward NOT escaping, since
+# an escape only ever makes the guard more permissive.
+ESCAPE_RE = r"(?:^|[\n;&|(])\s*(?:[A-Za-z_][A-Za-z_0-9]*=\S*\s+)*%s=1\b"
+
+
+def escape_prefixes(name, text):
+    return re.search(ESCAPE_RE % name, text) is not None
+
+
 commits = analyze(cmd, cwd)
 if not commits:
     allow()
 
-# Escapes typed anywhere in the COMMAND count: overrides stay visible in the
-# transcript, and the tokenizer-failure path still honors them. Heredoc bodies
-# are excluded, so a commit message that merely documents an escape does not
-# trip it. (A quoted `-m` message still can: pre-existing, tracked separately.)
-escapable = strip_heredocs(cmd)
-skip_checks = "SKIP_CHECKS=1" in escapable
-allow_main = "ALLOW_MAIN_COMMIT=1" in escapable
+# Escapes typed as a prefix ANYWHERE in the command count, not only on the
+# committing segment: overrides stay visible in the transcript, and the
+# tokenizer-failure path (where envs is empty) still honors them. Heredoc
+# bodies are dropped and the quoted spans of what is left are masked, so a
+# commit message that merely documents an escape does not trip it. Masking
+# comes AFTER the strip, since a body's apostrophe would otherwise read as an
+# unbalanced quote and hide a real escape typed after the terminator.
+escapable = mask_quoted(strip_heredocs(cmd, strict=True))
+skip_checks = escape_prefixes("SKIP_CHECKS", escapable)
+allow_main = escape_prefixes("ALLOW_MAIN_COMMIT", escapable)
 
 for gdir, envs in commits:
     if common_dir(gdir) != GUARD_COMMON:
