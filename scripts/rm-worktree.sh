@@ -59,20 +59,20 @@ if [ "$DIR" = "$MAIN_DIR" ]; then
   echo "rm-worktree: refusing to remove the main checkout" >&2
   exit 1
 fi
-# Both the caller's cwd and the repo root: removing the directory a session is
-# standing in leaves every later command failing on a deleted cwd.
-for d in "$INVOKED_FROM" "$MAIN_DIR"; do
-  case "$d" in
-    "$DIR"|"$DIR"/*) echo "rm-worktree: refusing: you are inside $DIR" >&2; exit 1 ;;
-  esac
-done
+# Removing the directory a session is standing in leaves every later command
+# failing on a deleted cwd.
+case "$INVOKED_FROM" in
+  "$DIR"|"$DIR"/*) echo "rm-worktree: refusing: you are inside $DIR" >&2; exit 1 ;;
+esac
 
 # Capture the status output and its exit code separately: a command
 # substitution inside `[ ]` throws the exit code away, so a FAILING git status
-# would read as an empty (clean) tree and skip this gate entirely.
-if ! STATUS="$(git -C "$DIR" status --porcelain 2>&1)"; then
+# would read as an empty (clean) tree and skip this gate entirely. stdout only:
+# folding stderr in would let a warning from a SUCCESSFUL status (an unreadable
+# subdirectory, say) read as a dirty tree, which nothing here can override.
+if ! STATUS="$(git -C "$DIR" status --porcelain 2>/dev/null)"; then
   echo "rm-worktree: cannot read the status of $DIR, refusing" >&2
-  printf '%s\n' "$STATUS" >&2
+  git -C "$DIR" status --porcelain >&2 || true
   exit 1
 fi
 if [ -n "$STATUS" ]; then
@@ -85,7 +85,17 @@ fi
 # make an unmerged branch look merged. Check origin as well as the local ref,
 # because branches here are merged by a PR on GitHub and local main is usually
 # behind, so a local-only test reports "unmerged" and trains the --force habit.
-git fetch --quiet origin "$DEFAULT" 2>/dev/null || true
+# The fetch is bounded and never prompts: this used to be a wholly offline
+# script, and a teardown that hangs for minutes on an unreachable remote with
+# --quiet swallowing every word is worse than one that falls back to the ref
+# already on disk. Say so when it falls back, rather than failing silently.
+FETCH=(git fetch --quiet origin "$DEFAULT")
+if command -v timeout >/dev/null 2>&1; then
+  FETCH=(timeout 20 "${FETCH[@]}")
+fi
+if ! GIT_TERMINAL_PROMPT=0 "${FETCH[@]}" 2>/dev/null; then
+  echo "rm-worktree: could not refresh origin/$DEFAULT; the merged check uses the local copy" >&2
+fi
 MERGED=0
 for base in "refs/heads/$DEFAULT" "refs/remotes/origin/$DEFAULT"; do
   git show-ref --verify --quiet "$base" || continue
@@ -100,7 +110,7 @@ if [ "$MERGED" -eq 0 ]; then
     echo "rm-worktree: use --force if it was squash-merged (the merged-check cannot see those)" >&2
     exit 1
   fi
-  echo "rm-worktree: $BRANCH is not detectably merged; proceeding because --force was given"
+  echo "rm-worktree: $BRANCH is not detectably merged; proceeding because --force was given" >&2
 fi
 
 git worktree remove "$DIR"
