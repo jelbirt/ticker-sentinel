@@ -10,62 +10,48 @@
   `run_history.json`; discard that change rather than committing it.
 
 ## Active workstreams
-- `twelvedata-check` (opened 2026-08-16): audit of the Twelve Data price
-  fallback against the yfinance primary. Two divergences found and fixed in
-  `src/sentinel/data/prices.py`: the request never asked for an adjustment
-  basis, so it took Twelve Data's `adjust=splits` default while yfinance runs
-  `auto_adjust=True` (split and dividend adjusted); and the bar count was
-  hardcoded at 260, so a `--deep` run (2y) recovered half the history it asked
-  for. Scope is `prices.py` plus `tests/test_prices.py`; no cache, config or
-  `run.py` changes.
-- `ops-hygiene-2` (opened 2026-08-16): weekly-refresh failure alerting, an
-  LLM news prompt that fits the char cap by construction, and the rotation
-  promotion step (seed plus backfill) written into SPEC 7.0 and the digest
-  checklist. Touches no `data/cache/`.
-- `rotation-evidence` (worktree `../ticker-sentinel.rotation-evidence`, branch
-  `rotation-evidence`): rotation-decision evidence. Item A shadow-scores the
-  bench every run (structurally quarantined from ranking, diffs, alerts and
-  the baseline gate; persisted under a new sibling `bench` key in
-  `run_history.json`) and renders a "Bench (unranked)" email table plus a
-  digest bench section. Item B is rotation-rubric groundwork: coverage-gap and
-  decay-streak counters, a data-quality vs business flag split in the
-  attention table, `python -m sentinel.digest --json PATH` (uploaded as a
-  weekly-refresh artifact), and `retention_runs` 12 -> 25. Touches
-  `config/watchlist.yaml` under a one-line scoped exception (the retention
-  line only); the file otherwise stays owner-pen.
-- `commit-guard-attribution` (branch `claude/brave-swirles-3ab2f3`, agent
-  worktree): false positive in `.claude/hooks/pre-commit-guard.sh`, found
-  2026-08-16. A commit into a worktree via `cd <worktree> && git commit ...`
-  was blocked as a commit on main whenever the message carried quoting shlex
-  could not read (an apostrophe in a heredoc body, `--author='O'Brien'`,
-  `$'...'`): tokenization failed and the fallback attributed the commit to the
-  session cwd, the main checkout. The fix strips heredoc bodies before parsing
-  and, when parsing still fails, replays the command's `cd`s to attribute the
-  commit to the directory it would actually run in. Conservative stance kept:
-  an unparseable commit with no `cd` is still judged against the session cwd.
-  Adds `tests/test_pre_commit_guard.py`. Does NOT write `data/cache/`.
+- none open.
 
   One branch per workstream via `scripts/new-worktree.sh <branch>`; main is the
   review inbox; merge back via PR.
 
-- `guard-escape-anchor` (branch `guard-escape-anchor`, worktree
-  `../ticker-sentinel.guard-escape-anchor`, stacked on
-  `claude/brave-swirles-3ab2f3` / PR #16): the last escape-detection hole in
-  `.claude/hooks/pre-commit-guard.sh`, found 2026-08-16. The scan for the two
-  escapes was a substring test over the whole command, so merely NAMING one in
-  a `-m` message silently switched the guard off, which bites hardest in the
-  repo whose agents write commit messages about the guard. An escape now counts
-  only in command-prefix position (line start or after a shell separator,
-  optionally behind other assignments), quoted spans are masked out before the
-  scan, and the escape scan drops heredoc bodies unconditionally rather than
-  keeping the ones that smell like a command. Every ambiguous case is decided
-  toward NOT escaping, since an escape only ever makes the guard more
-  permissive. Touches the hook, `tests/test_pre_commit_guard.py`, and one
-  CLAUDE.md wording line. Does NOT write `data/cache/`.
-
-  Retarget the PR to main once PR #16 merges.
-
 ## Done
+- `guard-escape-anchor` (2026-08-16, merged as PRs #17 and #18, worktree torn
+  down; #18 re-landed the content a stacked merge base made #17 miss): the
+  last escape-detection hole in `.claude/hooks/pre-commit-guard.sh`. An
+  override (`ALLOW_MAIN_COMMIT=1`, `SKIP_CHECKS=1`) now counts only in
+  command-prefix position, quoted spans are masked before the scan, heredoc
+  bodies are dropped unconditionally, and every ambiguous case is decided
+  toward NOT escaping. Merely naming an escape in a commit message no longer
+  switches the guard off.
+- `commit-guard-attribution` (2026-08-16, merged as PR #16, worktree torn
+  down): the guard blocked worktree commits as main commits whenever shlex
+  could not tokenize the message quoting; heredoc bodies are now stripped
+  before parsing and an unparseable command has its `cd`s replayed so the
+  commit is judged against the directory it actually runs in. Adds
+  `tests/test_pre_commit_guard.py`.
+- `rotation-evidence` (2026-08-16, merged as PR #15, worktree torn down):
+  bench shadow-scoring, structurally quarantined (never in ranking, diffs,
+  alerts, the baseline gate or the watchlist median) and persisted under a
+  new sibling `bench` key in `run_history.json` at schema version 1
+  (additive; the key first appears in the wild with the next scheduled bot
+  run). Digest rotation groundwork: coverage-gap and decay-streak counters,
+  data-quality vs business flag split, `--json` twin uploaded as a
+  weekly-refresh artifact, `retention_runs` 12 -> 25 (the one authorized
+  watchlist.yaml line).
+- `ops-hygiene-2` (2026-08-16, merged as PR #14, worktree torn down):
+  weekly-refresh failure alerting on the daily-report pattern, the LLM news
+  prompt now fits the char cap by construction (per-ticker round-robin trim,
+  fail-open when even one headline each cannot fit), and the rotation
+  promotion step (seed plus backfill) written into SPEC 7.0 and the digest
+  owner checklist.
+- `twelvedata-check` (2026-08-16, merged as PR #13, worktree torn down): the
+  Twelve Data fallback now requests `adjust=all` (its default is split-only
+  while yfinance serves split and dividend adjusted; verified empirically on
+  AAPL) and honours the run's period depth (`--deep` 2y maps to 520 bars,
+  was hardcoded 260). The degradation note states the basis as requested,
+  not guaranteed, since Twelve Data silently ignores unsupported adjust
+  values.
 - `backfill-amendment` (2026-08-15, merged as PR #11, worktree torn down;
   final apply commit `4cd9d67`): Amendments 1+2 to the backfill spec, plus
   three main-session verification fixes (tag precedence on derived quarters,
