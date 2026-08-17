@@ -20,6 +20,17 @@ made every second merge conflict here.
   One branch per workstream via `scripts/new-worktree.sh <branch>`; main is the
   review inbox; merge back via PR.
 
+## Accepted residuals (2026-08-14 audit; considered and deliberately not fixed)
+- Neighbour rank shifts on partial basis-flip days: a same-basis name's rank
+  row can move mechanically when a neighbour's basis flips; suppressing it
+  would hide real moves. Accepted as informational noise.
+- `universe_removed` renders a bare "dropped from scored universe" when a
+  ticker vanishes with no scorecard to carry an unscored reason. Accepted:
+  the reason is only ever known when a scorecard exists.
+- One config test pins `week_window_runs == 5` as a literal. Accepted as a
+  deliberate config-value pin; the retention test asserts the derived
+  relation instead.
+
 ## Done
 - `ops-hygiene-3` (2026-08-16, merged as PR #19, worktree torn down): the
   audit backlog closer, ending the 2026-08-14 audit list. `constraints.txt`
