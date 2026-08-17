@@ -63,13 +63,73 @@ if GUARD_COMMON is None:
 
 def tokenize(text):
     """Shell-aware token list, or None when the text will not tokenize
-    (unbalanced quotes: common with multi-line/heredoc commit messages)."""
+    (unbalanced quotes: shlex's quoting rules are simpler than the shell's, so
+    e.g. --author='O'Brien' or $'it don\\'t' is valid shell it cannot read)."""
     lex = shlex.shlex(text, posix=True, punctuation_chars=True)
     lex.whitespace_split = True
     try:
         return list(lex)
     except ValueError:
         return None
+
+
+# `<<WORD` introducing a heredoc, in redirection position: preceded by a space
+# or a separator, which excludes `<<<` herestrings and shifts like $((1<<N)).
+HEREDOC_RE = re.compile(r"(?:^|(?<=[\s|&;(]))<<-?\s*(['\"]?)([A-Za-z_][A-Za-z_0-9]*)\1")
+
+# The `git ... commit` invocation, with no other `git` in between so the match
+# lands on the committing invocation rather than an earlier one.
+GIT_COMMIT_RE = re.compile(r"\bgit\b(?:(?!\bgit\b).)*?\bcommit\b", re.S)
+
+
+def strip_heredocs(text):
+    """Drop heredoc BODIES (and their terminator lines) before analysis.
+
+    A heredoc body is data, never command syntax, but the newline rewrite in
+    analyze() flattens it onto the command line, where an apostrophe in a
+    commit message ("don't") reads as an unbalanced quote and kills tokenize().
+    Removing the body first keeps the canonical `git commit -F - <<'EOF'`
+    message form fully parseable, so its `cd` prefix is honored normally.
+
+    Stripping only happens when the terminator line is actually there, and
+    never when the body itself smells like a commit. Both are the conservative
+    direction: a `<<` in prose (`-m "the << shift"`) almost never has a
+    terminator, so its lines survive to be analyzed, and when quoted prose DOES
+    pair with a later matching line (HEREDOC_RE cannot see shell quoting), a
+    real `git commit` between them is kept rather than deleted as "body"; a
+    genuine message body that merely mentions git commit then degrades to the
+    conservative fallback, which blocks toward the session cwd. Only the first
+    heredoc on a line is handled; a second one's body stays as text, where at
+    worst it fails tokenize() and takes the conservative fallback in analyze().
+    """
+    lines, out, i = text.split("\n"), [], 0
+    while i < len(lines):
+        line = lines[i]
+        out.append(line)
+        i += 1
+        m = HEREDOC_RE.search(line)
+        if not m:
+            continue
+        word, j = m.group(2), i
+        while j < len(lines) and lines[j].strip() != word:
+            j += 1
+        if j >= len(lines):
+            continue  # unterminated: not a heredoc we can trust, keep the lines
+        if GIT_COMMIT_RE.search("\n".join(lines[i:j])):
+            continue  # the "body" smells like a commit: keep it, per above
+        i = j + 1  # drop the body and its terminator
+    return "\n".join(out)
+
+
+# A `cd` that starts a command (line start or after a separator, optionally
+# behind env-var prefixes), plus the parens that scope one. The separator is
+# matched look-behind so an opening `(` is left for the paren tracking in
+# scan_cd. Only used on the tokenizer-failure path below.
+CD_RE = re.compile(
+    r"(?:^|(?<=[\n;&|(]))\s*(?:[A-Za-z_][A-Za-z_0-9]*=\S*\s+)*"
+    r"cd\s+(?:'([^']*)'|\"([^\"]*)\"|([^\s;&|<>()]+))"
+)
+CD_OR_PAREN_RE = re.compile(r"[()]|" + CD_RE.pattern)
 
 
 def split_segments(tokens):
@@ -94,12 +154,59 @@ def resolve(base, path):
     return path if os.path.isabs(path) else os.path.normpath(os.path.join(base, path))
 
 
+def scan_cd(text, cwd, end):
+    """Directory the command at text[end:] would run in, by replaying the
+    `cd`s in text[:end] with a regex.
+
+    The fallback for text tokenize() rejected: without this the commit is
+    attributed to the session cwd, so `cd <worktree> && git commit ...` with a
+    quote shlex cannot read gets judged against the session's branch (main) and
+    blocked as a commit on main.
+
+    A regex sweep is not shell semantics, so the sweep is bounded to keep every
+    ambiguity resolving toward the session cwd (what the old fallback used, and
+    the stricter answer whenever the session sits on main):
+      - only `cd`s BEFORE the commit being attributed count (the caller passes
+        that commit's match start as `end`), so a trailing `cd` cannot
+        retroactively move a commit that already ran;
+      - only `cd`s at paren depth 0 count, since a subshell or a `$( )` never
+        moves the shell that commits;
+      - only targets that exist as directories count, so a `cd` quoted inside
+        prose cannot aim the check at a phantom path (and a real `cd` to a
+        missing directory would fail in the shell anyway); an empty target
+        (`cd ''`) is skipped, matching the shell, where it does not move.
+    Unhandled, both resolving to the session cwd: `cd "$VAR"` (no variable
+    expansion here, so the target is not a directory and is skipped), and
+    `git -C <dir>`, which the session cwd fallback never honored either.
+    """
+    cur, depth = cwd, 0
+    for m in CD_OR_PAREN_RE.finditer(text, 0, end):
+        tok = m.group(0)
+        if tok == "(":
+            depth += 1
+        elif tok == ")":
+            depth = max(0, depth - 1)
+        elif depth == 0:
+            target = next(g for g in m.group(1, 2, 3) if g is not None)
+            if target:
+                cand = resolve(cur, target)
+                if os.path.isdir(cand):
+                    cur = cand
+    return cur
+
+
 def analyze(text, cwd, depth=0):
     """Return list of (target_dir, env_prefix_dict) for every git commit found.
-    A segment that will not tokenize is treated conservatively as a commit in
-    the current directory when it smells like one, never skipped."""
+    Text that will not tokenize is treated conservatively as commits when it
+    smells like one, never skipped: every commit-shaped span is attributed to
+    the directory its own preceding `cd`s lead to (the session cwd when there
+    are none), so quoting inside a commit message cannot move the check to the
+    wrong directory."""
     if depth > 4:
         return []
+    # A heredoc body is data; strip it before the newline rewrite below can
+    # flatten its punctuation onto the command line.
+    text = strip_heredocs(text)
     # shlex treats a bare newline as whitespace, which would merge multi-line
     # commands (the canonical `git add` / `git commit` two-liner) into one
     # undetectable segment. The text is only analyzed, never executed, so
@@ -107,6 +214,14 @@ def analyze(text, cwd, depth=0):
     # alters a message token's content, which detection never inspects.
     tokens = tokenize(text.replace("\n", " ; "))
     if tokens is None:
+        # judge EVERY commit-shaped span, each against the directory its own
+        # preceding cds lead to: a single record for the first span would let
+        # a second commit later in the same command escape unjudged
+        found = [
+            (scan_cd(text, cwd, m.start()), {}) for m in GIT_COMMIT_RE.finditer(text)
+        ]
+        if found:
+            return found
         if "git" in text and "commit" in text:
             return [(cwd, {})]
         return []
@@ -165,10 +280,13 @@ commits = analyze(cmd, cwd)
 if not commits:
     allow()
 
-# Escapes typed anywhere in the command count: overrides stay visible in the
-# transcript, and the tokenizer-failure path still honors them.
-skip_checks = "SKIP_CHECKS=1" in cmd
-allow_main = "ALLOW_MAIN_COMMIT=1" in cmd
+# Escapes typed anywhere in the COMMAND count: overrides stay visible in the
+# transcript, and the tokenizer-failure path still honors them. Heredoc bodies
+# are excluded, so a commit message that merely documents an escape does not
+# trip it. (A quoted `-m` message still can: pre-existing, tracked separately.)
+escapable = strip_heredocs(cmd)
+skip_checks = "SKIP_CHECKS=1" in escapable
+allow_main = "ALLOW_MAIN_COMMIT=1" in escapable
 
 for gdir, envs in commits:
     if common_dir(gdir) != GUARD_COMMON:
@@ -189,7 +307,7 @@ for gdir, envs in commits:
         # the tree being committed is judged by ITS OWN checks.sh, so a branch
         # that changes the bar is measured against its own version; a tree
         # without one (branched before the scaffold landed) is not measured
-        # against a DIFFERENT tree's state — fail open instead
+        # against a DIFFERENT tree's state: fail open instead
         checks = os.path.join(tree, "scripts", "checks.sh")
         if os.path.isfile(checks):
             try:
