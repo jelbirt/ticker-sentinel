@@ -12,7 +12,9 @@ jobs:
       - uses: actions/checkout@v4
       - uses: actions/setup-python@v5
         with: {python-version: "3.12", cache: pip}
-      - run: python -m pip install -e ".[dev]"
+      # -c constraints.txt: the committed pin set, so CI resolves the same
+      # transitive versions the scheduled runs get (see constraints.txt)
+      - run: python -m pip install -e ".[dev]" -c constraints.txt
       - name: shell syntax over generated scripts
         run: bash -n scripts/*.sh .claude/hooks/*.sh
       - name: green bar (same script the local commit guard runs)

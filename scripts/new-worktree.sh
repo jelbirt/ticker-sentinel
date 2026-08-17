@@ -41,7 +41,9 @@ done
 
 echo "new-worktree: creating venv + editable install (takes a minute)..."
 python3 -m venv "$DIR/.venv"
-(cd "$DIR" && .venv/bin/pip install --quiet -e ".[dev]")
+# -c constraints.txt: the same committed pin set CI and the scheduled workflows
+# install with, so a worktree venv cannot resolve a different transitive set
+(cd "$DIR" && .venv/bin/pip install --quiet -e ".[dev]" -c constraints.txt)
 
 echo ""
 echo "Worktree ready: $DIR (branch $BRANCH)"

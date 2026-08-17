@@ -39,7 +39,8 @@ Fork it, set the secrets, and the scheduled workflow does the rest.
 ```bash
 # local setup
 python -m venv .venv && source .venv/bin/activate
-pip install -e ".[dev]"
+# -c constraints.txt is the committed pin set the workflows install with
+pip install -e ".[dev]" -c constraints.txt
 
 # full offline report from fixtures (no network, no email)
 python -m sentinel.run --dry-run

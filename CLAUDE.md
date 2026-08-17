@@ -4,7 +4,7 @@ Personal stock-analysis report service (public repo; credentials and recipients 
 PROJECT_PLAN.md is the authoritative spec — read it before making changes.
 
 ## Commands
-- Install: `pip install -e ".[dev]"`
+- Install: `pip install -e ".[dev]" -c constraints.txt` (the committed pin set; every automated install uses it, so local and CI resolve the same versions. Regenerating it: see the header comment in `constraints.txt`)
 - Run (no email): `python -m sentinel.run --no-email`
 - Offline run: `python -m sentinel.run --dry-run`
 - Tests: `pytest -q` (tests must never hit the network)

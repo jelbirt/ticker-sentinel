@@ -140,6 +140,7 @@ ticker-sentinel/
 ├── CLAUDE.md
 ├── PROJECT_PLAN.md            # this file
 ├── pyproject.toml             # deps: yfinance, pandas, pandas-ta, jinja2, matplotlib, pyyaml, requests, tenacity, pytest
+├── constraints.txt            # frozen transitive pin set; every automated install passes -c constraints.txt
 ├── config/
 │   └── watchlist.yaml
 ├── src/sentinel/
@@ -226,7 +227,7 @@ Notes: US market holidays → job runs but detects "no new bar" and sends nothin
 | Risk | Mitigation |
 |---|---|
 | yfinance breakage / Yahoo rate-limits runner IPs | Twelve Data fallback; cached fundamentals; degraded-but-delivered report |
-| yfinance statement field names shift between versions | pin version; field-mapping layer with aliases; tests catch renames |
+| yfinance statement field names shift between versions; more generally, a floating transitive dependency ships a bad release straight into the 10:00 UTC run, where the failure alert only reports it after the fact | pin yfinance in pyproject.toml; field-mapping layer with aliases; tests catch renames. Beyond that (2026-08-17), every automated install resolves through the committed `constraints.txt` pin set: both scheduled workflows install `pip install -e . -c constraints.txt` and CI installs `-e ".[dev]" -c constraints.txt`, so the runner gets the exact versions the last green run used and a dependency upgrade arrives as a reviewable diff regenerated in the same PR (procedure in the file's header comment). Local setup and `scripts/new-worktree.sh` use the same flag, so local green and CI green cannot drift on dependency versions |
 | Gmail SMTP blocks | app password + low volume; Resend free tier as alternate path |
 | R40 misapplied to non-software names | `r40` tag gating; sector shown in report |
 | Metric garbage-in (restated quarters, missing SBC) | sanity guards + flags instead of silent numbers |
