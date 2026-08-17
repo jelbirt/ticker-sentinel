@@ -15,19 +15,23 @@ made every second merge conflict here.
   `run_history.json`; discard that change rather than committing it.
 
 ## Active workstreams
-- `ops-hygiene-3` (opened 2026-08-16, registry entry by the coordinating
-  session per the new convention): audit backlog closer. Constraints file for
-  the workflows' floating pip installs (daily-report, weekly-refresh, ci),
-  `report.timezone` wired into the report header display (owner chose wiring
-  over dropping the key; display only, run dates and file naming untouched),
-  and the MNDY skip-reason wording corrected to the 2026-08-16 investigation
-  finding (20-F/6-K filer, XBRL annual and half-year only). Touches no
-  `data/cache/` and no `config/watchlist.yaml`.
+- none open.
 
   One branch per workstream via `scripts/new-worktree.sh <branch>`; main is the
   review inbox; merge back via PR.
 
 ## Done
+- `ops-hygiene-3` (2026-08-16, merged as PR #19, worktree torn down): the
+  audit backlog closer, ending the 2026-08-14 audit list. `constraints.txt`
+  pins the transitive dependency set for every install path (the three
+  workflows, CI, local setup, worktree venvs; regenerate per its header
+  comment when upgrading deps). `report.timezone` is wired display-only into
+  the report header ("built HH:MM ZONE"); persisted run dates, directory
+  naming and change detection are provably unaffected, and an unloadable
+  zone degrades to UTC with a data note. MNDY's skip reason now names the
+  real blocker in all four sites: 20-F/6-K filer, XBRL facts annual and
+  half-year only, no 3-month periods (per the 2026-08-16 EDGAR
+  investigation; owner accepted the warm-up path, no 6-K parser).
 - `guard-escape-anchor` (2026-08-16, merged as PRs #17 and #18, worktree torn
   down; #18 re-landed the content a stacked merge base made #17 miss): the
   last escape-detection hole in `.claude/hooks/pre-commit-guard.sh`. An
