@@ -278,9 +278,11 @@ What decides the outcome:
 - The gate is all or nothing per ticker: one field disagreeing beyond 1 percent
   or 100,000 absolute on any overlapping quarter rejects that ticker and writes
   nothing for it. A reject is information, not something to work around.
-- Foreign private issuers file no 10-Q XBRL quarterly facts and are skipped a
-  priori (MNDY today, in `backfill.SKIPPED`). Promoting one means accepting the
-  warm-up gap: say so in the swap PR.
+- Foreign private issuers (20-F/6-K filers) publish XBRL facts on annual and
+  half-year periods only, with no 3-month periods to derive quarters from, and
+  are skipped a priori (MNDY today, in `backfill.SKIPPED`). Their data is not
+  suspect, just too coarse. Promoting one means accepting the warm-up gap: say
+  so in the swap PR.
 - Standing requirement from the share-count-guard workstream: `diluted_shares`
   stays out of the backfilled field set (Amendment 2), because the overlap gate
   cannot see split-driven basis breaks outside its window.
