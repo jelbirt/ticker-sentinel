@@ -24,7 +24,13 @@ BRANCH="${1:?usage: scripts/new-worktree.sh <branch> [dir]}"
 DIR="${2:-../ticker-sentinel.$BRANCH}"
 DEFAULT=main
 
-trap 'echo "new-worktree: FAILED mid-wiring. Recover with: scripts/rm-worktree.sh $BRANCH --force" >&2' ERR
+# Recovery advice deliberately omits --force: --force is the one flag that
+# skips rm-worktree.sh's merged gate, so recommending it for routine cleanup
+# teaches the habit of skipping the only gate that prevents losing commits. A
+# half-wired worktree of a branch just created from main is merged by
+# definition, so the plain command clears it.
+trap 'echo "new-worktree: FAILED mid-wiring. Recover with: scripts/rm-worktree.sh $BRANCH" >&2
+      echo "new-worktree: (add --force only if that refuses AND you have confirmed $BRANCH is already merged, e.g. squash-merged)" >&2' ERR
 
 if git show-ref --verify --quiet "refs/heads/$BRANCH"; then
   git worktree add "$DIR" "$BRANCH"
