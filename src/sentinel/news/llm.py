@@ -98,7 +98,7 @@ def call_claude(prompt: str, model: str, timeout: int = TIMEOUT_SECONDS) -> str 
             cmd, capture_output=True, text=True, timeout=timeout, env=env
         )
     except FileNotFoundError:
-        log.warning("claude CLI not installed — LLM news style unavailable")
+        log.warning("claude CLI not installed: LLM news style unavailable")
         return None
     except subprocess.TimeoutExpired:
         log.warning("claude CLI timed out after %ss", timeout)
