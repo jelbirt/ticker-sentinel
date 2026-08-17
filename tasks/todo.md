@@ -1,5 +1,10 @@
 # ticker-sentinel: workstream state
 
+This file has a pen: the COORDINATING SESSION opens and closes workstream
+entries here as small direct-to-main commits (adopted 2026-08-16). Workstream
+branches must not edit this file; parallel branches editing the same bullets
+made every second merge conflict here.
+
 ## Pen registry (serialized shared state)
 - `data/cache/` (committed parquet fundamentals cache AND `run_history.json`,
   the cross-run change-detection state added in Phase 4): pen held by the
