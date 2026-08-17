@@ -15,7 +15,7 @@ jobs:
       # -c constraints.txt: the committed pin set, so CI resolves the same
       # transitive versions the scheduled runs get (see constraints.txt)
       - run: python -m pip install -e ".[dev]" -c constraints.txt
-      - name: shell syntax over generated scripts
-        run: bash -n scripts/*.sh .claude/hooks/*.sh
+      # No extra checks here: shell syntax is part of checks.sh, so the local
+      # bar and the CI bar stay the same one script.
       - name: green bar (same script the local commit guard runs)
         run: scripts/checks.sh
