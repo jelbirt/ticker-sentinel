@@ -294,9 +294,15 @@ written from observed rounds rather than guessed up front. From refresh #3 the
 checklist adds the decision on automating proposal drafting against this rubric
 vs staying manual.
 
-**Working rubric (as of round 1):**
+**Working rubric (as of round 2):**
 - Act on **decay-gate hit counts**, not on composite deltas. A name with 0 gate
-  hits has not shown persistent decay however far its composite moved.
+  hits has not shown persistent decay however far its composite moved. But read
+  a zero for what it is: the gate needs `r40_trend` below
+  `deteriorating_r40_trend` AND technical confirmation (downtrend or a recent
+  death cross), and `r40_trend` needs 12 quarters, so for a name still in
+  warm-up the gate cannot fire at all. There, "0 of N hits" is silence, not
+  reassurance. Check the data-quality column for `insufficient_history` before
+  reading a zero as health (round 2).
 - Before treating an attention-list name as deterioration, check whether its
   flags are **data-quality** (insufficient history, growth from annual, sbc
   inflated) or **business** flags. Data-quality flags are a fetch/coverage
@@ -307,6 +313,15 @@ vs staying manual.
 - **A flat fundamental score against a moving technical score means cached
   fundamentals**, and is worth checking before the name disappears entirely.
 - At a 5-run window, raw **change-activity counts are volume, not signal**.
+- **Inside one window every composite move is technical by construction.**
+  Fundamentals, analyst revisions and short interest refresh weekly, so they
+  are constant across a Tue-Sat window and only step at the refresh boundary. A
+  composite delta measured inside the window therefore attributes entirely to
+  the technical leg. Seeing a fundamental change means comparing across the
+  boundary, not within it (round 2).
+- **The attention list detects change, not level.** It surfaces movers, so a
+  name that is persistently weak but stable never drops far enough to appear.
+  Read the latest rank and fundamental score beside the deltas (round 2).
 
 **Round 1 (issue #6, 2026-08-15, window 2026-08-11 to 2026-08-15, 5 runs):**
 - Outcome: no changes. DDOG held (0 of 5 gate hits, drop was composite-only,
@@ -325,6 +340,54 @@ vs staying manual.
 - Open item: the unscored-reason disclosure from PR #7 merged after the
   2026-08-15 run, so the first run to name TEAM's cause is 2026-08-18. Revisit
   at refresh #2.
+
+**Round 2 (issue #22, 2026-08-22, window 2026-08-18 to 2026-08-22, 5 runs):**
+- Outcome: no changes, all five attention names held. DDOG, CRWD, OKTA, FTNT
+  and ZS each moved on the technical leg alone. Fundamental scores were
+  identical across all five runs for all 20 names, so 100 percent of every
+  composite delta in this window is technical. The moves ran over three
+  sessions (08-19 to 08-21): CRWD 84.4 to 42.0, DDOG 83.3 to 21.4, FTNT 84.3
+  to 43.1, OKTA 84.3 to 43.1, ZS 77.8 to 53.7. The bench did not collapse with
+  them (WDAY and SHOP held near 82 technical throughout), so a swap would have
+  been momentum chasing out of a three-day drawdown rather than a rotation on
+  evidence.
+- The only business-flag change all window was ESTC gaining a golden cross, a
+  positive. Every other flag change was the 08-18 backfill clearing
+  `growth_from_annual` and `insufficient_history`, which is data quality
+  improving, not business news.
+- Round-1 open item closed: TEAM. Scored in all five runs, no coverage gaps
+  anywhere in the window, and its fundamental score came unpinned from the
+  stuck 13.7 to 24.9 with rank 11 to 10. The cause was the cache gap and the
+  EDGAR backfill closed it, so there is no alias drift in
+  `data/fundamentals.py` to chase.
+- The decay gate has never fired, and for most of its life it could not. Before
+  the backfill fed the 2026-08-18 run, 0 of 20 names had an `r40_trend` at all,
+  so the gate was structurally unfirable universe-wide across the first 7 runs;
+  it went to 11 of 20 on 08-18. Zero hits in the 55 live snapshots since is
+  unremarkable: the worst `r40_trend` in the universe is S at -0.054, roughly
+  half the -0.10 threshold, and 191 of 238 snapshots sat in `uptrend`. The gate
+  is wired correctly (`digest.snapshot_decaying` mirrors
+  `changes.deteriorating`, including the detail that the persisted
+  `death_cross` field is written from `tech.death_cross_recent`), so this is a
+  quiet month plus a warm-up, not a defect. Owner decision this round: record
+  it, change nothing, revisit once the remaining 9 names finish warming up.
+- Consequence for the rubric, and the thing refresh #3 has to resolve: all five
+  attention names qualified through the composite-drop leg, which round 1 says
+  to discount, while the gate leg contributed nothing. Read literally, the two
+  rules together leave no name actionable. That is a fine outcome for a
+  calibration round that holds steady, but it is not a rule an automated
+  proposal drafter could run on.
+- Watch item, not a rotation candidate: S. Rank 20 of 20 for the whole window,
+  fundamental score pinned at exactly 0.0 for all 12 runs (`fundamental_score`
+  clamps at 0, so any further fundamental decay is censored and cannot show up
+  as a change), and the only meaningfully negative `r40_trend` in the universe.
+  It never reaches the attention list because it never drops, it just stays
+  weak: the level-versus-change gap above, with a name attached.
+- What mattered: the technical-versus-fundamental attribution of the composite
+  move, the flag-change list, and the coverage line reading clean.
+- What was noise: composite deltas on their own (again), change-activity counts
+  (score 14, trend state 8, rank 7), and the bench first-versus-last delta,
+  which hid TWLO dipping to 40.8 mid-window and recovering.
 
 **What the digest carries as of 2026-08-16** (branch `rotation-evidence`,
 answering round-1 gaps 1 and 2 and preparing the refresh #3 decision):
