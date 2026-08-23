@@ -15,10 +15,7 @@ made every second merge conflict here.
   `run_history.json`; discard that change rather than committing it.
 
 ## Active workstreams
-- `rotation-round-2` (opened 2026-08-23, PR #23 awaiting owner review): records
-  the refresh #2 calibration round in SPEC 7.0.1. Documentation only, one file,
-  no config and no `data/cache/` touch. Issue #22 is already closed with the
-  no-changes decision; this entry closes when #23 merges.
+- none open.
 
   One branch per workstream via `scripts/new-worktree.sh <branch>`; main is the
   review inbox; merge back via PR.
@@ -35,6 +32,24 @@ made every second merge conflict here.
   relation instead.
 
 ## Done
+- `rotation-round-2` (2026-08-23, merged as PR #23, worktree torn down): the
+  refresh #2 calibration round recorded in SPEC 7.0.1 (issue #22, closed with
+  no watchlist changes). All five attention names held: fundamentals,
+  revisions and short interest are identical across a window by construction
+  (they only step at the weekly refresh boundary), so the whole composite move
+  was technical and the bench did not fall with it. Three rubric lines added:
+  a zero decay-gate hit count is silence rather than reassurance for a name
+  still in `r40_trend` warm-up; an in-window composite delta is always
+  technical; the attention list detects change, not level. The decay gate was
+  investigated and deliberately left unchanged: it was structurally unfirable
+  universe-wide until the EDGAR backfill fed the 2026-08-18 run (0 of 20 names
+  had an `r40_trend`, now 11 of 20), so its zero hit count is a warm-up plus a
+  quiet month, not a defect. Round-1 open item closed: TEAM was the cache gap,
+  not alias drift. Carried to refresh #3: every attention name qualified via
+  the composite-drop leg that round 1 discounts while the gate leg contributed
+  nothing, so the rubric as written leaves nothing actionable, which the
+  automate-vs-manual call has to resolve. Watch item logged, not acted on: S
+  sits at the `fundamental_score` 0.0 clamp, so its decay is censored.
 - `ops-hygiene-3` (2026-08-16, merged as PR #19, worktree torn down): the
   audit backlog closer, ending the 2026-08-14 audit list. `constraints.txt`
   pins the transitive dependency set for every install path (the three
