@@ -15,7 +15,10 @@ made every second merge conflict here.
   `run_history.json`; discard that change rather than committing it.
 
 ## Active workstreams
-- none open.
+- `rotation-round-2` (opened 2026-08-23, PR #23 awaiting owner review): records
+  the refresh #2 calibration round in SPEC 7.0.1. Documentation only, one file,
+  no config and no `data/cache/` touch. Issue #22 is already closed with the
+  no-changes decision; this entry closes when #23 merges.
 
   One branch per workstream via `scripts/new-worktree.sh <branch>`; main is the
   review inbox; merge back via PR.
