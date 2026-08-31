@@ -294,7 +294,7 @@ written from observed rounds rather than guessed up front. From refresh #3 the
 checklist adds the decision on automating proposal drafting against this rubric
 vs staying manual.
 
-**Working rubric (as of round 2):**
+**Working rubric (as of round 3):**
 - Act on **decay-gate hit counts**, not on composite deltas. A name with 0 gate
   hits has not shown persistent decay however far its composite moved. But read
   a zero for what it is: the gate needs `r40_trend` below
@@ -304,9 +304,11 @@ vs staying manual.
   reassurance. Check the data-quality column for `insufficient_history` before
   reading a zero as health (round 2).
 - Before treating an attention-list name as deterioration, check whether its
-  flags are **data-quality** (insufficient history, growth from annual, sbc
-  inflated) or **business** flags. Data-quality flags are a fetch/coverage
-  problem, not a rotation signal.
+  flags are **data-quality** (insufficient data/history, growth from annual,
+  stale fundamentals) or **business** flags (dilution, high sbc, sbc inflated,
+  crosses). Data-quality flags are a fetch/coverage problem, not a rotation
+  signal. (Corrected round 3: sbc inflated is a business flag, matching the
+  digest's flag split; the bullet previously misfiled it.)
 - A **coverage gap outranks the attention list**: a name that stops being scored
   is either a data failure to chase or a delisting to swap, and both matter more
   than a few points of composite drift.
@@ -322,6 +324,10 @@ vs staying manual.
 - **The attention list detects change, not level.** It surfaces movers, so a
   name that is persistently weak but stable never drops far enough to appear.
   Read the latest rank and fundamental score beside the deltas (round 2).
+- **Standing business flags are not events.** A name can carry dilution or
+  sbc flags for months; only a flag appearing or clearing across the refresh
+  boundary is evidence. Compare flag sets, do not re-read the standing set as
+  news each week (round 3).
 
 **Round 1 (issue #6, 2026-08-15, window 2026-08-11 to 2026-08-15, 5 runs):**
 - Outcome: no changes. DDOG held (0 of 5 gate hits, drop was composite-only,
@@ -388,6 +394,44 @@ vs staying manual.
 - What was noise: composite deltas on their own (again), change-activity counts
   (score 14, trend state 8, rank 7), and the bench first-versus-last delta,
   which hid TWLO dipping to 40.8 mid-window and recovering.
+
+**Round 3 (issue #24, 2026-08-29, window 2026-08-25 to 2026-08-29, 5 runs):**
+- Outcome: no changes; GTLB, the only attention name, held. Its entire -5.7
+  window delta was technical by construction, the rank slide 8 -> 15 was the
+  same dip through the change detector, and the 0 of 5 gate count is warm-up
+  silence (insufficient_history in the data-quality column). All three
+  business flags (dilution, high sbc, sbc inflated) were standing, carried
+  since before the window: nothing new happened to the business this week.
+- Warm-up finding worth keeping: GTLB's cache already holds 16 quarters,
+  more than the 12 r40_trend needs. The blocker is capex holes in the
+  2024-07 and 2023-07 columns breaking the year-ago TTM window (the r40_m4
+  point in indicators/fundamentals.py). GTLB reports 2026-09-01; the July
+  quarter rolls the window past the 2024-07 hole and the trend goes live on
+  its own. A warm-up zero can therefore be a single-field cache hole rather
+  than a year of missing quarters; check the parquet before assuming either.
+- The only pro-swap argument was level, not change: SHOP shadow-scored 70.8
+  vs GTLB 46.1 on the same basis, with passes_all_r40. Not acted on: the
+  rubric has no level rule, and adding one is a rubric decision, deferred to
+  refresh #4 alongside the S watch item (still rank 20, fundamental score
+  still clamped at 0.0, decay still censored).
+- Automate-vs-manual (option 3, the decision that closes calibration): STAY
+  MANUAL, revisit later. Three rounds produced three no-changes; every
+  attention name so far qualified through the composite-drop leg the rubric
+  discounts while the gate leg was structurally silent in warm-up, so the
+  rubric has never seen an actionable week to calibrate against. Automating
+  now would automate "hold" and risk mishandling the first real signal.
+  Revisit trigger: the remaining warm-up names go r40_trend-live, or the
+  decay gate fires anywhere, whichever comes first.
+- Rubric wording fix found preparing that decision: the flag-split bullet
+  above misfiled sbc inflated as data-quality while the shipped flag split
+  classifies sbc_inflated as business. Corrected in place; an automated
+  drafter running on the written rubric would have tripped on the mismatch.
+- What mattered: technical-vs-fundamental attribution (again), the
+  standing-versus-new distinction on business flags, and the cache-depth
+  check behind the warm-up zero.
+- What was noise: the composite delta and rank slide on their own,
+  change-activity counts (short interest 16, score 12), and the bench
+  first-vs-last deltas (all within 0.4 of flat).
 
 **What the digest carries as of 2026-08-16** (branch `rotation-evidence`,
 answering round-1 gaps 1 and 2 and preparing the refresh #3 decision):
