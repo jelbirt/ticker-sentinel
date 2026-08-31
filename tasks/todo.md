@@ -171,8 +171,12 @@ made every second merge conflict here.
 - Weekly watchlist candidate refresh: live since 2026-08-15. A digest issue
   opens Saturdays (label `watchlist-refresh`, owner-assigned); do the refresh
   from the issue. Bench: WDAY, SHOP, TWLO, ZM (a structured `bench:` key in
-  watchlist.yaml). First 3 refreshes are calibration rounds; refresh #3's
-  checklist adds the automate-vs-manual decision (option 3). Refresh #1
-  opened as issue #6 on 2026-08-15 and is awaiting the owner.
+  watchlist.yaml). Calibration complete: rounds 1-3 (issues #6, #22, #24) all
+  closed with no changes; the option-3 decision (2026-08-31, SPEC 7.0.1 round
+  3) is STAY MANUAL, revisit when the remaining warm-up names go
+  r40_trend-live or the decay gate first fires. Standing watch items for
+  refresh #4: GTLB (warm-up ends after 2026-09-01 earnings; does the rank
+  slide survive the boundary), S (level-not-change gap), and whether to add a
+  level rule to the rubric.
 - (done) First scheduled run after merge created `data/cache/run_history.json`
   on 2026-08-07; change detection live since 2026-08-08.
