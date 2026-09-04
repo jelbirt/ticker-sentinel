@@ -9041,6 +9041,479 @@
           "valuation": "fair"
         }
       }
+    },
+    {
+      "bench": {
+        "SHOP": {
+          "composite": 76.48334785868786,
+          "death_cross": false,
+          "flags": [
+            "golden_cross",
+            "insufficient_history",
+            "passes_all_r40"
+          ],
+          "golden_cross": true,
+          "net_revisions_30d": null,
+          "r40_fcf": 0.5023001937012352,
+          "r40_trend": null,
+          "rank": null,
+          "score": 62.67251452759264,
+          "shares_short": null,
+          "short_pct_float": null,
+          "technical_score": 97.19959785533072,
+          "trend_state": "uptrend",
+          "valuation": "fair"
+        },
+        "TWLO": {
+          "composite": 34.37643433950689,
+          "death_cross": false,
+          "flags": [
+            "growth_from_annual",
+            "insufficient_history"
+          ],
+          "golden_cross": false,
+          "net_revisions_30d": null,
+          "r40_fcf": 0.31406269467127684,
+          "r40_trend": null,
+          "rank": null,
+          "score": 23.554702100345764,
+          "shares_short": null,
+          "short_pct_float": null,
+          "technical_score": 50.60903269824859,
+          "trend_state": "uptrend",
+          "valuation": "fair"
+        },
+        "WDAY": {
+          "composite": 54.17100149031617,
+          "death_cross": false,
+          "flags": [
+            "golden_cross",
+            "growth_from_annual",
+            "high_sbc",
+            "insufficient_history"
+          ],
+          "golden_cross": true,
+          "net_revisions_30d": null,
+          "r40_fcf": 0.4325529717056329,
+          "r40_trend": null,
+          "rank": null,
+          "score": 25.616599559344294,
+          "shares_short": null,
+          "short_pct_float": null,
+          "technical_score": 97.00260438677398,
+          "trend_state": "uptrend",
+          "valuation": "cheap"
+        },
+        "ZM": {
+          "composite": 34.49574275710007,
+          "death_cross": false,
+          "flags": [
+            "insufficient_history"
+          ],
+          "golden_cross": false,
+          "net_revisions_30d": null,
+          "r40_fcf": 0.4472977119880057,
+          "r40_trend": null,
+          "rank": null,
+          "score": 33.54732839910043,
+          "shares_short": null,
+          "short_pct_float": null,
+          "technical_score": 35.918364294099526,
+          "trend_state": "uptrend",
+          "valuation": "cheap"
+        }
+      },
+      "date": "2026-09-04",
+      "run_type": "scheduled",
+      "tickers": {
+        "CRWD": {
+          "composite": 46.0363758905304,
+          "death_cross": false,
+          "flags": [
+            "dilution",
+            "high_sbc",
+            "insufficient_history",
+            "sbc_inflated"
+          ],
+          "golden_cross": false,
+          "net_revisions_30d": 3,
+          "r40_fcf": 0.5126357040785033,
+          "r40_trend": null,
+          "rank": 12,
+          "score": 20.662791144914713,
+          "shares_short": 24164922.0,
+          "short_pct_float": 0.024,
+          "technical_score": 84.09675300895394,
+          "trend_state": "uptrend",
+          "valuation": "priced-for-perfection"
+        },
+        "DDOG": {
+          "composite": 19.897939462361744,
+          "death_cross": false,
+          "flags": [
+            "dilution",
+            "high_sbc",
+            "sbc_inflated"
+          ],
+          "golden_cross": false,
+          "net_revisions_30d": 31,
+          "r40_fcf": 0.5856446911050743,
+          "r40_trend": 0.042398806043890014,
+          "rank": 16,
+          "score": 33.16323243726958,
+          "shares_short": 9245979.0,
+          "short_pct_float": 0.0318,
+          "technical_score": 0.0,
+          "trend_state": "mixed",
+          "valuation": "fair"
+        },
+        "DT": {
+          "composite": 58.20179735909103,
+          "death_cross": false,
+          "flags": [],
+          "golden_cross": false,
+          "net_revisions_30d": 5,
+          "r40_fcf": 0.451673448023057,
+          "r40_trend": 0.002804509960937396,
+          "rank": 5,
+          "score": 40.71002391438391,
+          "shares_short": 9198695.0,
+          "short_pct_float": 0.036,
+          "technical_score": 84.43945752615171,
+          "trend_state": "uptrend",
+          "valuation": "fair"
+        },
+        "ESTC": {
+          "composite": 45.26009811000962,
+          "death_cross": false,
+          "flags": [
+            "high_sbc"
+          ],
+          "golden_cross": false,
+          "net_revisions_30d": 1,
+          "r40_fcf": 0.35762702273239544,
+          "r40_trend": 0.010694148168949535,
+          "rank": 18,
+          "score": 19.403403136730574,
+          "shares_short": 6338244.0,
+          "short_pct_float": 0.0689,
+          "technical_score": 84.0451405699282,
+          "trend_state": "uptrend",
+          "valuation": "fair"
+        },
+        "FTNT": {
+          "composite": 50.392281061528514,
+          "death_cross": false,
+          "flags": [
+            "insufficient_history",
+            "passes_all_r40"
+          ],
+          "golden_cross": false,
+          "net_revisions_30d": 36,
+          "r40_fcf": 0.6017676634068063,
+          "r40_trend": null,
+          "rank": 2,
+          "score": 69.60498102498457,
+          "shares_short": 14198087.0,
+          "short_pct_float": 0.0234,
+          "technical_score": 21.57323111634444,
+          "trend_state": "mixed",
+          "valuation": "fair"
+        },
+        "GTLB": {
+          "composite": 46.61636421907044,
+          "death_cross": false,
+          "flags": [
+            "dilution",
+            "high_sbc",
+            "insufficient_history",
+            "sbc_inflated"
+          ],
+          "golden_cross": false,
+          "net_revisions_30d": -20,
+          "r40_fcf": 0.5111205008551873,
+          "r40_trend": null,
+          "rank": 11,
+          "score": 21.33781426585704,
+          "shares_short": 15433672.0,
+          "short_pct_float": 0.0934,
+          "technical_score": 84.53418914889053,
+          "trend_state": "uptrend",
+          "valuation": "fair"
+        },
+        "HUBS": {
+          "composite": 30.349583652994447,
+          "death_cross": false,
+          "flags": [
+            "growth_from_annual",
+            "insufficient_history"
+          ],
+          "golden_cross": false,
+          "net_revisions_30d": -21,
+          "r40_fcf": 0.3824574341455216,
+          "r40_trend": null,
+          "rank": 20,
+          "score": 32.39261707073044,
+          "shares_short": 3860312.0,
+          "short_pct_float": 0.103199996,
+          "technical_score": 27.285033526390457,
+          "trend_state": "mixed",
+          "valuation": "cheap"
+        },
+        "IOT": {
+          "composite": 48.3989721637698,
+          "death_cross": false,
+          "flags": [
+            "dilution",
+            "high_sbc"
+          ],
+          "golden_cross": false,
+          "net_revisions_30d": 1,
+          "r40_fcf": 0.431729698549594,
+          "r40_trend": 0.010771080425815593,
+          "rank": 9,
+          "score": 24.842284233863197,
+          "shares_short": 28708777.0,
+          "short_pct_float": 0.0908,
+          "technical_score": 83.7340040586297,
+          "trend_state": "uptrend",
+          "valuation": "priced-for-perfection"
+        },
+        "MDB": {
+          "composite": 19.363505097351872,
+          "death_cross": false,
+          "flags": [
+            "growth_from_annual",
+            "high_sbc",
+            "insufficient_history",
+            "sbc_inflated"
+          ],
+          "golden_cross": false,
+          "net_revisions_30d": -23,
+          "r40_fcf": 0.45511076870997946,
+          "r40_trend": null,
+          "rank": 17,
+          "score": 23.285980221139923,
+          "shares_short": 2839284.0,
+          "short_pct_float": 0.036199998,
+          "technical_score": 13.479792411669795,
+          "trend_state": "mixed",
+          "valuation": "fair"
+        },
+        "MNDY": {
+          "composite": 33.86680499474899,
+          "death_cross": false,
+          "flags": [
+            "growth_from_annual",
+            "insufficient_history"
+          ],
+          "golden_cross": false,
+          "net_revisions_30d": 20,
+          "r40_fcf": 0.5012757701438736,
+          "r40_trend": null,
+          "rank": 15,
+          "score": 51.034128545027805,
+          "shares_short": 5476956.0,
+          "short_pct_float": 0.1546,
+          "technical_score": 8.115819669330772,
+          "trend_state": "mixed",
+          "valuation": "cheap"
+        },
+        "NET": {
+          "composite": 50.33393076046679,
+          "death_cross": false,
+          "flags": [
+            "high_sbc",
+            "sbc_inflated"
+          ],
+          "golden_cross": false,
+          "net_revisions_30d": 26,
+          "r40_fcf": 0.4606700314326343,
+          "r40_trend": 0.09219580075197287,
+          "rank": 7,
+          "score": 38.57033210306414,
+          "shares_short": 7432334.0,
+          "short_pct_float": 0.026099999,
+          "technical_score": 67.97932874657077,
+          "trend_state": "uptrend",
+          "valuation": "priced-for-perfection"
+        },
+        "NOW": {
+          "composite": 68.57907017265839,
+          "death_cross": false,
+          "flags": [
+            "growth_from_annual",
+            "insufficient_history"
+          ],
+          "golden_cross": false,
+          "net_revisions_30d": -32,
+          "r40_fcf": 0.5191261833913777,
+          "r40_trend": null,
+          "rank": 3,
+          "score": 60.333234686485945,
+          "shares_short": 29199178.0,
+          "short_pct_float": 0.028299998,
+          "technical_score": 80.94782340191705,
+          "trend_state": "uptrend",
+          "valuation": "fair"
+        },
+        "OKTA": {
+          "composite": 47.66980721487411,
+          "death_cross": false,
+          "flags": [
+            "high_sbc",
+            "insufficient_history"
+          ],
+          "golden_cross": false,
+          "net_revisions_30d": 3,
+          "r40_fcf": 0.41655889314560407,
+          "r40_trend": null,
+          "rank": 10,
+          "score": 22.944535272443332,
+          "shares_short": 6449812.0,
+          "short_pct_float": 0.0432,
+          "technical_score": 84.75771512852029,
+          "trend_state": "uptrend",
+          "valuation": "fair"
+        },
+        "PANW": {
+          "composite": 41.96481073516429,
+          "death_cross": false,
+          "flags": [
+            "dilution",
+            "high_sbc"
+          ],
+          "golden_cross": false,
+          "net_revisions_30d": 0,
+          "r40_fcf": 0.552808172497637,
+          "r40_trend": 0.07570029055245847,
+          "rank": 14,
+          "score": 41.428220035445854,
+          "shares_short": 22414335.0,
+          "short_pct_float": 0.0277,
+          "technical_score": 42.76969678474195,
+          "trend_state": "mixed",
+          "valuation": "fair"
+        },
+        "PLTR": {
+          "composite": 93.1226469956579,
+          "death_cross": false,
+          "flags": [
+            "passes_all_r40"
+          ],
+          "golden_cross": false,
+          "net_revisions_30d": 20,
+          "r40_fcf": 1.334745915762227,
+          "r40_trend": 0.45021064218639384,
+          "rank": 1,
+          "score": 100.0,
+          "shares_short": 68278633.0,
+          "short_pct_float": 0.0318,
+          "technical_score": 82.80661748914474,
+          "trend_state": "uptrend",
+          "valuation": "priced-for-perfection"
+        },
+        "RBRK": {
+          "composite": 60.73995650019576,
+          "death_cross": false,
+          "flags": [
+            "dilution",
+            "high_sbc",
+            "sbc_inflated"
+          ],
+          "golden_cross": false,
+          "net_revisions_30d": -17,
+          "r40_fcf": 0.6524577600668402,
+          "r40_trend": 0.11932953491224796,
+          "rank": 4,
+          "score": 45.86728549623781,
+          "shares_short": 14973029.0,
+          "short_pct_float": 0.0908,
+          "technical_score": 83.04896300613268,
+          "trend_state": "uptrend",
+          "valuation": "fair"
+        },
+        "S": {
+          "composite": 33.05369122362014,
+          "death_cross": false,
+          "flags": [
+            "high_sbc",
+            "sbc_inflated"
+          ],
+          "golden_cross": false,
+          "net_revisions_30d": 4,
+          "r40_fcf": 0.24902239947678156,
+          "r40_trend": -0.054070664825211,
+          "rank": 19,
+          "score": 0.0,
+          "shares_short": 16921141.0,
+          "short_pct_float": 0.0505,
+          "technical_score": 82.63422805905036,
+          "trend_state": "uptrend",
+          "valuation": "fair"
+        },
+        "SNOW": {
+          "composite": 49.26033435850402,
+          "death_cross": false,
+          "flags": [
+            "dilution",
+            "high_sbc",
+            "insufficient_history",
+            "sbc_inflated"
+          ],
+          "golden_cross": false,
+          "net_revisions_30d": 30,
+          "r40_fcf": 0.5425111031223625,
+          "r40_trend": null,
+          "rank": 8,
+          "score": 25.688332734177187,
+          "shares_short": 18813753.0,
+          "short_pct_float": 0.0556,
+          "technical_score": 84.61833679499425,
+          "trend_state": "uptrend",
+          "valuation": "priced-for-perfection"
+        },
+        "TEAM": {
+          "composite": 54.774577048985094,
+          "death_cross": false,
+          "flags": [
+            "golden_cross",
+            "high_sbc",
+            "sbc_inflated"
+          ],
+          "golden_cross": true,
+          "net_revisions_30d": 13,
+          "r40_fcf": 0.4608986266368926,
+          "r40_trend": -0.007076401671850807,
+          "rank": 6,
+          "score": 24.91451462700075,
+          "shares_short": 11745304.0,
+          "short_pct_float": 0.074099995,
+          "technical_score": 99.56467068196162,
+          "trend_state": "uptrend",
+          "valuation": "fair"
+        },
+        "ZS": {
+          "composite": 45.069298384802224,
+          "death_cross": false,
+          "flags": [
+            "dilution",
+            "high_sbc",
+            "sbc_inflated"
+          ],
+          "golden_cross": false,
+          "net_revisions_30d": 41,
+          "r40_fcf": 0.5266560037426979,
+          "r40_trend": 0.0006788704443373428,
+          "rank": 13,
+          "score": 23.205871161280278,
+          "shares_short": 6229864.0,
+          "short_pct_float": 0.0592,
+          "technical_score": 77.86443922008513,
+          "trend_state": "uptrend",
+          "valuation": "fair"
+        }
+      }
     }
   ],
   "version": 1
