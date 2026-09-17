@@ -294,7 +294,7 @@ written from observed rounds rather than guessed up front. From refresh #3 the
 checklist adds the decision on automating proposal drafting against this rubric
 vs staying manual.
 
-**Working rubric (as of round 3):**
+**Working rubric (as of round 5):**
 - Act on **decay-gate hit counts**, not on composite deltas. A name with 0 gate
   hits has not shown persistent decay however far its composite moved. But read
   a zero for what it is: the gate needs `r40_trend` below
@@ -315,12 +315,16 @@ vs staying manual.
 - **A flat fundamental score against a moving technical score means cached
   fundamentals**, and is worth checking before the name disappears entirely.
 - At a 5-run window, raw **change-activity counts are volume, not signal**.
-- **Inside one window every composite move is technical by construction.**
-  Fundamentals, analyst revisions and short interest refresh weekly, so they
-  are constant across a Tue-Sat window and only step at the refresh boundary. A
-  composite delta measured inside the window therefore attributes entirely to
-  the technical leg. Seeing a fundamental change means comparing across the
-  boundary, not within it (round 2).
+- **Inside one window a composite move is technical unless the fundamental
+  column says otherwise.** Fundamentals, analyst revisions and short interest
+  refresh weekly, so across most Tue-Sat windows they are constant and a
+  composite delta attributes entirely to the technical leg. That is the
+  default, not a guarantee: the earnings-aware refetch in
+  `data/fundamentals.py` lands a new quarter on whatever weekday it appears
+  (nine names stepped mid-window between 09-09 and 09-16), short interest
+  publishes mid-week, and the revisions counter rolls over at earnings. Read
+  the per-run fundamental score to attribute a move rather than assuming it
+  (round 2, amended round 5).
 - **The attention list detects change, not level.** It surfaces movers, so a
   name that is persistently weak but stable never drops far enough to appear.
   Read the latest rank and fundamental score beside the deltas (round 2).
@@ -328,6 +332,38 @@ vs staying manual.
   sbc flags for months; only a flag appearing or clearing across the refresh
   boundary is evidence. Compare flag sets, do not re-read the standing set as
   news each week (round 3).
+- **The window delta cannot see a boundary step.** The attention list
+  measures first-vs-last inside the window, so a fundamental step that lands
+  on the window's first run is invisible to it, and a name that stepped down
+  at the boundary only surfaces if its technical leg happens to dip later in
+  the week. Compare the last run of the previous window with the first run
+  of this one before reading the attention table (RBRK, round 5).
+- **A cross flag clearing is the lookback expiring, not a reversal.**
+  `golden_cross` and `death_cross` are recency flags (`CROSS_LOOKBACK`, 10
+  sessions, in `indicators/technicals.py`). A golden cross ageing out takes
+  roughly 15 technical points off with no price event behind it, and the
+  change detector reports it as `flag_cleared`. Only `death_cross` being SET
+  is a negative event (TEAM, round 5).
+- **Post-earnings revision swings are suspect.** `net_revisions_30d` reads
+  yfinance's current-quarter (`0q`) row, which advances to the next fiscal
+  quarter once a company reports, so the counts restart: PANW read +39 on
+  09-02 and 0 on 09-03, MDB +34 then -23, ZS +41 then +10, each within days
+  of its report, and all three were back above +24 two weeks later. Not
+  verified against the raw frame, but a revision swing within two weeks of
+  earnings should be read as a rollover until it is (round 4).
+- **Level rule: proposed, not adopted (round 5; owner decides at PR
+  review).** If a level rule is added it must read the fundamental leg only,
+  never the composite. Composite is 40 percent technical and the technical
+  leg whipsaws universe-wide (18 of 20 names in `uptrend` on 09-01, 11 on
+  09-12, 18 on 09-16); a composite-level rule would have swapped GTLB for
+  SHOP in round 3 and been wrong within two weeks. Candidate wording: a name
+  whose fundamental score sits in the bottom 3 of the universe for 3
+  consecutive digest windows joins the attention list as "persistently
+  weak", a separate row kind from decay. On 09-17 that is S (0.0), ESTC
+  (15.4) and ZS (16.7). DDOG, the weakest composite outside the S clamp,
+  would not qualify: its 33.2 fundamental is mid-pack and its weakness is a
+  technical score of 0 to 17 across 15 runs, exactly the leg the rule stays
+  out of.
 
 **Round 1 (issue #6, 2026-08-15, window 2026-08-11 to 2026-08-15, 5 runs):**
 - Outcome: no changes. DDOG held (0 of 5 gate hits, drop was composite-only,
@@ -432,6 +468,96 @@ vs staying manual.
 - What was noise: the composite delta and rank slide on their own,
   change-activity counts (short interest 16, score 12), and the bench
   first-vs-last deltas (all within 0.4 of flat).
+
+**Round 4 (issue #25, 2026-09-05, window 2026-09-01 to 2026-09-05, 5 runs):**
+- Outcome: no changes; all six attention names held (MDB, FTNT, MNDY, NET,
+  PANW, ZS). Not one fundamental score changed for any of the 20 names in
+  any run pair of the window, nor across the 08-29 to 09-01 boundary, so
+  every composite delta was technical, and the technical leg moved
+  universe-wide: names in `uptrend` went 18 (09-01) to 15 (09-02) to 12
+  (09-05) to 11 (09-08). Same shape as round 2, a broad drawdown read
+  through the change detector.
+- Reversion, checked at 09-17: FTNT 71.0 to 49.7 and back to 75.8, PANW
+  58.4 to 41.9 to 62.6, NET 50.1 to 33.4 to 57.1, MDB 43.2 to 19.0 to 47.8,
+  ZS 45.1 to 29.0 to 41.6. Five of six ended the fortnight at or near their
+  window-start composite; MNDY (55.0 to 34.3 to 43.8) is the exception and
+  its residual is still technical (fundamental 51.0 to 48.8).
+- The bench diverged the same way as in round 2. WDAY and SHOP gained golden
+  crosses on 09-01 and sat near 97 technical all window; TWLO and ZM dipped
+  with the market. Promoting either leader would have been momentum chasing,
+  and the fortnight proved it: SHOP went 76.5 (09-05) to 45.9 (09-17) in a
+  `downtrend`, while the name it would have replaced in round 3, GTLB, went
+  r40_trend-live at +0.101 (round 5 below).
+- Revisions noise, explained: 11 revision crossings in the window, all
+  within days of the late-August and early-September reports. PANW read +39
+  on 09-02, 0 on 09-03, +27 on 09-15; MDB +34, -23, -1, +24; ZS +41, +10,
+  +1, +29. `net_revisions_30d` reads yfinance's current-quarter row, which
+  rolls to the next fiscal quarter at earnings, so the counter restarts.
+  Rubric line added above.
+- What mattered: the fundamental column being flat everywhere (one check
+  settled six names), the breadth count on `trend_state`, and the bench
+  reading the same technical shock differently.
+- What was noise: the six composite deltas, the rank (25) and score (23)
+  crossings, and the revision crossings (a rollover, not sentiment).
+
+**Round 5 (issue #26, 2026-09-12, window 2026-09-08 to 2026-09-12, 5 runs):**
+- Outcome: no changes; RBRK held, TEAM held. This was the first window with
+  fundamental events behind the numbers, so the reading differs from rounds
+  1 to 4.
+- RBRK is the first genuine fundamental step down the rubric has seen, and
+  the attention list caught it for the wrong reason. The July quarter
+  landed on 09-08 through the earnings-aware refetch (cache column
+  2026-07-31), and the fundamental score stepped 45.9 to 27.3 with
+  `r40_trend` +0.119 to -0.035, rank 4 to 6 on 09-08 and 10 by 09-17. The
+  digest's -16.2 window delta contains none of that: it is the
+  single-session 09-12 technical dip (82.7 to 42.1, `uptrend` to `mixed`),
+  reverted on 09-15 (83.9). The step sat at the window boundary, exactly
+  where first-vs-last cannot see it, and RBRK surfaced only because the
+  technical leg happened to blink four sessions later. Held because the
+  decay gate is nowhere near: -0.035 is a third of the -0.10 threshold,
+  `trend_state` is `uptrend`, no death cross, and all three business flags
+  are standing. Now a named watch item: RBRK carries the worst `r40_trend`
+  in the universe (S did before), and a second step down at the next
+  quarter with a trend break is what a real gate hit looks like.
+- TEAM: -6.0, entirely the golden cross ageing out on 09-09 (set 08-26,
+  expired after the 10-session lookback). Technical 98.9 to 83.9 on flat
+  fundamentals (24.9), rank 5 to 9 mechanical. Nothing happened to the
+  business.
+- The rest of the fortnight's fundamental steps, none of which reached the
+  attention list because they landed mid-window or lifted a score: GTLB
+  21.3 to 30.7 (09-09, `r40_trend` live at +0.101, `dilution` cleared), CRWD
+  20.7 to 28.0 (09-09, live at +0.052), SNOW 25.7 to 33.3 (09-11, live at
+  +0.078), PANW 41.4 to 48.1 (09-16), ZS 23.2 to 16.7 (09-11, `r40_trend`
+  +0.001 to -0.018), ESTC 19.4 to 15.4 (09-12, +0.011 to -0.021), MNDY 51.0
+  to 48.8, MDB 23.3 to 24.5, OKTA 22.9 to 23.6. The digest counted these as
+  20 `score` crossings and 2 `r40_inflection` rows: real events, filed
+  under volume.
+- Round-3 watch items closed. GTLB: exactly as predicted, the July quarter
+  rolled the year-ago window past the 2024-07 capex hole and `r40_trend`
+  went live on 09-09; the round-3 rank slide (8 to 15) did not survive the
+  boundary (rank 8 on 09-17). S: still rank 19 or 20 in all 25 runs,
+  fundamental score still clamped at 0.0 in all 25, `r40_trend` -0.054 to
+  -0.033 on the new quarter, and a `dilution` flag SET on 09-08, the first
+  non-cross business flag to appear on a watchlist name since the digest
+  started. Still never on the attention list, still the level-not-change
+  case. The level rule is proposed in the rubric above, not adopted.
+- Coverage: clean in both windows, every configured name in every run.
+- Automate-vs-manual: the round-3 revisit trigger has not fired. `r40_trend`
+  coverage went 11 to 14 of 20 (CRWD, GTLB, SNOW now live; FTNT, HUBS, MDB,
+  MNDY, NOW, OKTA still warming up, MNDY structurally), and the decay gate
+  has 0 hits in 25 runs with -0.035 the worst reading. Stay manual. What
+  changed is that the rubric now has boundary-step events to calibrate
+  against, so the next rounds can test the boundary-comparison bullet on
+  real data. Warm-up note for the remaining names: MDB and OKTA hold 16
+  quarters yet still read n/a; the GTLB pattern (a field hole in the
+  year-ago window) is the first thing to check before assuming missing
+  quarters.
+- What mattered: the boundary comparison (09-05 vs 09-08) that the digest
+  does not make, the cross-lookback mechanics behind TEAM, and the
+  cache-column check confirming which quarter landed.
+- What was noise: both window deltas as printed (RBRK's was the wrong move,
+  TEAM's was a flag expiring), `flag_cleared` rows for crosses, and the 9
+  short-interest crossings (exchange publication lands mid-week).
 
 **What the digest carries as of 2026-08-16** (branch `rotation-evidence`,
 answering round-1 gaps 1 and 2 and preparing the refresh #3 decision):
