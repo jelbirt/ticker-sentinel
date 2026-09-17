@@ -321,7 +321,7 @@ vs staying manual.
   composite delta attributes entirely to the technical leg. That is the
   default, not a guarantee: the earnings-aware refetch in
   `data/fundamentals.py` lands a new quarter on whatever weekday it appears
-  (nine names stepped mid-window between 09-09 and 09-16), short interest
+  (nine names stepped on a non-boundary run between 09-09 and 09-16), short interest
   publishes mid-week, and the revisions counter rolls over at earnings. Read
   the per-run fundamental score to attribute a move rather than assuming it
   (round 2, amended round 5).
@@ -344,11 +344,10 @@ vs staying manual.
   roughly 15 technical points off with no price event behind it, and the
   change detector reports it as `flag_cleared`. Only `death_cross` being SET
   is a negative event (TEAM, round 5).
-- **Post-earnings revision swings are suspect.** `net_revisions_30d` reads
-  yfinance's current-quarter (`0q`) row, which advances to the next fiscal
+- **Post-earnings revision swings are suspect.** `net_revisions_30d` is built from `parse_eps_revisions` (`data/signals.py`), which reads yfinance's current-quarter (`0q`) row, which advances to the next fiscal
   quarter once a company reports, so the counts restart: PANW read +39 on
   09-02 and 0 on 09-03, MDB +34 then -23, ZS +41 then +10, each within days
-  of its report, and all three were back above +24 two weeks later. Not
+  of its report, and all three were back at or above +24 two weeks later. Not
   verified against the raw frame, but a revision swing within two weeks of
   earnings should be read as a rollover until it is (round 4).
 - **Level rule: proposed, not adopted (round 5; owner decides at PR
@@ -359,10 +358,8 @@ vs staying manual.
   SHOP in round 3 and been wrong within two weeks. Candidate wording: a name
   whose fundamental score sits in the bottom 3 of the universe for 3
   consecutive digest windows joins the attention list as "persistently
-  weak", a separate row kind from decay. On 09-17 that is S (0.0), ESTC
-  (15.4) and ZS (16.7). DDOG, the weakest composite outside the S clamp,
-  would not qualify: its 33.2 fundamental is mid-pack and its weakness is a
-  technical score of 0 to 17 across 15 runs, exactly the leg the rule stays
+  weak", a separate row kind from decay. On 09-17 the bottom 3 are S (0.0), ESTC (15.4) and ZS (16.7), but ZS only entered the bottom 3 on 09-09 (CRWD held the slot before), so under the three-window wording only S and ESTC qualify today. DDOG, the weakest composite outside the S clamp,
+  would not qualify: its 33.2 fundamental is mid-pack and its weakness is a technical score of 0 to 17 across the 13 runs from 09-01 to 09-17, exactly the leg the rule stays
   out of.
 
 **Round 1 (issue #6, 2026-08-15, window 2026-08-11 to 2026-08-15, 5 runs):**
@@ -491,9 +488,12 @@ vs staying manual.
 - Revisions noise, explained: 11 revision crossings in the window, all
   within days of the late-August and early-September reports. PANW read +39
   on 09-02, 0 on 09-03, +27 on 09-15; MDB +34, -23, -1, +24; ZS +41, +10,
-  +1, +29. `net_revisions_30d` reads yfinance's current-quarter row, which
+  +1, +29. `net_revisions_30d` comes from `parse_eps_revisions`, which reads yfinance's current-quarter row, and that row
   rolls to the next fiscal quarter at earnings, so the counter restarts.
   Rubric line added above.
+- Level rule, S watch item and automate-vs-manual: deferred again to round 5
+  (below), where the boundary steps gave them real data to be judged on.
+  Nothing in this window changed the round-3 stay-manual reading.
 - What mattered: the fundamental column being flat everywhere (one check
   settled six names), the breadth count on `trend_state`, and the bench
   reading the same technical shock differently.
@@ -523,8 +523,7 @@ vs staying manual.
   expired after the 10-session lookback). Technical 98.9 to 83.9 on flat
   fundamentals (24.9), rank 5 to 9 mechanical. Nothing happened to the
   business.
-- The rest of the fortnight's fundamental steps, none of which reached the
-  attention list because they landed mid-window or lifted a score: GTLB
+- The rest of the fortnight's fundamental steps, none of which reached the attention list because they landed mid-window, lifted a score, or were too small for the 5-point drop leg (ESTC's 09-12 step cost 2.4 composite points): GTLB
   21.3 to 30.7 (09-09, `r40_trend` live at +0.101, `dilution` cleared), CRWD
   20.7 to 28.0 (09-09, live at +0.052), SNOW 25.7 to 33.3 (09-11, live at
   +0.078), PANW 41.4 to 48.1 (09-16), ZS 23.2 to 16.7 (09-11, `r40_trend`
@@ -541,11 +540,11 @@ vs staying manual.
   non-cross business flag to appear on a watchlist name since the digest
   started. Still never on the attention list, still the level-not-change
   case. The level rule is proposed in the rubric above, not adopted.
-- Coverage: clean in both windows, every configured name in every run.
+- Coverage: clean in both the round-4 and round-5 windows, every configured name in every run.
 - Automate-vs-manual: the round-3 revisit trigger has not fired. `r40_trend`
   coverage went 11 to 14 of 20 (CRWD, GTLB, SNOW now live; FTNT, HUBS, MDB,
   MNDY, NOW, OKTA still warming up, MNDY structurally), and the decay gate
-  has 0 hits in 25 runs with -0.035 the worst reading. Stay manual. What
+  has 0 hits in 25 runs; the worst current reading is RBRK at -0.035, and the worst in the history is S at -0.054 (08-18 through 09-05). Stay manual. What
   changed is that the rubric now has boundary-step events to calibrate
   against, so the next rounds can test the boundary-comparison bullet on
   real data. Warm-up note for the remaining names: MDB and OKTA hold 16
