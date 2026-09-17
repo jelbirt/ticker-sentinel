@@ -15,7 +15,11 @@ made every second merge conflict here.
   `run_history.json`; discard that change rather than committing it.
 
 ## Active workstreams
-- none open.
+- `rotation-rounds-4-5` (opened 2026-09-17, PR #27 open for owner review):
+  SPEC 7.0.1 record for refresh rounds 4 and 5 (issues #25 and #26, both
+  closed with no watchlist changes). Documentation only. Owner decision
+  pending on the PR: adopt, retune or strike the proposed fundamental-only
+  level rule.
 
   One branch per workstream via `scripts/new-worktree.sh <branch>`; main is the
   review inbox; merge back via PR.
@@ -171,12 +175,15 @@ made every second merge conflict here.
 - Weekly watchlist candidate refresh: live since 2026-08-15. A digest issue
   opens Saturdays (label `watchlist-refresh`, owner-assigned); do the refresh
   from the issue. Bench: WDAY, SHOP, TWLO, ZM (a structured `bench:` key in
-  watchlist.yaml). Calibration complete: rounds 1-3 (issues #6, #22, #24) all
-  closed with no changes; the option-3 decision (2026-08-31, SPEC 7.0.1 round
-  3) is STAY MANUAL, revisit when the remaining warm-up names go
-  r40_trend-live or the decay gate first fires. Standing watch items for
-  refresh #4: GTLB (warm-up ends after 2026-09-01 earnings; does the rank
-  slide survive the boundary), S (level-not-change gap), and whether to add a
-  level rule to the rubric.
+  watchlist.yaml). Calibration complete: rounds 1-5 (issues #6, #22, #24, #25, #26)
+  all closed with no changes; the option-3 decision (2026-08-31, SPEC 7.0.1
+  round 3) is STAY MANUAL, reaffirmed 2026-09-17 (round 5: 14 of 20
+  r40_trend-live, gate 0 hits in 25 runs), revisit when the remaining
+  warm-up names go r40_trend-live or the decay gate first fires. Standing
+  watch items for refresh #6: RBRK (first real fundamental step down,
+  r40_trend -0.035, the worst in the universe; a second step with a trend
+  break is a gate hit), S (level-not-change gap, dilution flag set
+  2026-09-08), and the proposed fundamental-only level rule awaiting the
+  owner's decision on PR #27.
 - (done) First scheduled run after merge created `data/cache/run_history.json`
   on 2026-08-07; change detection live since 2026-08-08.
