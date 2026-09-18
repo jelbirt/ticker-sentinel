@@ -17,9 +17,8 @@ made every second merge conflict here.
 ## Active workstreams
 - `rotation-rounds-4-5` (opened 2026-09-17, PR #27 open for owner review):
   SPEC 7.0.1 record for refresh rounds 4 and 5 (issues #25 and #26, both
-  closed with no watchlist changes). Documentation only. Owner decision
-  pending on the PR: adopt, retune or strike the proposed fundamental-only
-  level rule.
+  closed with no watchlist changes). Documentation only. Adopts the
+  fundamental-only level rule (live names, surfacing not action).
 
   One branch per workstream via `scripts/new-worktree.sh <branch>`; main is the
   review inbox; merge back via PR.
@@ -183,7 +182,8 @@ made every second merge conflict here.
   watch items for refresh #6: RBRK (first real fundamental step down,
   r40_trend -0.035, the worst in the universe; a second step with a trend
   break is a gate hit), S (level-not-change gap, dilution flag set
-  2026-09-08), and the proposed fundamental-only level rule awaiting the
-  owner's decision on PR #27.
+  2026-09-08), and the level rule's first application: S and ESTC qualify as
+  persistently weak at round 6, so round 6 carries the first bench
+  comparison on the fundamental leg (adopted 2026-09-17, PR #27).
 - (done) First scheduled run after merge created `data/cache/run_history.json`
   on 2026-08-07; change detection live since 2026-08-08.
