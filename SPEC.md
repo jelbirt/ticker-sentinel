@@ -350,17 +350,33 @@ vs staying manual.
   of its report, and all three were back at or above +24 two weeks later. Not
   verified against the raw frame, but a revision swing within two weeks of
   earnings should be read as a rollover until it is (round 4).
-- **Level rule: proposed, not adopted (round 5; owner decides at PR
-  review).** If a level rule is added it must read the fundamental leg only,
-  never the composite. Composite is 40 percent technical and the technical
-  leg whipsaws universe-wide (18 of 20 names in `uptrend` on 09-01, 11 on
-  09-12, 18 on 09-16); a composite-level rule would have swapped GTLB for
-  SHOP in round 3 and been wrong within two weeks. Candidate wording: a name
-  whose fundamental score sits in the bottom 3 of the universe for 3
-  consecutive digest windows joins the attention list as "persistently
-  weak", a separate row kind from decay. On 09-17 the bottom 3 are S (0.0), ESTC (15.4) and ZS (16.7), but ZS only entered the bottom 3 on 09-09 (CRWD held the slot before), so under the three-window wording only S and ESTC qualify today. DDOG, the weakest composite outside the S clamp,
-  would not qualify: its 33.2 fundamental is mid-pack and its weakness is a technical score of 0 to 17 across the 13 runs from 09-01 to 09-17, exactly the leg the rule stays
-  out of.
+- **Level rule (adopted 2026-09-17, round 5).** A name whose fundamental
+  score sits in the bottom 3 of the universe for 3 consecutive digest
+  windows joins the attention list as "persistently weak", a separate row
+  kind from decay, subject to two conditions:
+  1. The name must be `r40_trend`-live. Warm-up names score partly from
+     annual data (`growth_from_annual`, `insufficient_history`), so their
+     level is not yet trustworthy; a data-quality flag disqualifies.
+  2. The row is surfacing only, not action. It means "compare this name
+     against the bench on the fundamental leg in this round's evidence
+     comment". It does not by itself propose a swap; standing conditions are
+     still not events (round 3), the row just guarantees the comparison is
+     made and recorded each round.
+  The rule reads the fundamental leg only, never the composite. Composite is
+  40 percent technical and the technical leg whipsaws universe-wide (18 of
+  20 names in `uptrend` on 09-01, 11 on 09-12, 18 on 09-16); a
+  composite-level rule would have swapped GTLB for SHOP in round 3 and been
+  wrong within two weeks. Bottom 3 is relative, so the row never goes empty;
+  the three-window persistence and the bench comparison are what keep it
+  from being noise, and an absolute floor is the natural next tune if they
+  prove insufficient. On 09-17 the bottom 3 are S (0.0), ESTC (15.4) and ZS
+  (16.7), all live; ZS only entered the bottom 3 on 09-09 (CRWD held the
+  slot before), so S and ESTC qualify at round 6 and ZS at round 7 if it
+  stays. DDOG, the weakest composite outside the S clamp, would not qualify:
+  its 33.2 fundamental is mid-pack and its weakness is a technical score of
+  0 to 17 across the 13 runs from 09-01 to 09-17, exactly the leg the rule
+  stays out of. The digest does not compute this row yet; until it does,
+  the round's evidence comment reads it off the level table by hand.
 
 **Round 1 (issue #6, 2026-08-15, window 2026-08-11 to 2026-08-15, 5 runs):**
 - Outcome: no changes. DDOG held (0 of 5 gate hits, drop was composite-only,
@@ -539,7 +555,10 @@ vs staying manual.
   -0.033 on the new quarter, and a `dilution` flag SET on 09-08, the first
   non-cross business flag to appear on a watchlist name since the digest
   started. Still never on the attention list, still the level-not-change
-  case. The level rule is proposed in the rubric above, not adopted.
+  case. The level rule is adopted in the rubric above (fundamental leg
+  only, live names only, surfacing not action); S and ESTC meet it at
+  round 6, so round 6 carries the first bench comparison on the
+  fundamental leg.
 - Coverage: clean in both the round-4 and round-5 windows, every configured name in every run.
 - Automate-vs-manual: the round-3 revisit trigger has not fired. `r40_trend`
   coverage went 11 to 14 of 20 (CRWD, GTLB, SNOW now live; FTNT, HUBS, MDB,
