@@ -15,11 +15,7 @@ made every second merge conflict here.
   `run_history.json`; discard that change rather than committing it.
 
 ## Active workstreams
-- `digest-persistently-weak` (opened 2026-09-20, PR #30 open for owner review):
-  the digest computes the level-rule "persistently weak" table (bottom N
-  fundamental scores over N window ends, r40_trend-live, r40_fcf pass/fail)
-  and the bench table gains the fundamental leg, so refresh #7 needs no hand
-  read. Config keys `changes.weak_bottom_n` and `changes.weak_windows`.
+- none open.
 
   One branch per workstream via `scripts/new-worktree.sh <branch>`; main is the
   review inbox; merge back via PR.
@@ -36,6 +32,16 @@ made every second merge conflict here.
   relation instead.
 
 ## Done
+- `digest-persistently-weak` (2026-09-20, merged as PR #30, worktree torn
+  down): the digest computes the level-rule "persistently weak" table (bottom
+  N fundamental scores on the last run of N consecutive full windows,
+  r40_trend-live with no data-quality flag at each, r40_fcf pass/fail against
+  the shared `R40_BAR`), and the bench table carries the fundamental leg.
+  Config keys `changes.weak_bottom_n` and `changes.weak_windows` (both 3).
+  Rebuilt on the 2026-09-19 history it matched the round-6 hand read line
+  for line. Review fix landed: bench rows pair last observed fundamentals
+  with the last observed composite. Left cosmetic: the parent heading still
+  reads "(persistent decay)" above a row that is not decay.
 - `rotation-round-6` (2026-09-20, merged as PR #29, worktree torn down): the
   refresh #6 round (issue #28, closed) and the first swap under the level
   rule: S demoted to the bench (reversible, its cache history survives the
@@ -196,7 +202,7 @@ made every second merge conflict here.
   downtrend lasts), ZS and ESTC under the level rule (ZS holds windows 5
   and 6 on the last-run reading), RBRK at r40_trend -0.035, S on the
   bench. The digest computes the persistently-weak row with an r40_fcf
-  pass/fail column from refresh #7 once PR #30 merges; refresh #7 is the
+  pass/fail column from refresh #7 (PR #30, merged 2026-09-20); refresh #7 is the
   first round to read it from the issue (expected S and ESTC qualify, ZS 2
   of 3), so check the table against that expectation before acting on it.
 - (done) First scheduled run after merge created `data/cache/run_history.json`
