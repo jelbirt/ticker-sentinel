@@ -335,7 +335,7 @@ class TestBenchSection:
             1, date(2026, 8, 15),
         )
         assert "WDAY." in text                      # the configured-names line
-        assert "| WDAY | 2 of 2 | 57.0 | -4.0 | dilution |" in text
+        assert "| WDAY | 2 of 2 | 57.0 | -4.0 | n/a | n/a | dilution |" in text
         assert "compare directly with the attention list" in text
 
     def test_configured_bench_name_without_snapshots_is_named(self):
@@ -375,6 +375,191 @@ class TestBenchSection:
         ]
         digest = build_digest(runs, ["AAA"], ["WDAY", "ZM"], CFG)
         assert [b.ticker for b in digest.bench_weeks] == ["WDAY", "ZM", "OLDBENCH"]
+
+
+def _scored(
+    score: float | None, r40_trend: float | None = 0.05, flags: list[str] | None = None,
+    r40_fcf: float | None = None, rank: int | None = None,
+) -> TickerSnapshot:
+    return TickerSnapshot(
+        composite=score, score=score, rank=rank, r40_fcf=r40_fcf,
+        r40_trend=r40_trend, trend_state="uptrend", flags=list(flags or []),
+    )
+
+
+def _level_runs(n_runs: int, per_run) -> list[RunSnapshot]:
+    """n_runs runs, dated 08-01 onward; per_run(i) -> tickers for run i."""
+    return [_run(1 + i, per_run(i)) for i in range(n_runs)]
+
+
+class TestLevelRule:
+    # CFG: week_window_runs 5, weak_bottom_n 3, weak_windows 3, so 15 runs hold
+    # exactly three full-window ends at indexes 14, 9 and 4
+    BASE = {"AAA": 90.0, "BBB": 80.0, "CCC": 10.0, "DDD": 20.0, "EEE": 30.0}
+    ENDS = (4, 9, 14)
+
+    def _runs(self, n_runs: int = 15, override=None) -> list[RunSnapshot]:
+        def per_run(i):
+            scores = dict(self.BASE)
+            if override:
+                scores.update(override(i))
+            return {t: _scored(v) for t, v in scores.items()}
+        return _level_runs(n_runs, per_run)
+
+    def test_bottom_three_qualify_after_three_window_ends(self):
+        digest = build_digest(self._runs(), list(self.BASE), [], CFG)
+        rows = {w.ticker: w for w in digest.level_watch}
+        assert set(rows) == {"CCC", "DDD", "EEE"}
+        assert all(w.qualifies and w.windows == 3 for w in rows.values())
+        assert all(w.windows_available == 3 and w.windows_needed == 3 for w in rows.values())
+        assert [w.ticker for w in digest.level_watch] == ["CCC", "DDD", "EEE"]  # score order
+
+    def test_only_window_ends_count(self):
+        # DDD is high everywhere except the three window ends: still 3 windows.
+        # EEE is bottom-3 everywhere except the middle window end: streak of 1.
+        def override(i):
+            out = {}
+            if i not in self.ENDS:
+                out["DDD"] = 95.0
+            if i == 9:
+                out["EEE"] = 95.0
+            return out
+        digest = build_digest(self._runs(override=override), list(self.BASE), [], CFG)
+        rows = {w.ticker: w for w in digest.level_watch}
+        assert rows["DDD"].qualifies and rows["DDD"].windows == 3
+        assert not rows["EEE"].qualifies and rows["EEE"].windows == 1
+        assert [w.ticker for w in digest.level_watch][:2] == ["CCC", "DDD"]  # qualifiers first
+
+    def test_warm_up_holds_a_slot_but_never_qualifies(self):
+        def per_run(i):
+            t = {k: _scored(v) for k, v in self.BASE.items()}
+            t["DDD"] = _scored(20.0, r40_trend=None, flags=["insufficient_history"])
+            t["EEE"] = _scored(30.0, r40_trend=0.02, flags=["growth_from_annual", "high_sbc"])
+            return t
+        digest = build_digest(_level_runs(15, per_run), list(self.BASE), [], CFG)
+        rows = {w.ticker: w for w in digest.level_watch}
+        assert set(rows) == {"CCC", "DDD", "EEE"}      # slots are held regardless
+        assert rows["CCC"].qualifies
+        assert not rows["DDD"].eligible and rows["DDD"].windows == 0
+        assert not rows["EEE"].eligible                # a data-quality flag disqualifies
+        assert rows["EEE"].flags_business == ["high_sbc"]
+        text = render_markdown(digest, 7, date(2026, 9, 26))
+        assert "| DDD | 20.0 | n/a | n/a | not eligible (insufficient history) |" in text
+        assert "not eligible (growth from annual)" in text
+
+    def test_liveness_is_checked_at_every_window_end(self):
+        # went live only at the latest window end: one window, not three
+        def per_run(i):
+            t = {k: _scored(v) for k, v in self.BASE.items()}
+            if i < 14:
+                t["CCC"] = _scored(10.0, r40_trend=None, flags=["insufficient_history"])
+            return t
+        digest = build_digest(_level_runs(15, per_run), list(self.BASE), [], CFG)
+        ccc = next(w for w in digest.level_watch if w.ticker == "CCC")
+        assert ccc.eligible and ccc.windows == 1 and not ccc.qualifies
+
+    def test_missing_r40_trend_without_a_flag_reads_as_such(self):
+        def per_run(i):
+            t = {k: _scored(v) for k, v in self.BASE.items()}
+            t["CCC"] = _scored(10.0, r40_trend=None)
+            return t
+        digest = build_digest(_level_runs(15, per_run), list(self.BASE), [], CFG)
+        text = render_markdown(digest, 7, date(2026, 9, 26))
+        assert "| CCC | 10.0 | n/a | n/a | not eligible (r40 trend n/a) |" in text
+
+    def test_tie_at_the_boundary_is_broken_by_ticker_every_time(self):
+        # two names at the 0.0 clamp plus a third tie at the boundary: the same
+        # name is excluded at every window end, so streaks cannot flip-flop
+        scores = {"AAA": 90.0, "CCC": 0.0, "DDD": 0.0, "EEE": 20.0, "FFF": 20.0}
+        digest = build_digest(
+            _level_runs(15, lambda i: {t: _scored(v) for t, v in scores.items()}),
+            list(scores), [], CFG,
+        )
+        assert [(w.ticker, w.windows) for w in digest.level_watch] == [
+            ("CCC", 3), ("DDD", 3), ("EEE", 3)
+        ]
+
+    def test_unknown_score_never_ranks(self):
+        def per_run(i):
+            t = {k: _scored(v) for k, v in self.BASE.items()}
+            t["CCC"] = _scored(None)
+            return t
+        digest = build_digest(_level_runs(15, per_run), list(self.BASE), [], CFG)
+        assert [w.ticker for w in digest.level_watch] == ["DDD", "EEE", "BBB"]
+        assert digest.level_watch[0].scored_latest == 4
+        text = render_markdown(digest, 7, date(2026, 9, 26))
+        assert "Bottom 3 of the 4 names scored on the latest run" in text
+
+    def test_only_full_windows_count_as_ends(self):
+        # 11 runs: indexes 10 and 5 end full windows; index 0 does not (the
+        # first run ever recorded was no digest's window end)
+        digest = build_digest(self._runs(n_runs=11), list(self.BASE), [], CFG)
+        rows = {w.ticker: w for w in digest.level_watch}
+        assert rows["CCC"].windows == 2 and rows["CCC"].windows_available == 2
+        assert not rows["CCC"].qualifies
+        text = render_markdown(digest, 2, date(2026, 8, 8))
+        assert "| CCC | 10.0 | n/a | n/a | 2 of 3 windows |" in text
+        assert "History holds 2 window end(s) and the rule needs 3" in text
+
+    def test_short_history_cannot_qualify(self):
+        digest = build_digest(self._runs(n_runs=6), list(self.BASE), [], CFG)
+        rows = {w.ticker: w for w in digest.level_watch}
+        assert rows["CCC"].windows == 1 and rows["CCC"].windows_available == 1
+        assert build_digest(self._runs(n_runs=4), list(self.BASE), [], CFG).level_watch == []
+
+    def test_thresholds_come_from_config(self):
+        cfg = ChangesCfg(weak_windows=2, weak_bottom_n=1)
+        digest = build_digest(self._runs(n_runs=10), list(self.BASE), [], cfg)
+        assert [(w.ticker, w.qualifies) for w in digest.level_watch] == [("CCC", True)]
+
+    def test_r40_fcf_pass_fail_beside_the_score(self):
+        def per_run(i):
+            t = {k: _scored(v) for k, v in self.BASE.items()}
+            t["CCC"] = _scored(10.0, r40_fcf=0.239, rank=20, flags=["dilution", "high_sbc"])
+            t["DDD"] = _scored(20.0, r40_fcf=0.4866, rank=19)
+            return t
+        digest = build_digest(_level_runs(15, per_run), list(self.BASE), [], CFG)
+        rows = {w.ticker: w for w in digest.level_watch}
+        assert rows["CCC"].r40_fcf_passes is False and rows["DDD"].r40_fcf_passes is True
+        assert rows["EEE"].r40_fcf_passes is None
+        text = render_markdown(digest, 7, date(2026, 9, 26))
+        assert "| CCC | 10.0 | 23.9 fail | 20 | qualifies (3 of 3 windows) | dilution, high sbc |" in text
+        assert "| DDD | 20.0 | 48.7 pass | 19 | qualifies (3 of 3 windows) | n/a |" in text
+        assert "Surfacing only, never a swap by itself" in text
+
+    def test_r40_cell_never_reads_as_40_point_0_with_a_verdict(self):
+        from sentinel.digest import _r40_cell
+        assert _r40_cell(0.3999) == "39.99 fail"
+        assert _r40_cell(0.4001) == "40.01 pass"
+        assert _r40_cell(0.40) == "40.00 pass"
+        assert _r40_cell(0.239) == "23.9 fail"
+
+    def test_bench_table_carries_the_fundamental_leg(self):
+        runs = [
+            RunSnapshot("2026-08-12", "scheduled", {"AAA": _healthy()}, {
+                "SHOP": TickerSnapshot(composite=45.9, score=62.7, r40_fcf=0.502,
+                                       flags=["passes_all_r40"]),
+            }),
+            # degraded last run: every bench field null; the row must keep the
+            # last observed fundamental beside the last observed composite
+            RunSnapshot("2026-08-13", "scheduled", {"AAA": _healthy()}, {
+                "SHOP": TickerSnapshot(),
+            }),
+        ]
+        digest = build_digest(runs, ["AAA"], ["SHOP"], CFG)
+        assert digest.bench_weeks[0].score_last == 62.7
+        text = render_markdown(digest, 7, date(2026, 9, 26))
+        assert "| SHOP | 2 of 2 | 45.9 | n/a | 62.7 | 50.2 pass | n/a |" in text
+
+    def test_json_carries_the_rows(self):
+        digest = build_digest(self._runs(), list(self.BASE), [], CFG)
+        payload = json.loads(render_json(digest, 7, date(2026, 9, 26)))
+        rows = {r["ticker"]: r for r in payload["level_watch"]}
+        assert rows["CCC"]["qualifies"] is True and rows["CCC"]["windows"] == 3
+        assert payload["bench_weeks"] == []
+
+    def test_empty_history_has_no_rows(self):
+        assert build_digest([], ["AAA"], [], CFG).level_watch == []
 
 
 class TestJsonOutput:

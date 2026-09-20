@@ -66,6 +66,10 @@ class ChangesCfg:
     deteriorating_r40_trend: float = -0.10  # plan section 6 weakest-buy threshold
     digest_decay_runs: int = 2      # decay-gate hits in the weekly digest window
                                     # for a ticker to make the attention list
+    weak_bottom_n: int = 3          # level rule (SPEC 7.0.1 round 5): bottom N
+                                    # fundamental scores on a window's last run
+    weak_windows: int = 3           # consecutive digest windows in the bottom N
+                                    # before a name reads "persistently weak"
     baseline_min_fraction: float = 0.5  # fraction of the prior baseline's
                                         # tickers that must score for a run to
                                         # be diffed and saved as baseline
