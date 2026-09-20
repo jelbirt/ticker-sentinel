@@ -21,6 +21,7 @@ FLAG_DILUTION = "dilution"                        # dilution > 3%/yr
 FLAG_HIGH_SBC = "high_sbc"                        # sbc_intensity > 15%
 FLAG_STALE = "stale_fundamentals"                 # statements > 200 days old
 FLAG_ALL_R40 = "passes_all_r40"                   # all three R40 variants ≥ 40
+R40_BAR = 0.40                                    # the "40" in Rule of 40, as a fraction
 
 STALE_DAYS = 200
 DILUTION_LIMIT = 0.03
@@ -265,7 +266,7 @@ def compute_scorecard(inp: FundamentalInputs, today: date | None = None) -> Scor
         and sc.r40_fcf - sc.r40_sbc_adj > SBC_GAP_LIMIT
     ):
         sc.flags.append(FLAG_SBC_INFLATED)
-    if all(v is not None and v >= 0.40 for v in (sc.r40_fcf, sc.r40_ebitda, sc.r40_sbc_adj)):
+    if all(v is not None and v >= R40_BAR for v in (sc.r40_fcf, sc.r40_ebitda, sc.r40_sbc_adj)):
         sc.flags.append(FLAG_ALL_R40)
 
     today = today or date.today()

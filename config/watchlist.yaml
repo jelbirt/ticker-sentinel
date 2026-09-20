@@ -73,6 +73,8 @@ changes:                 # day-over-day change detection (defaults shown; all op
   min_signals: 2         # negative signals needed for the Deterioration watch
   deteriorating_r40_trend: -0.10  # R40 trend below this = deteriorating (plan section 6)
   digest_decay_runs: 2   # decay-gate hits in the weekly digest window for the attention list
+  weak_bottom_n: 3       # level rule (SPEC 7.0.1 round 5): bottom N fundamental scores on a window's last run
+  weak_windows: 3        # consecutive digest windows in that bottom N before a name is "persistently weak"
 news:
   feeds:               # general feeds — every entry text-matched to your tickers
     - https://www.cnbc.com/id/100003114/device/rss/rss.html          # CNBC Top Business

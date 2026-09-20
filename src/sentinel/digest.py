@@ -16,6 +16,7 @@ from pathlib import Path
 
 from sentinel.config import ChangesCfg, Config, load_config
 from sentinel.data.history import load_history
+from sentinel.indicators.fundamentals import R40_BAR
 from sentinel.report.changes import RunSnapshot, TickerSnapshot, diff_runs
 
 # manual refreshes before the digest starts prompting the automation decision
@@ -60,6 +61,16 @@ def classify_flags(flags: list[str]) -> tuple[list[str], list[str]]:
     return quality, business
 
 
+def snapshot_live(snap: TickerSnapshot) -> bool:
+    """Level-rule eligibility (SPEC 7.0.1 round 5, condition 1): the name has
+    an `r40_trend` and no data-quality flag, so its fundamental score is built
+    from full quarterly history rather than annual fallbacks. A warm-up score
+    is not yet a level anyone should act on."""
+    return snap.r40_trend is not None and not any(
+        f in DATA_QUALITY_FLAGS for f in snap.flags
+    )
+
+
 def snapshot_decaying(snap: TickerSnapshot, threshold: float) -> bool:
     """Plan section 6 decay gate evaluated from a persisted snapshot: R40 trend
     below `threshold` AND technical confirmation (downtrend or death cross).
@@ -96,7 +107,35 @@ class BenchWeek:
     composite_first: float | None
     composite_last: float | None
     composite_delta: float | None
+    score_last: float | None = None        # fundamental leg, for the level-rule comparison
+    r40_fcf_last: float | None = None      # fraction; rendered as points with pass/fail
     flags_latest: list[str] = field(default_factory=list)
+
+
+@dataclass(frozen=True)
+class WeakWeek:
+    """One name's standing under the level rule (SPEC 7.0.1 round 5).
+
+    Built for every name in the bottom `weak_bottom_n` by fundamental score on
+    the latest run, eligible or not, so the table shows the whole tail of the
+    level table rather than only the names that clear the bar: a warm-up
+    name occupying a slot is evidence too (it is why the next name up is
+    not in the bottom N).
+    """
+
+    ticker: str
+    score_latest: float | None
+    r40_fcf_latest: float | None
+    r40_fcf_passes: bool | None        # None when r40_fcf is unknown
+    rank_latest: int | None
+    windows: int                       # consecutive window ends in the bottom N
+                                       # while live, counted back from the latest
+    windows_available: int             # window ends the history actually holds
+    windows_needed: int                # cfg.weak_windows
+    eligible: bool                     # snapshot_live() on the latest run
+    qualifies: bool                    # eligible and windows >= windows_needed
+    flags_business: list[str] = field(default_factory=list)
+    flags_data_quality: list[str] = field(default_factory=list)
 
 
 @dataclass(frozen=True)
@@ -148,6 +187,7 @@ class WeeklyDigest:
     bench: list[str]
     notes: list[str]                   # degradation notes (unreadable history etc.)
     bench_weeks: list[BenchWeek] = field(default_factory=list)
+    level_watch: list[WeakWeek] = field(default_factory=list)  # bottom N, qualifiers first
 
 
 def _window(runs: list[RunSnapshot], cfg: ChangesCfg) -> list[RunSnapshot]:
@@ -184,6 +224,84 @@ def _missing_streak(window: list[RunSnapshot], ticker: str) -> int:
     return streak
 
 
+def _window_ends(runs: list[RunSnapshot], cfg: ChangesCfg) -> list[RunSnapshot]:
+    """Last run of each of the latest `weak_windows` digest windows, latest first.
+
+    A digest window is the last `week_window_runs` runs at the time it is
+    built, so stepping back `week_window_runs` at a time from the latest run
+    reproduces the window ends of the previous digests whenever every week had
+    a full set of runs. A missed run shifts the earlier boundaries by one run;
+    the rule reads a slow-moving level, so that costs at most one window at
+    the margin, and the alternative (calendar weeks) would give the digest two
+    window conventions.
+    """
+    step = max(cfg.week_window_runs, 1)
+    ends: list[RunSnapshot] = []
+    for k in range(max(cfg.weak_windows, 1)):
+        idx = len(runs) - 1 - k * step
+        if idx < 0:
+            break
+        ends.append(runs[idx])
+    return ends
+
+
+def _bottom_n(run: RunSnapshot, n: int) -> list[str]:
+    """The n lowest fundamental scores among the names scored in `run`, lowest
+    first, ties broken by ticker. Ranked over every name the run scored, warm-up
+    names included: a warm-up score can hold a slot, which is why the table
+    shows eligibility per name instead of silently ranking around it. A None
+    score is unknown, not low, and never ranks."""
+    scored = [(s.score, t) for t, s in run.tickers.items() if s.score is not None]
+    return [t for _, t in sorted(scored)[:max(n, 0)]]
+
+
+def _level_watch(runs: list[RunSnapshot], cfg: ChangesCfg) -> list[WeakWeek]:
+    """Level rule (SPEC 7.0.1 round 5, window membership decided round 6):
+    a name is in the bottom N "for a window" when it is bottom N on that
+    window's LAST run; it qualifies as persistently weak after `weak_windows`
+    consecutive such windows while `r40_trend`-live at each of them. Reads the
+    fundamental leg only, never the composite. Surfacing, not action: a row
+    means "compare against the bench on the fundamental leg this round"."""
+    ends = _window_ends(runs, cfg)
+    if not ends:
+        return []
+    needed = max(cfg.weak_windows, 1)
+    latest = ends[0]
+    bottoms = [set(_bottom_n(run, cfg.weak_bottom_n)) for run in ends]
+    rows: list[WeakWeek] = []
+    for ticker in _bottom_n(latest, cfg.weak_bottom_n):
+        windows = 0
+        for run, bottom in zip(ends, bottoms):
+            snap = run.tickers.get(ticker)
+            if snap is None or ticker not in bottom or not snapshot_live(snap):
+                break
+            windows += 1
+        snap = latest.tickers[ticker]
+        eligible = snapshot_live(snap)
+        quality, business = classify_flags(list(snap.flags))
+        rows.append(WeakWeek(
+            ticker=ticker,
+            score_latest=snap.score,
+            r40_fcf_latest=snap.r40_fcf,
+            r40_fcf_passes=None if snap.r40_fcf is None else snap.r40_fcf >= R40_BAR,
+            rank_latest=snap.rank,
+            windows=windows,
+            windows_available=len(ends),
+            windows_needed=needed,
+            eligible=eligible,
+            qualifies=eligible and windows >= needed,
+            flags_business=business,
+            flags_data_quality=quality,
+        ))
+    rows.sort(key=lambda w: (
+        not w.qualifies,
+        -w.windows,
+        w.score_latest if w.score_latest is not None else 0.0,
+        w.ticker,
+    ))
+    return rows
+
+
 def _bench_weeks(
     window: list[RunSnapshot], bench: list[str]
 ) -> list[BenchWeek]:
@@ -210,6 +328,8 @@ def _bench_weeks(
             composite_first=valued[0] if valued else None,
             composite_last=valued[-1] if valued else None,
             composite_delta=valued[-1] - valued[0] if len(valued) > 1 else None,
+            score_last=appearances[-1].score if appearances else None,
+            r40_fcf_last=appearances[-1].r40_fcf if appearances else None,
             flags_latest=list(appearances[-1].flags) if appearances else [],
         ))
     return weeks
@@ -239,6 +359,7 @@ def build_digest(
                 CoverageGap(ticker="", kind="no_history", runs_seen=len(universe))
             ],
             bench=list(bench), notes=list(notes or []), bench_weeks=[],
+            level_watch=[],
         )
 
     change_counts: dict[str, int] = {}
@@ -343,6 +464,8 @@ def build_digest(
         bench=list(bench),
         notes=list(notes or []),
         bench_weeks=_bench_weeks(window, list(bench)),
+        # looks back weak_windows digest windows, so it reads `runs`, not `window`
+        level_watch=_level_watch(runs, cfg),
     )
 
 
@@ -352,6 +475,26 @@ def _fmt(value: float | None, spec: str = ".1f") -> str:
 
 def _flag_cell(flags: list[str]) -> str:
     return ", ".join(f.replace("_", " ") for f in flags) or "n/a"
+
+
+def _r40_cell(value: float | None) -> str:
+    """r40_fcf as points with the Rule of 40 verdict beside it: a low score for
+    penalties and a low score for a failed thesis are different conversations
+    (SPEC 7.0.1 round 6)."""
+    if value is None:
+        return "n/a"
+    return f"{value * 100:.1f} {'pass' if value >= R40_BAR else 'fail'}"
+
+
+def _weak_status(w: WeakWeek) -> str:
+    if w.qualifies:
+        return f"qualifies ({w.windows} of {w.windows_needed} windows)"
+    if not w.eligible:
+        why = _flag_cell(w.flags_data_quality)
+        if why == "n/a":
+            why = "r40 trend n/a"
+        return f"not eligible ({why})"
+    return f"{w.windows} of {w.windows_needed} windows"
 
 
 def _rank_cell(week: TickerWeek) -> str:
@@ -412,6 +555,41 @@ def render_markdown(
         )
     lines.append("")
 
+    lines.append("### Persistently weak (level rule)")
+    lines.append("")
+    if digest.level_watch:
+        needed = digest.level_watch[0].windows_needed
+        available = digest.level_watch[0].windows_available
+        lines += [
+            f"Bottom {len(digest.level_watch)} of the universe by fundamental "
+            "score on the latest run, with the consecutive digest windows (last "
+            "run of each) the name has held a bottom slot while r40_trend-live. "
+            f"A name at {needed} of {needed} windows qualifies: compare it "
+            "against the bench on the fundamental leg in this round's evidence "
+            "comment (SPEC 7.0.1 round 5). Surfacing only, never a swap by "
+            "itself; r40 fcf says whether the score is a failed thesis or "
+            "penalties on a passing one.",
+            "",
+            "| ticker | fundamental | r40 fcf | rank | status | business flags |",
+            "| --- | --- | --- | --- | --- | --- |",
+        ]
+        for w in digest.level_watch:
+            rank = str(w.rank_latest) if w.rank_latest is not None else "n/a"
+            lines.append(
+                f"| {w.ticker} | {_fmt(w.score_latest)} | "
+                f"{_r40_cell(w.r40_fcf_latest)} | {rank} | {_weak_status(w)} | "
+                f"{_flag_cell(w.flags_business)} |"
+            )
+        if available < needed:
+            lines += [
+                "",
+                f"History holds {available} window end(s) and the rule needs "
+                f"{needed}, so nothing can qualify yet.",
+            ]
+    else:
+        lines.append("No fundamental scores in the latest run, so no level to read.")
+    lines.append("")
+
     lines.append("## Change activity this window")
     lines.append("")
     if digest.change_counts:
@@ -447,13 +625,15 @@ def render_markdown(
             "these composites compare directly with the attention list above. "
             "Unranked, and never part of any watchlist number.",
             "",
-            "| ticker | runs seen | composite | window delta | latest flags |",
-            "| --- | --- | --- | --- | --- |",
+            "| ticker | runs seen | composite | window delta | fundamental "
+            "| r40 fcf | latest flags |",
+            "| --- | --- | --- | --- | --- | --- | --- |",
         ]
         for b in digest.bench_weeks:
             lines.append(
                 f"| {b.ticker} | {b.runs_seen} of {digest.runs_in_window} | "
                 f"{_fmt(b.composite_last)} | {_fmt(b.composite_delta, '+.1f')} | "
+                f"{_fmt(b.score_last)} | {_r40_cell(b.r40_fcf_last)} | "
                 f"{_flag_cell(b.flags_latest)} |"
             )
         scored_bench = {b.ticker for b in digest.bench_weeks}

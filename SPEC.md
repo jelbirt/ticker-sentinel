@@ -384,8 +384,10 @@ vs staying manual.
   clamp, would not qualify:
   its 33.2 fundamental is mid-pack and its weakness is a technical score of
   0 to 17 across the 15 runs from 09-01 to 09-19, exactly the leg the rule
-  stays out of. The digest does not compute this row yet; until it does,
-  the round's evidence comment reads it off the level table by hand.
+  stays out of. The digest computes this row from refresh #7 on (the
+  "Persistently weak" table under the attention list, `level_watch` in the
+  JSON twin; see "What the digest carries as of 2026-09-20" below), so no
+  round reads it off the level table by hand again.
 
 **Round 1 (issue #6, 2026-08-15, window 2026-08-11 to 2026-08-15, 5 runs):**
 - Outcome: no changes. DDOG held (0 of 5 gate hits, drop was composite-only,
@@ -699,6 +701,43 @@ answering round-1 gaps 1 and 2 and preparing the refresh #3 decision):
   the flag split as data instead of parsing a markdown table.
 - **Retention.** `changes.retention_runs` 12 -> 25 (section 2.4), so the file
   holds five digest windows rather than two and a half.
+
+**What the digest carries as of 2026-09-20** (branch
+`digest-persistently-weak`, implementing the round-5 level rule so refresh #7
+does not depend on the hand read that round 6 made):
+
+- **Persistently weak table.** Under the attention list, one row per name in
+  the bottom `changes.weak_bottom_n` (3) by fundamental score on the latest
+  run, eligible or not, so the tail of the level table is visible whole: a
+  warm-up name holding a slot is why the next name up is not in it. Each row
+  carries the fundamental score, `r40_fcf` in points with a pass or fail
+  verdict against the Rule of 40 bar (the one constant, `R40_BAR` in
+  `indicators/fundamentals.py`, now shared with the `passes_all_r40` flag),
+  rank, business flags, and a status: "qualifies (3 of 3 windows)", "2 of 3
+  windows", or "not eligible (insufficient history)". Reads the fundamental
+  leg only; composite never enters it.
+- **Window ends, as decided in round 6.** A name holds a window when it is
+  bottom N on that window's LAST run; the digest steps back
+  `week_window_runs` runs at a time from the latest run to find the previous
+  windows' last runs, which reproduces the earlier digests' windows whenever
+  every week had a full set of runs (a missed run shifts the earlier
+  boundaries by one run, at most one window at the margin). The name must be
+  `r40_trend`-live with no data-quality flag at every counted window end,
+  not just the latest, since a warm-up score in an earlier window is no more
+  a level than one today. `changes.weak_windows` (3) sets the bar; a history
+  shorter than that says so in the table rather than qualifying nobody in
+  silence.
+- **Bench table gains the fundamental leg.** The bench rows now carry the
+  fundamental score and the same `r40_fcf` pass or fail cell, so the
+  comparison the level rule asks for (this name against the bench on the
+  fundamental leg) is two columns of one issue rather than an offline
+  scorecard run. Both tables are in the JSON twin (`level_watch`,
+  `bench_weeks.score_last`, `bench_weeks.r40_fcf_last`).
+- **Checked against round 6.** Rebuilt on the committed history as of
+  2026-09-19 the table reads S 0.0, 23.9 fail, qualifies (3 of 3); ESTC
+  15.4, 35.5 fail, qualifies (3 of 3); ZS 16.7, 48.7 pass, 2 of 3 windows,
+  which is the round-6 hand read line for line, including ZS coming up at
+  round 7.
 
 The digest remains read-only over history: no network, no scoring, no cache
 writes.
