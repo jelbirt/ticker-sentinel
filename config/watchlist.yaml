@@ -24,7 +24,10 @@ universe:
   # `bench:` key below. Rotation: roughly weekly owner-initiated candidate
   # refresh (the weekly-refresh workflow opens a digest issue Saturdays);
   # every edit here stays owner-gated.
-  - ticker: S
+  # rotation round 6 (2026-09-20, SPEC 7.0.1): S demoted to bench, SHOP promoted.
+  # First swap under the level rule: S sat bottom-3 on the fundamental leg for
+  # three consecutive digest windows and lost the bench comparison to SHOP.
+  - ticker: SHOP
     tags: [software, r40]
   - ticker: RBRK
     tags: [software, r40]
@@ -48,7 +51,7 @@ universe:
     tags: [software, r40]
   - ticker: PLTR
     tags: [software, r40]
-bench: [WDAY, SHOP, TWLO, ZM]   # reserve swap candidates, not scored; owner-gated like universe
+bench: [WDAY, TWLO, ZM, S]   # reserve swap candidates, shadow-scored, never ranked; owner-gated like universe
 benchmark: SPY
 report:
   top_n: 10

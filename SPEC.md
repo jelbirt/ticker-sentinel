@@ -294,7 +294,7 @@ written from observed rounds rather than guessed up front. From refresh #3 the
 checklist adds the decision on automating proposal drafting against this rubric
 vs staying manual.
 
-**Working rubric (as of round 5):**
+**Working rubric (as of round 6):**
 - Act on **decay-gate hit counts**, not on composite deltas. A name with 0 gate
   hits has not shown persistent decay however far its composite moved. But read
   a zero for what it is: the gate needs `r40_trend` below
@@ -372,7 +372,16 @@ vs staying manual.
   prove insufficient. On 09-17 the bottom 3 are S (0.0), ESTC (15.4) and ZS
   (16.7), all live; ZS only entered the bottom 3 on 09-09 (CRWD held the
   slot before), so S and ESTC qualify at round 6 and ZS at round 7 if it
-  stays. DDOG, the weakest composite outside the S clamp, would not qualify:
+  stays. Window membership (decided round 6): a name is "in the bottom 3
+  for a window" when it is bottom 3 on the window's LAST run, matching the
+  digest's first-vs-last convention and the level table it prints; under
+  that reading ZS holds windows 5 and 6 and comes up at round 7 if it is
+  still there. The row must print `r40_fcf` pass/fail next to the score:
+  ZS sits in the bottom 3 with an `r40_fcf` of 48.7 that passes the Rule
+  of 40, its score is three penalties (dilution, SBC, SBC-inflated), while
+  S fails the rule outright at 23.9. A low score for penalties and a low
+  score for a failed thesis are different conversations, and the row has
+  to say which one it is opening. DDOG, the weakest composite outside the S clamp, would not qualify:
   its 33.2 fundamental is mid-pack and its weakness is a technical score of
   0 to 17 across the 13 runs from 09-01 to 09-17, exactly the leg the rule
   stays out of. The digest does not compute this row yet; until it does,
@@ -576,6 +585,78 @@ vs staying manual.
 - What was noise: both window deltas as printed (RBRK's was the wrong move,
   TEAM's was a flag expiring), `flag_cleared` rows for crosses, and the 9
   short-interest crossings (exchange publication lands mid-week).
+
+**Round 6 (issue #28, 2026-09-19, window 2026-09-15 to 2026-09-19, 5 runs):**
+- Outcome: first swap. S out (demoted to the bench, still shadow-scored so
+  the move is reversible with its history intact), SHOP in. MNDY and HUBS,
+  the two attention-list names, held. ESTC surfaced under the level rule
+  and held.
+- The attention list was noise both times. MNDY -24.3 (rank 4 to 16) on a
+  flat 48.8 fundamental: its technical score read 0.0 on 09-12, 76.5 on
+  09-15 (the window's first run), 36.3 on 09-17 and 15.8 on 09-18, so the
+  window delta measured a one-day spike at the window start, and the 35.6
+  composite it ended on is where it sat all of round 5. HUBS -8.3 (rank 19
+  to 20) on a flat 32.4, toggling between `mixed` and `downtrend` as it has
+  since late August. Both are warm-up names with data-quality flags only.
+- The window itself was the quietest yet: one fundamental step (PANW 41.4
+  to 48.1 on 09-16, upward), zero flag events on the watchlist, `uptrend`
+  breadth 17 or 18 of 20 in every run (the round-4 drawdown fully
+  reverted), gate 0 hits in 25 runs, coverage clean. On the bench, WDAY's
+  -5.9 is its golden cross expiring on 09-16 (the TEAM mechanism from
+  round 5), SHOP sat flat at 45.9 in a `downtrend`, ZM's technical score
+  reached 0.0 on 09-18, TWLO +0.8.
+- Level rule, first application, read by hand from the level table. S and
+  ESTC were bottom 3 by fundamental score on every run of windows 4, 5 and
+  6 and both are live, so both qualify; ZS entered on 09-09 and holds
+  windows 5 and 6 under the last-run reading. Bench comparison on the
+  fundamental leg, recomputed from the committed cache as of 09-19
+  (`r40_fcf` is the Rule of 40 on the FCF leg, the universe's admission
+  criterion):
+  S 0.0 (`r40_fcf` 23.9, growth 21.1 percent TTM, FCF margin 2.8, SBC 29.3
+  percent of revenue, dilution 3.2, `r40_trend` -0.033; the unclamped
+  score is about -15, so the 0.0 the table shows is censored);
+  ESTC 15.4 (`r40_fcf` 35.5, growth 16.2, FCF margin 19.4, SBC 16.8);
+  ZS 16.7 (`r40_fcf` 48.7, passes);
+  SHOP 62.7 (`r40_fcf` 50.2, growth 32.5 percent TTM, FCF margin 17.7, SBC
+  3.6, dilution -0.8, `passes_all_r40`; warm-up, only the `r40_trend`
+  term is missing);
+  ZM 33.8 (live, `r40_fcf` 43.6, growth 5.0);
+  WDAY 22.9 and TWLO 23.6 (both `growth_from_annual`, not trustworthy yet
+  by the rule's own condition 1, read symmetrically).
+- Why S goes: it is not marginal. Rank 19 or 20 in all 25 runs of the
+  history, fails the Rule of 40 on the FCF leg, goes negative once SBC is
+  counted (`r40_sbc_adj` -5.4), `dilution` set on 09-08, `r40_trend`
+  negative for the whole history, and the score is pinned at the clamp so
+  no further decay can ever register. SHOP beats it by 62.7 fundamental
+  points with a clean SBC profile. Round 4 refused SHOP at composite 76.5
+  on a fresh golden cross because that was momentum chasing; at 45.9 in a
+  `downtrend` the objection has inverted, and the rule reads the
+  fundamental leg by design. Holding S again would have been the
+  stay-manual-by-default failure round 5 warned about.
+- Why ESTC stays: a narrow Rule of 40 miss on a profitable business, one
+  penalty. The only live bench name that beats it is ZM at 33.8, growing
+  5 percent a year; not a better candidate. Reviewed again at round 7 with
+  ZS.
+- Promotion mechanics: backfill dry run for SHOP came back ACCEPT with 30
+  of 30 overlap checks matched and 0 quarters gained. Its cache already
+  holds 10 quarters (2024-03 to 2026-06) and EDGAR has nothing older, so
+  the owner-gated `--apply` step is a no-op and is skipped. SHOP's
+  fundamental score is built on TTM data (10 quarters clears the 8 that
+  growth needs); `r40_trend` needs 12 and goes live when the 2026-12
+  quarter lands, around 2027-02. Until then SHOP is a warm-up name and
+  cannot itself qualify under the level rule.
+- Automate-vs-manual: stay manual, unchanged (14 of 20 live, gate 0 hits).
+  The first swap was made by the rubric's own rule with a hand-read row, so
+  the next automation step is the digest computing the persistently-weak
+  row with the `r40_fcf` pass/fail column, not drafting proposals.
+- Watch items for round 7: SHOP's first ranked runs (expect a technical
+  drag while the `downtrend` lasts; the fundamental leg is the thesis),
+  ZS and ESTC under the level rule, RBRK at -0.035 (unchanged this
+  window), S on the bench.
+- What mattered: the level rule's bench comparison and the scorecard
+  breakdown behind the scores (the clamp, the `r40_fcf` pass/fail, the SBC
+  share). What was noise: both attention rows, WDAY's bench delta, the
+  short-interest and rank crossings.
 
 **What the digest carries as of 2026-08-16** (branch `rotation-evidence`,
 answering round-1 gaps 1 and 2 and preparing the refresh #3 decision):
