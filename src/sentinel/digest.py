@@ -132,6 +132,8 @@ class WeakWeek:
                                        # while live, counted back from the latest
     windows_available: int             # window ends the history actually holds
     windows_needed: int                # cfg.weak_windows
+    scored_latest: int                 # names with a fundamental score on the
+                                       # latest run: the population ranked over
     eligible: bool                     # snapshot_live() on the latest run
     qualifies: bool                    # eligible and windows >= windows_needed
     flags_business: list[str] = field(default_factory=list)
@@ -233,13 +235,15 @@ def _window_ends(runs: list[RunSnapshot], cfg: ChangesCfg) -> list[RunSnapshot]:
     a full set of runs. A missed run shifts the earlier boundaries by one run;
     the rule reads a slow-moving level, so that costs at most one window at
     the margin, and the alternative (calendar weeks) would give the digest two
-    window conventions.
+    window conventions. An end counts only when its whole window is in
+    history: the first run ever recorded is not a window end that any digest
+    read, so a young history yields fewer ends rather than a phantom one.
     """
     step = max(cfg.week_window_runs, 1)
     ends: list[RunSnapshot] = []
     for k in range(max(cfg.weak_windows, 1)):
         idx = len(runs) - 1 - k * step
-        if idx < 0:
+        if idx < step - 1:
             break
         ends.append(runs[idx])
     return ends
@@ -272,8 +276,7 @@ def _level_watch(runs: list[RunSnapshot], cfg: ChangesCfg) -> list[WeakWeek]:
     for ticker in _bottom_n(latest, cfg.weak_bottom_n):
         windows = 0
         for run, bottom in zip(ends, bottoms):
-            snap = run.tickers.get(ticker)
-            if snap is None or ticker not in bottom or not snapshot_live(snap):
+            if ticker not in bottom or not snapshot_live(run.tickers[ticker]):
                 break
             windows += 1
         snap = latest.tickers[ticker]
@@ -288,17 +291,14 @@ def _level_watch(runs: list[RunSnapshot], cfg: ChangesCfg) -> list[WeakWeek]:
             windows=windows,
             windows_available=len(ends),
             windows_needed=needed,
+            scored_latest=sum(1 for s in latest.tickers.values() if s.score is not None),
             eligible=eligible,
-            qualifies=eligible and windows >= needed,
+            qualifies=windows >= needed,   # implies eligible: window 1 is the latest end
             flags_business=business,
             flags_data_quality=quality,
         ))
-    rows.sort(key=lambda w: (
-        not w.qualifies,
-        -w.windows,
-        w.score_latest if w.score_latest is not None else 0.0,
-        w.ticker,
-    ))
+    # rows exist only for scored names, so score_latest is never None here
+    rows.sort(key=lambda w: (not w.qualifies, -w.windows, w.score_latest, w.ticker))
     return rows
 
 
@@ -322,14 +322,18 @@ def _bench_weeks(
     for ticker in order:
         appearances = [run.bench[ticker] for run in window if ticker in run.bench]
         valued = [a.composite for a in appearances if a.composite is not None]
+        # last observed, like `valued`: a degraded last run must not pair the
+        # composite from one run with "n/a" fundamentals from another
+        scores = [a.score for a in appearances if a.score is not None]
+        r40s = [a.r40_fcf for a in appearances if a.r40_fcf is not None]
         weeks.append(BenchWeek(
             ticker=ticker,
             runs_seen=len(appearances),
             composite_first=valued[0] if valued else None,
             composite_last=valued[-1] if valued else None,
             composite_delta=valued[-1] - valued[0] if len(valued) > 1 else None,
-            score_last=appearances[-1].score if appearances else None,
-            r40_fcf_last=appearances[-1].r40_fcf if appearances else None,
+            score_last=scores[-1] if scores else None,
+            r40_fcf_last=r40s[-1] if r40s else None,
             flags_latest=list(appearances[-1].flags) if appearances else [],
         ))
     return weeks
@@ -483,7 +487,11 @@ def _r40_cell(value: float | None) -> str:
     (SPEC 7.0.1 round 6)."""
     if value is None:
         return "n/a"
-    return f"{value * 100:.1f} {'pass' if value >= R40_BAR else 'fail'}"
+    verdict = "pass" if value >= R40_BAR else "fail"
+    shown = f"{value * 100:.1f}"
+    if shown == f"{R40_BAR * 100:.1f}":
+        shown = f"{value * 100:.2f}"   # so "40.0 fail" cannot appear
+    return f"{shown} {verdict}"
 
 
 def _weak_status(w: WeakWeek) -> str:
@@ -560,9 +568,11 @@ def render_markdown(
     if digest.level_watch:
         needed = digest.level_watch[0].windows_needed
         available = digest.level_watch[0].windows_available
+        scored = digest.level_watch[0].scored_latest
         lines += [
-            f"Bottom {len(digest.level_watch)} of the universe by fundamental "
-            "score on the latest run, with the consecutive digest windows (last "
+            f"Bottom {len(digest.level_watch)} of the {scored} names scored on "
+            "the latest run by fundamental score, with the consecutive digest "
+            "windows (last "
             "run of each) the name has held a bottom slot while r40_trend-live. "
             f"A name at {needed} of {needed} windows qualifies: compare it "
             "against the bench on the fundamental leg in this round's evidence "

@@ -721,7 +721,9 @@ does not depend on the hand read that round 6 made):
   `week_window_runs` runs at a time from the latest run to find the previous
   windows' last runs, which reproduces the earlier digests' windows whenever
   every week had a full set of runs (a missed run shifts the earlier
-  boundaries by one run, at most one window at the margin). The name must be
+  boundaries by one run, at most one window at the margin; an end counts
+  only when its whole window is in history, so the first run ever recorded
+  is never a phantom window end). The name must be
   `r40_trend`-live with no data-quality flag at every counted window end,
   not just the latest, since a warm-up score in an earlier window is no more
   a level than one today. `changes.weak_windows` (3) sets the bar; a history
