@@ -369,10 +369,9 @@ vs staying manual.
   wrong within two weeks. Bottom 3 is relative, so the row never goes empty;
   the three-window persistence and the bench comparison are what keep it
   from being noise, and an absolute floor is the natural next tune if they
-  prove insufficient. On 09-17 the bottom 3 are S (0.0), ESTC (15.4) and ZS
+  prove insufficient. On 09-19 the bottom 3 are S (0.0), ESTC (15.4) and ZS
   (16.7), all live; ZS only entered the bottom 3 on 09-09 (CRWD held the
-  slot before), so S and ESTC qualify at round 6 and ZS at round 7 if it
-  stays. Window membership (decided round 6): a name is "in the bottom 3
+  slot before). Window membership (decided round 6): a name is "in the bottom 3
   for a window" when it is bottom 3 on the window's LAST run, matching the
   digest's first-vs-last convention and the level table it prints; under
   that reading ZS holds windows 5 and 6 and comes up at round 7 if it is
@@ -381,9 +380,10 @@ vs staying manual.
   of 40, its score is three penalties (dilution, SBC, SBC-inflated), while
   S fails the rule outright at 23.9. A low score for penalties and a low
   score for a failed thesis are different conversations, and the row has
-  to say which one it is opening. DDOG, the weakest composite outside the S clamp, would not qualify:
+  to say which one it is opening. DDOG, the weakest composite outside the S
+  clamp, would not qualify:
   its 33.2 fundamental is mid-pack and its weakness is a technical score of
-  0 to 17 across the 13 runs from 09-01 to 09-17, exactly the leg the rule
+  0 to 17 across the 15 runs from 09-01 to 09-19, exactly the leg the rule
   stays out of. The digest does not compute this row yet; until it does,
   the round's evidence comment reads it off the level table by hand.
 
@@ -593,9 +593,11 @@ vs staying manual.
   and held.
 - The attention list was noise both times. MNDY -24.3 (rank 4 to 16) on a
   flat 48.8 fundamental: its technical score read 0.0 on 09-12, 76.5 on
-  09-15 (the window's first run), 36.3 on 09-17 and 15.8 on 09-18, so the
-  window delta measured a one-day spike at the window start, and the 35.6
-  composite it ended on is where it sat all of round 5. HUBS -8.3 (rank 19
+  09-15 and 76.4 on 09-16 (the window's first two runs), 36.3 on 09-17
+  and 15.8 by 09-19, so the window delta measured a two-run spike at the
+  window start, and the 35.6 composite it ended on is 6 points above the
+  29.3 it held through round 5, a technical-leg recovery on a flat
+  fundamental. HUBS -8.3 (rank 19
   to 20) on a flat 32.4, toggling between `mixed` and `downtrend` as it has
   since late August. Both are warm-up names with data-quality flags only.
 - The window itself was the quietest yet: one fundamental step (PANW 41.4
@@ -645,7 +647,8 @@ vs staying manual.
   growth needs); `r40_trend` needs 12 and goes live when the 2026-12
   quarter lands, around 2027-02. Until then SHOP is a warm-up name and
   cannot itself qualify under the level rule.
-- Automate-vs-manual: stay manual, unchanged (14 of 20 live, gate 0 hits).
+- Automate-vs-manual: stay manual, unchanged trigger (14 of 20 live at 09-19, 13 of 20
+  after the swap until SHOP's `r40_trend` goes live; gate 0 hits).
   The first swap was made by the rubric's own rule with a hand-read row, so
   the next automation step is the digest computing the persistently-weak
   row with the `r40_fcf` pass/fail column, not drafting proposals.
