@@ -15,11 +15,11 @@ made every second merge conflict here.
   `run_history.json`; discard that change rather than committing it.
 
 ## Active workstreams
-- `rotation-round-6` (opened 2026-09-20, PR #29 open for owner review):
-  first watchlist swap, S out (to bench) and SHOP in, under the level rule
-  adopted in round 5; SPEC 7.0.1 round 6 record for issue #28. Backfill
-  dry run for SHOP accepted with 0 quarters gained, so no post-merge
-  `--apply` step is needed.
+- `digest-persistently-weak` (opened 2026-09-20, PR #30 open for owner review):
+  the digest computes the level-rule "persistently weak" table (bottom N
+  fundamental scores over N window ends, r40_trend-live, r40_fcf pass/fail)
+  and the bench table gains the fundamental leg, so refresh #7 needs no hand
+  read. Config keys `changes.weak_bottom_n` and `changes.weak_windows`.
 
   One branch per workstream via `scripts/new-worktree.sh <branch>`; main is the
   review inbox; merge back via PR.
@@ -36,6 +36,16 @@ made every second merge conflict here.
   relation instead.
 
 ## Done
+- `rotation-round-6` (2026-09-20, merged as PR #29, worktree torn down): the
+  refresh #6 round (issue #28, closed) and the first swap under the level
+  rule: S demoted to the bench (reversible, its cache history survives the
+  prune), SHOP promoted; MNDY and HUBS held as technical noise on flat
+  fundamentals; ESTC surfaced and held. Window membership fixed as bottom 3
+  on the window's LAST run, and the row must print `r40_fcf` pass/fail (ZS
+  is bottom 3 on penalties with a passing r40). SHOP backfill dry run: 10 of
+  10 quarters already cached, EDGAR holds nothing older, no post-merge
+  `--apply`; `r40_trend` goes live around 2027-02. Coverage 13 of 20 live
+  until then. Stay manual.
 - `rotation-round-2` (2026-08-23, merged as PR #23, worktree torn down): the
   refresh #2 calibration round recorded in SPEC 7.0.1 (issue #22, closed with
   no watchlist changes). All five attention names held: fundamentals,
@@ -185,7 +195,9 @@ made every second merge conflict here.
   (warm-up until the 2026-12 quarter lands, technical drag while the
   downtrend lasts), ZS and ESTC under the level rule (ZS holds windows 5
   and 6 on the last-run reading), RBRK at r40_trend -0.035, S on the
-  bench. Next automation step is the digest computing the
-  persistently-weak row with an r40_fcf pass/fail column.
+  bench. The digest computes the persistently-weak row with an r40_fcf
+  pass/fail column from refresh #7 once PR #30 merges; refresh #7 is the
+  first round to read it from the issue (expected S and ESTC qualify, ZS 2
+  of 3), so check the table against that expectation before acting on it.
 - (done) First scheduled run after merge created `data/cache/run_history.json`
   on 2026-08-07; change detection live since 2026-08-08.
