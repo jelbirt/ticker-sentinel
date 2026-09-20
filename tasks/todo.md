@@ -15,10 +15,11 @@ made every second merge conflict here.
   `run_history.json`; discard that change rather than committing it.
 
 ## Active workstreams
-- `rotation-rounds-4-5` (opened 2026-09-17, PR #27 open for owner review):
-  SPEC 7.0.1 record for refresh rounds 4 and 5 (issues #25 and #26, both
-  closed with no watchlist changes). Documentation only. Adopts the
-  fundamental-only level rule (live names, surfacing not action).
+- `rotation-round-6` (opened 2026-09-20, PR #29 open for owner review):
+  first watchlist swap, S out (to bench) and SHOP in, under the level rule
+  adopted in round 5; SPEC 7.0.1 round 6 record for issue #28. Backfill
+  dry run for SHOP accepted with 0 quarters gained, so no post-merge
+  `--apply` step is needed.
 
   One branch per workstream via `scripts/new-worktree.sh <branch>`; main is the
   review inbox; merge back via PR.
@@ -178,12 +179,13 @@ made every second merge conflict here.
   all closed with no changes; the option-3 decision (2026-08-31, SPEC 7.0.1
   round 3) is STAY MANUAL, reaffirmed 2026-09-17 (round 5: 14 of 20
   r40_trend-live, gate 0 hits in 25 runs), revisit when the remaining
-  warm-up names go r40_trend-live or the decay gate first fires. Standing
-  watch items for refresh #6: RBRK (first real fundamental step down,
-  r40_trend -0.035, the worst in the universe; a second step with a trend
-  break is a gate hit), S (level-not-change gap, dilution flag set
-  2026-09-08), and the level rule's first application: S and ESTC qualify as
-  persistently weak at round 6, so round 6 carries the first bench
-  comparison on the fundamental leg (adopted 2026-09-17, PR #27).
+  warm-up names go r40_trend-live or the decay gate first fires. Round 6
+  (issue #28, 2026-09-19) made the first swap: S out to the bench, SHOP in
+  (PR #29). Standing watch items for refresh #7: SHOP's first ranked runs
+  (warm-up until the 2026-12 quarter lands, technical drag while the
+  downtrend lasts), ZS and ESTC under the level rule (ZS holds windows 5
+  and 6 on the last-run reading), RBRK at r40_trend -0.035, S on the
+  bench. Next automation step is the digest computing the
+  persistently-weak row with an r40_fcf pass/fail column.
 - (done) First scheduled run after merge created `data/cache/run_history.json`
   on 2026-08-07; change detection live since 2026-08-08.
