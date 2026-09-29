@@ -15,7 +15,19 @@ made every second merge conflict here.
   `run_history.json`; discard that change rather than committing it.
 
 ## Active workstreams
-- none open.
+- `fix/edgar-revenue-tag` (opened 2026-09-29, PR #32, worktree
+  `../ticker-sentinel.fix/edgar-revenue-tag`): the backfill's EDGAR revenue
+  tag choice took a pre-2018 `Revenues` series over the live contract-revenue
+  tag, so WDAY, TWLO, MDB, HUBS and NOW never got revenue history. Fix: the
+  most recent deriving tag wins. Dry run 23 accepted, 0 rejected; 52 revenue
+  cells to fill. Merges first.
+- `rotation-round-7` (opened 2026-09-29, PR #33, worktree
+  `../ticker-sentinel.rotation-round-7`): refresh #7 (issue #31, closed). No
+  watchlist change; bench ADSK, APPF, GWRE in, TWLO out; ZS held (passes
+  r40), ESTC decided at round 8. Depends on #32.
+- Owner gate after both merge: one `python -m sentinel.backfill --apply
+  --tickers WDAY,MDB,HUBS,NOW,ADSK,APPF,GWRE` on main (bot pen), landed as
+  its own commit, before the refresh #8 digest (Sat 2026-10-03).
 
   One branch per workstream via `scripts/new-worktree.sh <branch>`; main is the
   review inbox; merge back via PR.
