@@ -353,7 +353,9 @@ class TestTagShadowing:
     """Verification-pass regression (live case: PANW). A tag can carry facts
     yet derive zero quarters (annual-only "Revenues" shells); precedence must
     sit on derived quarters or the shell tag shadows the tag with the real
-    quarterly coverage and the field silently vanishes from the frame."""
+    quarterly coverage and the field silently vanishes from the frame. The
+    shells here end after every derived quarter, so they also pin that a
+    zero-quarter tag never competes on recency (see TestStaleTagShadowing)."""
 
     def _annual_shell(self, value: float) -> dict:
         return {
@@ -406,3 +408,70 @@ class TestCompositeBaseCoverage:
             PRODUCTIVE: [fact(Q1, 130.0)],
         })
         assert composite_values(payload, "capex") == {Q1: 100.0}
+
+
+class TestStaleTagShadowing:
+    """Verification-pass regression (live cases: WDAY, TWLO, MDB, HUBS, NOW).
+    "Revenues" derives real quarters but only up to the ASC 606 switch (WDAY:
+    2011-10 to 2018-04), while the contract-revenue tag covers 2017 onward.
+    First-derives-anything precedence returned the stale series, which never
+    overlaps the cache, so those names gained no revenue history. The tag
+    whose derived quarters reach the latest period end must win, TAG_MAP
+    order only breaks ties, and the two series are never spliced."""
+
+    REVENUES = "Revenues"
+    CONTRACT = "RevenueFromContractWithCustomerExcludingAssessedTax"
+    OLD_Q1 = pd.Timestamp("2017-04-30")
+    OLD_Q2 = pd.Timestamp("2017-07-31")
+    _OLD_STARTS = {OLD_Q1: "2017-02-01", OLD_Q2: "2017-05-01"}
+
+    def _old(self, end: pd.Timestamp, value: float) -> dict:
+        """One direct 3-month 10-Q entry from before the ASC 606 switch."""
+        return {
+            "start": self._OLD_STARTS[end], "end": end.date().isoformat(),
+            "val": value, "form": "10-Q", "filed": end.date().isoformat(),
+        }
+
+    def _stale_then_live(self) -> dict:
+        return tag_payload({
+            self.REVENUES: [self._old(self.OLD_Q1, 500.0), self._old(self.OLD_Q2, 520.0)],
+            self.CONTRACT: [fact(Q1, 2_000.0), fact(Q2, 2_100.0)],
+        })
+
+    def test_live_later_tag_beats_stale_first_tag(self):
+        from sentinel.data.edgar import field_values
+
+        values = field_values(self._stale_then_live(), "revenue")
+        assert values == {Q1: 2_000.0, Q2: 2_100.0}
+
+    def test_stale_quarters_are_not_spliced_in(self):
+        """No merging across tags: pre-606 quarters stay out of the series."""
+        frame = canonical_from_companyfacts(self._stale_then_live())
+        assert self.OLD_Q1 not in frame.columns
+        assert self.OLD_Q2 not in frame.columns
+        assert frame.loc["revenue", Q2] == approx(2_100.0)
+
+    def test_equal_recency_keeps_tag_map_order(self):
+        """Both tags current: the earlier alias wins even when it is shallower."""
+        from sentinel.data.edgar import field_values
+
+        payload = tag_payload({
+            self.REVENUES: [fact(Q2, 2_150.0)],
+            self.CONTRACT: [fact(Q1, 2_000.0), fact(Q2, 2_100.0)],
+        })
+        assert field_values(payload, "revenue") == {Q2: 2_150.0}
+
+    def test_annual_shell_still_skipped_alongside_a_stale_tag(self):
+        """A zero-quarter shell never competes, however recent its facts end."""
+        from sentinel.data.edgar import field_values
+
+        shell = {
+            "start": "2024-02-01", "end": "2025-01-31", "val": 8_000.0,
+            "form": "10-K", "filed": "2025-03-15",
+        }
+        payload = tag_payload({
+            self.REVENUES: [shell],
+            self.CONTRACT: [self._old(self.OLD_Q1, 500.0)],
+            "RevenueFromContractWithCustomerIncludingAssessedTax": [fact(Q1, 2_000.0)],
+        })
+        assert field_values(payload, "revenue") == {Q1: 2_000.0}
