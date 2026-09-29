@@ -37,7 +37,8 @@ split-signal.
 
 ## Field mapping
 
-Canonical field <- us-gaap tags, first match wins:
+Canonical field <- us-gaap tags, first match wins (refined twice since:
+see the tag-precedence implementation notes below):
 
 | canonical | us-gaap tags |
 |---|---|
@@ -322,3 +323,36 @@ Apply-time decision, also approved: TEAM's parquet is restored to its
 pre-`2621e02` yfinance-only state inside the next apply commit, so the gate
 verifies TEAM's composite against pure yfinance instead of against the
 round-1 apply's own single-tag output.
+
+### Implementation note: stale tags must not shadow live ones (2026-09-29)
+
+Added after the Amendment 2 apply, not part of any approved amendment text. A
+third live counterexample to first-tag precedence, this time a tag that DOES
+derive quarters: WDAY, TWLO, MDB, HUBS and NOW filed `Revenues` only until
+their ASC 606 switch and `RevenueFromContractWithCustomerExcludingAssessedTax`
+since (WDAY: `Revenues` derives 27 quarters, 2011-10 to 2018-04; the contract
+tag derives 38, 2017-04 to 2026-07). `field_values()` returned the stale
+series, which never overlaps the cache, so the gate had no revenue to check,
+the apply wrote no older revenue for these five, and they kept scoring
+growth_from_annual / insufficient_history on 16-quarter caches.
+
+Rule now: among the tags that derive at least one quarter, the tag whose
+newest derived quarter end is latest wins; equal recency falls back to
+TAG_MAP order, so the original precedence holds whenever both tags are
+current. Zero-quarter shells (the PANW case above) still never compete.
+Values are never merged across tags: pre and post ASC 606 revenue are
+different definitions, and splicing them is a definitional change the gate,
+which only sees the recent cached quarters, cannot detect.
+
+Live dry run (2026-09-29, read-only): 23 accepted, 0 rejected, MNDY skipped.
+The five names now carry 5 or 6 revenue overlap checks each, all matching the
+cached yfinance revenue at 0.00 percent, and fill 10 (WDAY, MDB, HUBS) or 11
+(TWLO, NOW) empty revenue cells inside the cached range. Every other ticker's
+result is unchanged. Capex base selection is left as is: the backfill tries
+every base candidate and, among candidates that verify, prefers the most
+verified capex overlap, so a stale base (no overlap) loses to any live base
+that verifies. Two residual paths remain and are noted, not changed: a stale
+base can still be chosen when no live base verifies (zero mismatches beats
+any mismatch), and unpinned `composite_values()` picks the base by quarter
+count, not recency. Neither shows up in this dry run. Applying still needs
+the owner-gated `--apply` run.

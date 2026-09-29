@@ -68,8 +68,9 @@ CAPEX_ADDEND_TAGS = [
     "PaymentsForSoftware",
 ]
 
-# canonical field -> us-gaap tags, first tag with any usable facts wins
-# (same alias semantics as the yfinance ALIASES map in data/fundamentals.py).
+# canonical field -> us-gaap tags. Order is the tie-break: field_values() picks
+# the tag whose derived quarters reach the most recent period end, and only on
+# equal recency does the earlier tag win (see there for the live cases).
 # `capex` carries only its BASE tags here; its addends go through
 # COMPOSITE_TAGS below.
 TAG_MAP: dict[str, list[str]] = {
@@ -197,7 +198,8 @@ def facts_for_field(payload: dict[str, Any], field: str) -> list[Fact]:
     """Periodic-report facts for one canonical field; first matching tag wins.
 
     Ad-hoc inspection helper. Derivation goes through field_values(), whose
-    precedence test is stricter: see there for why facts alone are not enough.
+    tag choice is stricter (derived quarters, most recent coverage first):
+    see there for why the first tag with facts is not enough.
     """
     for tag in TAG_MAP[field]:
         facts = facts_for_tag(payload, tag, field)
@@ -207,21 +209,37 @@ def facts_for_field(payload: dict[str, Any], field: str) -> list[Fact]:
 
 
 def field_values(payload: dict[str, Any], field: str) -> dict[pd.Timestamp, float]:
-    """Per-quarter values for a plain field: first tag that DERIVES quarters wins.
+    """Per-quarter values for a plain field: the MOST RECENT deriving tag wins.
 
-    The precedence test must sit on derived quarters, not on raw facts: a tag
-    can carry facts yet derive zero quarters (PANW files 18 annual-only
-    "Revenues" shells), and returning it would shadow a later tag holding the
-    real quarterly coverage (PANW's contract-revenue tag has 35 derivable
-    quarters). Alias precedence is unchanged; only the non-emptiness test
-    moves from facts to quarters.
+    Two shadowing cases decide the rule, both from live filers:
+
+    * A tag can carry facts yet derive zero quarters (PANW files 18
+      annual-only "Revenues" shells), so a tag only competes once it derives
+      at least one quarter. Its contract-revenue tag (35 derivable quarters)
+      then carries the field.
+    * A tag can derive quarters that stopped years ago. WDAY, TWLO, MDB, HUBS
+      and NOW filed "Revenues" only until the ASC 606 switch (WDAY: 27
+      quarters, 2011-10 to 2018-04) and the contract-revenue tag since then
+      (WDAY: 38 quarters, 2017-04 onward). First-derives-anything precedence
+      returned the stale series, which never overlaps the cache, so those
+      names gained no revenue history.
+
+    So among the tags that derive any quarter, the one whose NEWEST derived
+    quarter end is latest wins; equal recency falls back to TAG_MAP order,
+    which keeps the original alias precedence whenever coverage is current on
+    both. Values are never merged across tags: pre and post ASC 606 revenue
+    are different definitions, and splicing them into one series is a
+    definitional change the verification gate (which only sees the cached
+    recent quarters) cannot detect.
     """
     additive = field not in NON_ADDITIVE_FIELDS
+    best: dict[pd.Timestamp, float] = {}
     for tag in TAG_MAP[field]:
         values = quarterly_values(facts_for_tag(payload, tag, field), additive=additive)
-        if values:
-            return values
-    return {}
+        # strict > keeps the earlier tag on a tie (TAG_MAP order)
+        if values and (not best or max(values) > max(best)):
+            best = values
+    return best
 
 
 def _latest_filed(facts: list[Fact]) -> dict[tuple[pd.Timestamp | None, pd.Timestamp], Fact]:
