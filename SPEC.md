@@ -294,7 +294,7 @@ written from observed rounds rather than guessed up front. From refresh #3 the
 checklist adds the decision on automating proposal drafting against this rubric
 vs staying manual.
 
-**Working rubric (as of round 6):**
+**Working rubric (as of round 7):**
 - Act on **decay-gate hit counts**, not on composite deltas. A name with 0 gate
   hits has not shown persistent decay however far its composite moved. But read
   a zero for what it is: the gate needs `r40_trend` below
@@ -388,6 +388,31 @@ vs staying manual.
   "Persistently weak" table under the attention list, `level_watch` in the
   JSON twin; see "What the digest carries as of 2026-09-20" below), so no
   round reads it off the level table by hand again.
+- **The `r40_fcf` verdict decides which conversation a qualifier opens
+  (round 7).** A qualifier that PASSES the Rule of 40 is low on penalties,
+  not on its thesis, and is held: the level rule does not propose swapping
+  it. Penalties are cliffs (ZS at 3.4 percent dilution against the 3.0
+  limit is worth 10 points) and the same three penalties sit on names in
+  the middle of the table, so a penalty-driven bottom slot is not evidence
+  that the business is the weakest on the list. Only a qualifier that FAILS
+  the Rule of 40 is a swap candidate.
+- **A replacement must enter above the tail (round 7).** A bench name that
+  would itself land in the bottom `weak_bottom_n` on entry is not a better
+  candidate, however much it beats the qualifier: the swap only relabels
+  the weakest slot. When no bench name clears that, the action is refreshing
+  the bench, not holding the qualifier indefinitely.
+- **Bench before promotion (round 7).** A name found by an off-pipeline
+  screen goes onto the bench first and is shadow-scored for at least one
+  digest window on the committed basis before it can be promoted, so the
+  swap decision reads the same numbers the watchlist is scored on.
+  Fundamentals are constant inside a window by construction, so one window
+  is enough.
+- **A warm-up flag can be a source defect (round 7).** Five names (MDB,
+  HUBS, NOW, WDAY, TWLO) read `growth_from_annual` on 16-quarter caches
+  because the backfill's revenue tag choice picked a pre-2018 `Revenues`
+  series over the live contract-revenue tag (fixed in PR #32). Extends the
+  round-3 GTLB lesson: before reading warm-up as missing quarters, read the
+  parquet row by row.
 
 **Round 1 (issue #6, 2026-08-15, window 2026-08-11 to 2026-08-15, 5 runs):**
 - Outcome: no changes. DDOG held (0 of 5 gate hits, drop was composite-only,
@@ -662,6 +687,87 @@ vs staying manual.
   breakdown behind the scores (the clamp, the `r40_fcf` pass/fail, the SBC
   share). What was noise: both attention rows, WDAY's bench delta, the
   short-interest and rank crossings.
+
+**Round 7 (issue #31, 2026-09-26, window 2026-09-22 to 2026-09-26, 5 runs):**
+- Outcome: no watchlist change; bench refreshed (ADSK, APPF, GWRE added,
+  TWLO dropped). ESTC's swap is decided at round 8 against shadow-scored
+  bench evidence. ZS held under the new pass/fail rubric line. All four
+  attention names held.
+- First round read from the computed level table (PR #30). It matched the
+  round-6 expectation: ESTC (15.4, `r40_fcf` 35.5 fail) and ZS (16.7, 48.7
+  pass) qualify at 3 of 3 windows (ends 09-12, 09-19, 09-26); OKTA (23.6)
+  holds the third slot but is not eligible (`insufficient_history`).
+- Not one fundamental score moved for any of the 20 names across the 09-19
+  to 09-22 boundary or inside the window, so every attention row was
+  technical. NOW -6.0 and PLTR -5.8 were golden crosses expiring on 09-24
+  (the TEAM mechanism from round 5; T 95.9 to 81.0 and 98.7 to 83.9). MNDY
+  -5.6 and HUBS -5.1 slid to T 2.1 and 3.5 in a `downtrend` on flat 48.8
+  and 32.4 fundamentals, both warm-up names. Gate 0 hits in 25 runs;
+  `uptrend` breadth 17 or 18 of 20 every run; coverage clean.
+- ZS: held. Pre-penalty score about 46.8; the 16.7 is three 10-point
+  penalties (dilution, high sbc, sbc inflated) that CRWD, SNOW, DDOG and
+  RBRK also carry. Its dilution reads 3.4 percent against the 3.0 limit;
+  under the limit it would score 26.7 and leave the bottom 3. `r40_fcf`
+  48.7 and rule of X 74.1 pass comfortably. Hence the pass/fail rubric line.
+- ESTC: the only `r40_trend`-live name failing the Rule of 40 (35.5), the
+  lowest `r40_sbc_adj` in the universe (18.7), `r40_ebitda` 17.2, and the
+  09-12 quarter stepped it 19.4 to 15.4 with `r40_trend` +0.011 to -0.021.
+  Mitigating: 16.2 percent growth, share count shrinking (-1.2 percent),
+  FCF yield 3.8 percent. Next report 2026-11-19.
+- Bench comparison, and why it failed to produce a swap: the only live
+  bench name besides S was ZM (33.8, `r40_fcf` 43.6 pass, growth 5.0
+  percent, margin only). WDAY and TWLO read warm-up, which the round traced
+  to a backfill defect: the EDGAR revenue tag choice took a pre-ASC 606
+  `Revenues` series (WDAY: 2011-10 to 2018-04) over the live
+  contract-revenue tag, so revenue was never backfilled for WDAY, TWLO,
+  MDB, HUBS and NOW. Fixed in PR #32 (post-merge apply fills 52 revenue
+  cells, every overlap check at 0.00 percent). Recomputed in memory on
+  corrected revenue: WDAY 24.1 (`r40_fcf` 41.4 pass, `r40_trend` +0.007,
+  live), TWLO 28.4 (35.6 fail), MDB 44.1 (`r40_trend` +0.164, live), NOW
+  63.2 (live), HUBS 35.8 (still `insufficient_history`: capex holes).
+  Even corrected, WDAY would enter at 24.1 and sit in the bottom 3 beside
+  ZS and OKTA: a relabelled weakest slot, not an upgrade. Hence the
+  enter-above-the-tail rubric line, and a bench refresh instead of a swap.
+- Bench refresh: 28 candidates screened in memory with the repo's own
+  scorecard and scoring code (yfinance statements, EDGAR history behind the
+  verification gate, corrected revenue tag rule; nothing written). Kept to
+  names that are `r40_trend`-live, pass `r40_fcf`, score F above 30:
+  ADSK 73.6 (growth 17.9, `r40_fcf` 53.9, `r40_sbc_adj` 44.9, `r40_trend`
+  +12.2, `passes_all_r40`); APPF 58.8 (20.7, 46.2, 39.0, +5.8, no flags);
+  GWRE 46.2 (22.7, 47.0, 34.7, +1.0, no flags); ZETA 39.5 and KVYO 36.2
+  (higher growth, both `dilution`); QLYS 66.7, INTU 65.7, ADBE 57.8, CRM
+  53.5 (growth 10 to 14 percent, margin led, not added: a growth watchlist
+  question for the owner). Not usable: DUOL (EDGAR 3 of 18 overlap checks
+  failed, warm-up), DOCS (short history), APP and VEEV (recent capex
+  missing at the source, unscorable), CWAN (no price data, likely
+  delisted); AXON, PATH, PCOR, NTNX, TOST, TYL, PCTY, BILL, TENB, TTD,
+  SAIL, PAYC fail `r40_fcf` or score under 30. ADSK, APPF and GWRE added;
+  TWLO dropped (fails `r40_fcf` on corrected data). WDAY, ZM and S stay.
+  Backfill dry run for the three adds: ACCEPT, 7 to 16 quarters each, all
+  overlap checks matched; GWRE gains 5 revenue checks under the PR #32 rule,
+  so the owner-gated `--apply --tickers ADSK,APPF,GWRE` runs after PR #32
+  merges (one apply can cover the PR #32 five as well).
+- Round-6 watch items: SHOP's expected technical drag did not happen; it
+  turned `uptrend` by 09-22 and ranked 3, then 2, composite about 70 on a
+  flat 62.7 fundamental. RBRK unchanged (27.3, `r40_trend` -0.035). S on
+  the bench at 0.0.
+- Automate-vs-manual: stay manual. `r40_trend` coverage 13 of 20 today, 15
+  after the PR #32 apply (MDB, NOW); gate 0 hits.
+- Round 8 decides ESTC: compare it against the shadow-scored bench on the
+  fundamental leg; the strongest current replacements are ADSK (highest F)
+  and APPF (cleanest SBC profile). If no bench name clears the tail by
+  then, ESTC's 2026-11-19 report is the next checkpoint.
+- Operational note, not a rubric line: since about 2026-08-27 the 10:00
+  UTC schedule has started 3 to 4.5 hours late, after the US open, so
+  Tuesday to Friday runs score technicals on a partial session (the 09-25
+  report was built 10:52 EDT on a same-day bar). Irrelevant to the
+  fundamental-leg level rule; it adds noise to the technical leg the
+  attention list reads.
+- What mattered: the `r40_fcf` pass/fail column (it settled ZS), the
+  enter-above-the-tail check on the bench comparison, and reading the
+  parquet rows behind a warm-up flag. What was noise: all four attention
+  rows (two cross expiries, two technical slides), IOT's 6 crossings (T
+  toggling 83 and 42), and the short-interest crossings.
 
 **What the digest carries as of 2026-08-16** (branch `rotation-evidence`,
 answering round-1 gaps 1 and 2 and preparing the refresh #3 decision):
