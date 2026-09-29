@@ -1,0 +1,14 @@
+{
+  "fetched_at": "2026-09-29T12:13:02.615045+00:00",
+  "market_cap": 11903695084.887756,
+  "shares_outstanding": 81992669.0,
+  "company_name": "Guidewire Software, Inc.",
+  "next_earnings": "2026-12-03",
+  "annual_revenue": {
+    "2026-07-31": 1475363000.0,
+    "2025-07-31": 1202459000.0,
+    "2024-07-31": 980497000.0,
+    "2023-07-31": 905341000.0
+  },
+  "source": "yfinance"
+}
