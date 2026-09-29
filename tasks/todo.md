@@ -15,19 +15,7 @@ made every second merge conflict here.
   `run_history.json`; discard that change rather than committing it.
 
 ## Active workstreams
-- `fix/edgar-revenue-tag` (opened 2026-09-29, PR #32, worktree
-  `../ticker-sentinel.fix/edgar-revenue-tag`): the backfill's EDGAR revenue
-  tag choice took a pre-2018 `Revenues` series over the live contract-revenue
-  tag, so WDAY, TWLO, MDB, HUBS and NOW never got revenue history. Fix: the
-  most recent deriving tag wins. Dry run 23 accepted, 0 rejected; 52 revenue
-  cells to fill. Merges first.
-- `rotation-round-7` (opened 2026-09-29, PR #33, worktree
-  `../ticker-sentinel.rotation-round-7`): refresh #7 (issue #31, closed). No
-  watchlist change; bench ADSK, APPF, GWRE in, TWLO out; ZS held (passes
-  r40), ESTC decided at round 8. Depends on #32.
-- Owner gate after both merge: one `python -m sentinel.backfill --apply
-  --tickers WDAY,MDB,HUBS,NOW,ADSK,APPF,GWRE` on main (bot pen), landed as
-  its own commit, before the refresh #8 digest (Sat 2026-10-03).
+- none open.
 
   One branch per workstream via `scripts/new-worktree.sh <branch>`; main is the
   review inbox; merge back via PR.
@@ -44,6 +32,26 @@ made every second merge conflict here.
   relation instead.
 
 ## Done
+- `rotation-round-7` (2026-09-29, merged as PR #33, worktree torn down):
+  refresh #7 (issue #31, closed). No watchlist change; bench refreshed from
+  an in-memory screen of 28 candidates: ADSK, APPF, GWRE in (all
+  r40_trend-live, pass r40_fcf, 18 to 23 percent growth), TWLO out (fails
+  r40_fcf on corrected data). ZS held (passes r40, low on penalties); ESTC
+  (fails r40) not swapped because no bench name entered above the bottom 3,
+  decided at round 8 against the new bench. Four rubric lines added in SPEC
+  7.0.1. Post-merge apply `3001feb` seeded the three adds (7 to 16 quarters
+  each).
+- `fix/edgar-revenue-tag` (2026-09-29, merged as PR #32, worktree torn
+  down): the backfill's EDGAR revenue tag choice took a pre-2018 `Revenues`
+  series over the live contract-revenue tag, so WDAY, TWLO, MDB, HUBS and
+  NOW never got revenue history; the most recent deriving tag now wins.
+  Apply commit `3001feb` (with the round-7 bench seeds, 7 accepted, 0
+  rejected) filled 41 revenue cells for WDAY, MDB, HUBS, NOW with no
+  existing value changed (TWLO left out, dropped from the bench). Rescored:
+  MDB 44.1 and NOW 63.2 go r40_trend-live (coverage 13 to 15 of 20), WDAY
+  24.1 live, HUBS 35.8 still insufficient_history on capex holes (open
+  follow-up: missing capex quarters, mostly fiscal Q4, also block OKTA,
+  FTNT, TWLO).
 - `digest-persistently-weak` (2026-09-20, merged as PR #30, worktree torn
   down): the digest computes the level-rule "persistently weak" table (bottom
   N fundamental scores on the last run of N consecutive full windows,
@@ -202,20 +210,22 @@ made every second merge conflict here.
 ## Next gates (owner)
 - Weekly watchlist candidate refresh: live since 2026-08-15. A digest issue
   opens Saturdays (label `watchlist-refresh`, owner-assigned); do the refresh
-  from the issue. Bench: WDAY, SHOP, TWLO, ZM (a structured `bench:` key in
-  watchlist.yaml). Calibration complete: rounds 1-5 (issues #6, #22, #24, #25, #26)
+  from the issue. Bench: WDAY, ZM, S, ADSK, APPF, GWRE (a structured `bench:`
+  key in watchlist.yaml). Calibration complete: rounds 1-5 (issues #6, #22, #24, #25, #26)
   all closed with no changes; the option-3 decision (2026-08-31, SPEC 7.0.1
   round 3) is STAY MANUAL, reaffirmed 2026-09-17 (round 5: 14 of 20
   r40_trend-live, gate 0 hits in 25 runs), revisit when the remaining
   warm-up names go r40_trend-live or the decay gate first fires. Round 6
   (issue #28, 2026-09-19) made the first swap: S out to the bench, SHOP in
-  (PR #29). Standing watch items for refresh #7: SHOP's first ranked runs
-  (warm-up until the 2026-12 quarter lands, technical drag while the
-  downtrend lasts), ZS and ESTC under the level rule (ZS holds windows 5
-  and 6 on the last-run reading), RBRK at r40_trend -0.035, S on the
-  bench. The digest computes the persistently-weak row with an r40_fcf
-  pass/fail column from refresh #7 (PR #30, merged 2026-09-20); refresh #7 is the
-  first round to read it from the issue (expected S and ESTC qualify, ZS 2
-  of 3), so check the table against that expectation before acting on it.
+  (PR #29). Round 7 (issue #31, 2026-09-26) read the computed level table
+  (it matched the expectation: ESTC and ZS qualify), held ZS as a
+  penalty case and refreshed the bench instead of swapping ESTC (PR #33).
+  Standing watch items for refresh #8 (Sat 2026-10-03): decide ESTC against
+  the shadow-scored bench on the fundamental leg (ADSK 73.6 highest, APPF
+  58.8 cleanest; the replacement must enter above the bottom 3), check the
+  new bench names read r40_trend-live in the digest (seeded by `3001feb`),
+  MDB's first live windows (44.1, leaves the bottom), RBRK at r40_trend
+  -0.035, S on the bench, ESTC's 2026-11-19 report as the fallback
+  checkpoint.
 - (done) First scheduled run after merge created `data/cache/run_history.json`
   on 2026-08-07; change detection live since 2026-08-08.
