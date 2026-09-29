@@ -51,7 +51,11 @@ universe:
     tags: [software, r40]
   - ticker: PLTR
     tags: [software, r40]
-bench: [WDAY, TWLO, ZM, S]   # reserve swap candidates, shadow-scored, never ranked; owner-gated like universe
+# rotation round 7 (2026-09-29, SPEC 7.0.1): bench refreshed from a screen of
+# 28 candidates on the watchlist basis. ADSK, APPF, GWRE added (r40_trend-live,
+# pass r40_fcf, 18 to 23 percent growth, fundamental 46 to 74); TWLO dropped
+# (fails r40_fcf even on corrected revenue history).
+bench: [WDAY, ZM, S, ADSK, APPF, GWRE]   # reserve swap candidates, shadow-scored, never ranked; owner-gated like universe
 benchmark: SPY
 report:
   top_n: 10
