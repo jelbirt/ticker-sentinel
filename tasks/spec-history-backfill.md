@@ -356,3 +356,36 @@ base can still be chosen when no live base verifies (zero mismatches beats
 any mismatch), and unpinned `composite_values()` picks the base by quarter
 count, not recency. Neither shows up in this dry run. Applying still needs
 the owner-gated `--apply` run.
+
+### Implementation note: an addend filed only cumulatively (2026-10-04)
+
+Added after the 2026-09-29 apply, not part of any approved amendment text.
+The addend rule above dropped a whole capex quarter whenever an addend filed
+a cumulative figure ending there that could not be differenced, which left
+single capex holes in the year-ago TTM window of HUBS and OKTA and kept both
+in `r40_trend` warm-up on 16-quarter caches:
+
+- HUBS files `PaymentsToAcquireIntangibleAssets` in its 10-K only (fiscal
+  2023: 164,000; 2024: 1,231,000), with no 10-Q figure, so Q4 had no YTD Q3
+  point to difference against and 2023-12 and 2024-12 were dropped.
+- OKTA filed the same tag as a nine-month 0 for 2024-10, with no 10-Q figure
+  before it in that fiscal year, so 2024-10 was dropped.
+
+Rule now: when the quarter cannot be derived but a cumulative fact ends on
+it and the tag files nothing else ending inside that fact's span, the quarter
+carries the whole cumulative value. Every earlier quarter of the span was
+unfiled and already read as 0 by the unfiled-means-zero rule, so this is that
+rule applied consistently, and it matches how yfinance itself derives Q4
+(fiscal year minus nine months). A cumulative fact with a filing inside its
+span is still a real missing YTD point and still drops the quarter.
+
+Live dry run (2026-10-04, read-only): 25 accepted, 0 rejected, MNDY skipped;
+15 empty capex cells filled across CRWD, SNOW, TEAM, OKTA, DT, GTLB, HUBS,
+NOW and ZM (none before the fix), and the 13 new capex overlap checks the
+rule makes derivable all match the cached yfinance value at 0.00 percent.
+Rescored in memory: HUBS 35.8 to 39.0 and OKTA 23.6 to 23.1 go
+`r40_trend`-live (coverage 15 to 17 of 20); no other score changes, since
+the other fills sit deeper than any TTM window reads. FTNT's 2023-12 and
+2024-12 holes have a different cause (its 10-K files capex under
+`PaymentsToAcquireProductiveAssets` while the verified base is PP&E) and are
+not addressed here. Applying needs the owner-gated `--apply` run.

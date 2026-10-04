@@ -339,6 +339,13 @@ def composite_values(
       for that period end and the quarter still could not be derived (a
       missing intermediate YTD point), the addend is unknown rather than zero,
       so the whole quarter is dropped instead of silently understated.
+    * ADDEND filed only as a cumulative figure whose span holds no other
+      filing of the tag -> the quarter carries the whole cumulative value.
+      Every earlier quarter of that span was unfiled and already counted as
+      0 by the rule above, so this is the same rule applied consistently, and
+      it matches how yfinance derives Q4 (fiscal year minus nine months).
+      HUBS files PaymentsToAcquireIntangibleAssets in its 10-K only (Q4 =
+      the fiscal-year figure); OKTA files it as a nine-month 0 (Q3 = 0).
 
     The verification gate stays the arbiter either way: a composite that does
     not reconcile with the cached yfinance value inside the D2 tolerance still
@@ -372,11 +379,30 @@ def composite_values(
         values = quarterly_values(facts)
         filed_ends = {f.end for f in facts}
         for quarter in list(out):
-            if quarter in values:
-                out[quarter] += abs(values[quarter])
-            elif quarter in filed_ends:
-                del out[quarter]  # filed for this period but underivable
+            value = values.get(quarter)
+            if value is None and quarter in filed_ends:
+                value = _unsplit_cumulative(facts, quarter)
+                if value is None:
+                    del out[quarter]  # filed for this period but underivable
+                    continue
+            if value is not None:
+                out[quarter] += abs(value)
     return out
+
+
+def _unsplit_cumulative(facts: list[Fact], end: pd.Timestamp) -> float | None:
+    """A cumulative fact ending at `end` with no other filing inside its span.
+
+    Returns its value (the quarter's share, since every earlier quarter of the
+    span was unfiled and so counted as 0), or None when every cumulative fact
+    ending there has a filing inside its span, i.e. a real missing YTD point.
+    """
+    for (start, fact_end), fact in _latest_filed(facts).items():
+        if fact_end != end or start is None:
+            continue
+        if not any(start < f.end < end for f in facts):
+            return fact.value
+    return None
 
 
 def canonical_from_companyfacts(

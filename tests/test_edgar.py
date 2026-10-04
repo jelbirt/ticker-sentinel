@@ -279,18 +279,63 @@ class TestCompositeCapex:
         assert values[Q2] == approx(6_000_000)
 
     def test_a_filed_but_underivable_addend_quarter_drops_the_quarter(self):
-        """A 6-month YTD with no Q1 point to difference: unknown, not zero."""
+        """A 9-month YTD with the 6-month point missing: unknown, not zero.
+
+        Q1 IS filed inside the span, so Q3 = YTD - Q1 would silently fold Q2
+        into Q3; the quarter is dropped instead.
+        """
         values = composite_values(
             tag_payload(
                 {
-                    PPE: [fact(Q1, 5_000_000), fact(Q2, 6_000_000)],
-                    DEVELOP_SW: [fact(Q2, 7_000_000, start=_STARTS[Q1])],
+                    PPE: [fact(Q1, 5_000_000), fact(Q2, 6_000_000), fact(Q3, 4_000_000)],
+                    DEVELOP_SW: [
+                        fact(Q1, 1_000_000),
+                        fact(Q3, 7_000_000, start=_STARTS[Q1]),
+                    ],
                 }
             ),
             "capex",
         )
-        assert Q2 not in values
-        assert values[Q1] == approx(5_000_000)
+        assert Q3 not in values
+        assert values[Q1] == approx(6_000_000)
+        assert values[Q2] == approx(6_000_000)  # unfiled: counts as zero
+
+    def test_an_annual_only_addend_lands_in_q4(self):
+        """HUBS: the tag files in the 10-K only, so Q1 to Q3 were zero and Q4 is the year."""
+        annual = fact(Q4, 1_200_000, start=_STARTS[Q1]) | {"form": "10-K"}
+        values = composite_values(
+            tag_payload(
+                {
+                    PPE: [
+                        fact(Q1, 5_000_000),
+                        fact(Q2, 6_000_000),
+                        fact(Q3, 4_000_000),
+                        fact(Q4, 7_000_000),
+                    ],
+                    INTANGIBLES: [annual],
+                }
+            ),
+            "capex",
+        )
+        assert values == {
+            Q1: approx(5_000_000),
+            Q2: approx(6_000_000),
+            Q3: approx(4_000_000),
+            Q4: approx(8_200_000),
+        }
+
+    def test_a_zero_ytd_addend_counts_as_zero(self):
+        """OKTA: a 9-month 0 with nothing filed inside it means Q3 contributed 0."""
+        values = composite_values(
+            tag_payload(
+                {
+                    PPE: [fact(Q2, 6_000_000), fact(Q3, 4_000_000)],
+                    INTANGIBLES: [fact(Q3, 0.0, start=_STARTS[Q1])],
+                }
+            ),
+            "capex",
+        )
+        assert values[Q3] == approx(4_000_000)
 
     def test_productive_assets_is_an_alternative_base_not_an_addend(self):
         """Both tags filed: PP&E wins and ProductiveAssets is not added on top."""
