@@ -372,16 +372,19 @@ def composite_values(
     if not out:
         return {}
 
-    for tag in addend_tags:
-        facts = facts_for_tag(payload, tag, field)
+    addend_facts = {tag: facts_for_tag(payload, tag, field) for tag in addend_tags}
+    for tag, facts in addend_facts.items():
         if not facts:
             continue  # tag never filed: contributes 0 to every quarter
         values = quarterly_values(facts)
         filed_ends = {f.end for f in facts}
+        other_ends = [
+            {f.end for f in other} for t, other in addend_facts.items() if t != tag and other
+        ]
         for quarter in list(out):
             value = values.get(quarter)
             if value is None and quarter in filed_ends:
-                value = _unsplit_cumulative(facts, quarter)
+                value = _unsplit_cumulative(facts, quarter, other_ends)
                 if value is None:
                     del out[quarter]  # filed for this period but underivable
                     continue
@@ -390,19 +393,26 @@ def composite_values(
     return out
 
 
-def _unsplit_cumulative(facts: list[Fact], end: pd.Timestamp) -> float | None:
+def _unsplit_cumulative(
+    facts: list[Fact], end: pd.Timestamp, other_ends: list[set[pd.Timestamp]]
+) -> float | None:
     """A cumulative fact ending at `end` with no other filing inside its span.
 
     Returns its value (the quarter's share, since every earlier quarter of the
-    span was unfiled and so counted as 0), or None when every cumulative fact
-    ending there has a filing inside its span, i.e. a real missing YTD point.
+    span was unfiled and so counted as 0), or None when the quarter stays
+    unknown: every such fact has a filing of its own tag inside its span (a
+    real missing YTD point), another addend tag files inside the span but not
+    at `end` (a mid-year tag switch, where the earlier quarters are already
+    counted under the old tag), or two qualifying facts disagree.
     """
+    found: set[float] = set()
     for (start, fact_end), fact in _latest_filed(facts).items():
-        if fact_end != end or start is None:
+        if fact_end != end or any(start < f.end < end for f in facts):
             continue
-        if not any(start < f.end < end for f in facts):
-            return fact.value
-    return None
+        if any(end not in ends and any(start < e < end for e in ends) for ends in other_ends):
+            continue
+        found.add(fact.value)
+    return found.pop() if len(found) == 1 else None
 
 
 def canonical_from_companyfacts(

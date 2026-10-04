@@ -298,7 +298,6 @@ class TestCompositeCapex:
         )
         assert Q3 not in values
         assert values[Q1] == approx(6_000_000)
-        assert values[Q2] == approx(6_000_000)  # unfiled: counts as zero
 
     def test_an_annual_only_addend_lands_in_q4(self):
         """HUBS: the tag files in the 10-K only, so Q1 to Q3 were zero and Q4 is the year."""
@@ -323,6 +322,40 @@ class TestCompositeCapex:
             Q3: approx(4_000_000),
             Q4: approx(8_200_000),
         }
+
+    def test_a_mid_year_addend_tag_switch_is_not_double_counted(self):
+        """Q1 under one tag, then YTD under another: Q2 = YTD would recount Q1."""
+        values = composite_values(
+            tag_payload(
+                {
+                    PPE: [fact(Q1, 5_000_000), fact(Q2, 6_000_000), fact(Q3, 4_000_000)],
+                    DEVELOP_SW: [fact(Q1, 1_000_000)],
+                    INTERNAL_SW: [
+                        fact(Q2, 3_000_000, start=_STARTS[Q1]),
+                        fact(Q3, 4_000_000, start=_STARTS[Q1]),
+                    ],
+                }
+            ),
+            "capex",
+        )
+        assert Q2 not in values
+        assert values[Q3] == approx(5_000_000)  # (4 - 3) + 4
+
+    def test_disagreeing_cumulative_facts_leave_the_quarter_unknown(self):
+        """Two unsplit spans ending on one date with different totals: no pick."""
+        values = composite_values(
+            tag_payload(
+                {
+                    PPE: [fact(Q4, 7_000_000)],
+                    INTANGIBLES: [
+                        fact(Q4, 900_000, start=_STARTS[Q3]) | {"form": "10-K"},
+                        fact(Q4, 1_200_000, start=_STARTS[Q1]) | {"form": "10-K"},
+                    ],
+                }
+            ),
+            "capex",
+        )
+        assert Q4 not in values
 
     def test_a_zero_ytd_addend_counts_as_zero(self):
         """OKTA: a 9-month 0 with nothing filed inside it means Q3 contributed 0."""

@@ -377,7 +377,13 @@ carries the whole cumulative value. Every earlier quarter of the span was
 unfiled and already read as 0 by the unfiled-means-zero rule, so this is that
 rule applied consistently, and it matches how yfinance itself derives Q4
 (fiscal year minus nine months). A cumulative fact with a filing inside its
-span is still a real missing YTD point and still drops the quarter.
+span is still a real missing YTD point and still drops the quarter. Two
+more cases also stay unknown and drop: another addend tag that files inside
+the span but not on its end (a mid-year tag switch, where the earlier
+quarters are already counted under the old tag, so the cumulative value
+would count them twice), and two qualifying facts ending on the same date
+with different values. These cells are holes in the cache, so the gate never
+compares them; the rule has to be safe on its own.
 
 Live dry run (2026-10-04, read-only): 25 accepted, 0 rejected, MNDY skipped;
 15 empty capex cells filled across CRWD, SNOW, TEAM, OKTA, DT, GTLB, HUBS,
