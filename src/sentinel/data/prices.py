@@ -40,14 +40,14 @@ TWELVEDATA_ADJUST = "all"
 # are mapped explicitly. A 1day interval yields roughly 252 bars a year; the
 # extra covers holidays and the reporting lag. Deliberately not a general period
 # parser: only these two are reachable, and an unmapped one is a code bug.
+PERIOD_BARS = {"1y": 260, "2y": 520}
+DEFAULT_BARS = PERIOD_BARS["1y"]
+
 # a bar dated today is the session in progress until the close has settled;
 # scoring it would read a partial day as the close (the scheduled run has
 # started hours late, after the open, since 2026-08-27)
 MARKET_TZ = ZoneInfo("America/New_York")
 SESSION_SETTLED = clock(16, 30)
-
-PERIOD_BARS = {"1y": 260, "2y": 520}
-DEFAULT_BARS = PERIOD_BARS["1y"]
 
 
 def _bars_for_period(period: str) -> int:

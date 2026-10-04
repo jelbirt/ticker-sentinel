@@ -5,6 +5,9 @@ on:
   # by hours (3 to 11 late in 2026-08 and 09), and two independent crons only
   # stayed in order by luck. Runs whatever the daily conclusion, since a failed
   # Saturday run is a coverage gap the digest should report, not hide.
+  # Known gap: GitHub can drop a scheduled run under load, and a Saturday
+  # daily run that never starts fires nothing here, no digest and no alert.
+  # A week with no refresh issue by Sunday means dispatch this by hand.
   workflow_run:
     workflows: [daily-report]
     types: [completed]
