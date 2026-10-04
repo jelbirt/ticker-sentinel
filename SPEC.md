@@ -294,7 +294,7 @@ written from observed rounds rather than guessed up front. From refresh #3 the
 checklist adds the decision on automating proposal drafting against this rubric
 vs staying manual.
 
-**Working rubric (as of round 7):**
+**Working rubric (as of round 8):**
 - Act on **decay-gate hit counts**, not on composite deltas. A name with 0 gate
   hits has not shown persistent decay however far its composite moved. But read
   a zero for what it is: the gate needs `r40_trend` below
@@ -413,6 +413,20 @@ vs staying manual.
   series over the live contract-revenue tag (fixed in PR #32). Extends the
   round-3 GTLB lesson: before reading warm-up as missing quarters, read the
   parquet row by row.
+- **A backfill apply steps fundamentals at the boundary (round 8).** An
+  owner-gated `--apply` lands between windows and rewrites history, so the
+  names it touched step on the next run with nothing new in the business:
+  MDB 24.5 to 44.1, HUBS 32.4 to 35.8, NOW 60.3 to 63.2 and WDAY 22.9 to
+  24.1 on 09-29, all from `3001feb`. Check `git log data/cache` for an apply
+  commit before reading a boundary step as an event.
+- **The tape does not veto a promotion (round 8).** The swap reads the
+  fundamental leg, so a replacement in a `downtrend` enters low on
+  composite: ADSK, second on the fundamental leg, sits about 16th of 20 by
+  composite on a technical score clamped at 0 (the breadth-ranked report
+  still puts it 4th, since it passes all three R40 variants), while the
+  name it replaces carries its composite on the technical leg. That is the leg the level rule stays out
+  of (the SHOP precedent, round 6); a promotion is not reconsidered because
+  the replacement's tape is weak.
 
 **Round 1 (issue #6, 2026-08-15, window 2026-08-11 to 2026-08-15, 5 runs):**
 - Outcome: no changes. DDOG held (0 of 5 gate hits, drop was composite-only,
@@ -768,6 +782,63 @@ vs staying manual.
   parquet rows behind a warm-up flag. What was noise: all four attention
   rows (two cross expiries, two technical slides), IOT's 6 crossings (T
   toggling 83 and 42), and the short-interest crossings.
+
+**Round 8 (issue #34, 2026-10-03, window 2026-09-29 to 2026-10-03, 5 runs):**
+- Outcome: ESTC demoted to the bench, ADSK promoted. The first swap of a
+  Rule-of-40 failure under the round-7 pass/fail line. ZS held again.
+  Attention list empty (no decay-gate hits, no week-scale composite drop).
+- Level table: ESTC (15.4, `r40_fcf` 35.5 fail) and ZS (16.7, 48.7 pass)
+  qualify at 3 of 3 windows; OKTA (23.6) holds the third slot, not eligible
+  (`insufficient_history`). ZS is held under the round-7 line: a passing
+  qualifier is penalties, not thesis.
+- ESTC against the bench on the fundamental leg: every round-7 add is
+  `r40_trend`-live in the digest and passes `r40_fcf`, so the round-7 watch
+  item is met. ADSK 73.6 (53.9 pass, `r40_trend` +0.122, `passes_all_r40`,
+  valuation cheap), APPF 58.8 (46.2 pass), GWRE 46.2 (47.0 pass). Each
+  shadow-scored all 5 runs of one full window, so bench-before-promotion is
+  met, and each enters far above the tail (the post-swap bottom 3 tops out
+  at 24.9). ADSK chosen: highest fundamental score on the bench, second in
+  the universe behind PLTR. ESTC: `r40_trend` -0.021, `r40_sbc_adj` the
+  lowest in the universe, `high_sbc`; no fundamental change since the 09-12
+  quarter. Next report 2026-11-19, now read from the bench.
+- The composite points the other way, and was not used: ESTC 42.9 (16th by
+  composite, 20th in the breadth-ranked report)
+  rides a technical 84 (up 58 percent in three months, near its 52-week
+  high), while ADSK reads 44.1 on a technical score of 0.0 in all 5 runs.
+  Checked against live prices on 10-04 that the 0.0 is real, not a price
+  fetch failure: 212 against a 233 SMA50 and a 239 SMA200, 34 percent below
+  its 52-week high, flat over three months while SPY rose, which clamps the
+  technical score at 0. ADSK sits about 16th by composite, but the report
+  ranks by R40 breadth first and ADSK passes all three variants, so it
+  enters 4th (behind PLTR, SHOP, FTNT). Hence the tape-does-not-veto
+  rubric line.
+- Backfill: ADSK's history was already seeded to 16 quarters by `3001feb`
+  (round 7), and the 2026-10-04 dry run accepts it with 0 cells to fill, so
+  the swap needs no post-merge apply. ESTC keeps its parquet on the bench.
+- No fundamental score moved inside the window. The only steps were at the
+  09-26 to 09-29 boundary, all from the `3001feb` apply (MDB, HUBS, NOW,
+  WDAY on the bench): hence the apply-step rubric line. MDB's composite
+  fell 47.9 to 26.5 across the same boundary, entirely technical (T 83 to
+  0, `downtrend`), and the window delta could not see it (round 5 line).
+- Round-7 watch items: MDB is `r40_trend`-live at +0.164 and out of the
+  bottom 3 (44.1). RBRK unchanged (27.3, `r40_trend` -0.035). S on the
+  bench at 0.0. SHOP rank 2 or 3 all window, flat 62.7.
+- Found this round: HUBS and OKTA were in warm-up on single capex holes in
+  the year-ago window, because an addend filed only cumulatively (HUBS's
+  10-K-only intangibles, OKTA's nine-month 0) dropped the whole capex
+  quarter. Fixed on branch `fix/edgar-capex-addend`; after its apply HUBS
+  (39.0) and OKTA (23.1) go live, coverage 15 to 17 of 20. OKTA then
+  becomes eligible in the bottom 3 with `r40_fcf` 42.4, which passes: a
+  held case under the round-7 line, not a swap. FTNT's holes are a
+  different cause (base tag switch in its 10-K) and stay open.
+- Automate-vs-manual: stay manual. Gate 0 hits in 25 runs.
+- Watch items for round 9: ADSK's first ranked runs (technical drag while
+  the downtrend lasts), OKTA under the level rule once the capex apply
+  lands, ZS, ESTC on the bench through its 11-19 report.
+- What mattered: the bench table's fundamental and `r40_fcf` columns (the
+  whole decision), and the run count proving one full shadow window. What
+  was noise: IOT's 5 crossings (T 39 to 23 to 67), MNDY's 2 on a flat 0.0
+  technical, and every composite on the swap pair.
 
 **What the digest carries as of 2026-08-16** (branch `rotation-evidence`,
 answering round-1 gaps 1 and 2 and preparing the refresh #3 decision):
