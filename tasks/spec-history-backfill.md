@@ -356,3 +356,73 @@ base can still be chosen when no live base verifies (zero mismatches beats
 any mismatch), and unpinned `composite_values()` picks the base by quarter
 count, not recency. Neither shows up in this dry run. Applying still needs
 the owner-gated `--apply` run.
+
+### Implementation note: an addend filed only cumulatively (2026-10-04)
+
+Added after the 2026-09-29 apply, not part of any approved amendment text.
+The addend rule above dropped a whole capex quarter whenever an addend filed
+a cumulative figure ending there that could not be differenced, which left
+single capex holes in the year-ago TTM window of HUBS and OKTA and kept both
+in `r40_trend` warm-up on 16-quarter caches:
+
+- HUBS files `PaymentsToAcquireIntangibleAssets` in its 10-K only (fiscal
+  2023: 164,000; 2024: 1,231,000), with no 10-Q figure, so Q4 had no YTD Q3
+  point to difference against and 2023-12 and 2024-12 were dropped.
+- OKTA filed the same tag as a nine-month 0 for 2024-10, with no 10-Q figure
+  before it in that fiscal year, so 2024-10 was dropped.
+
+Rule now: when the quarter cannot be derived but a cumulative fact ends on
+it and the tag files nothing else ending inside that fact's span, the quarter
+carries the whole cumulative value. Every earlier quarter of the span was
+unfiled and already read as 0 by the unfiled-means-zero rule, so this is that
+rule applied consistently, and it matches how yfinance itself derives Q4
+(fiscal year minus nine months). A cumulative fact with a filing inside its
+span is still a real missing YTD point and still drops the quarter. Two
+more cases also stay unknown and drop: another addend tag that files inside
+the span but not on its end (a mid-year tag switch, where the earlier
+quarters are already counted under the old tag, so the cumulative value
+would count them twice), and two qualifying facts ending on the same date
+with different values. These cells are holes in the cache, so the gate never
+compares them; the rule has to be safe on its own.
+
+Live dry run (2026-10-04, read-only): 25 accepted, 0 rejected, MNDY skipped;
+15 empty capex cells filled across CRWD, SNOW, TEAM, OKTA, DT, GTLB, HUBS,
+NOW and ZM (none before the fix), and the 13 new capex overlap checks the
+rule makes derivable all match the cached yfinance value at 0.00 percent.
+Rescored in memory: HUBS 35.8 to 39.0 and OKTA 23.6 to 23.1 go
+`r40_trend`-live (coverage 15 to 17 of 20); no other score changes, since
+the other fills sit deeper than any TTM window reads. FTNT's 2023-12 and
+2024-12 holes have a different cause (its 10-K files capex under
+`PaymentsToAcquireProductiveAssets` while the verified base is PP&E) and are
+addressed by the next note. Applying needs the owner-gated `--apply` run.
+
+### Implementation note: a fiscal Q4 filed under a sibling base tag (2026-10-04)
+
+Added in the same branch as the note above. FTNT tags capex as
+`PaymentsToAcquirePropertyPlantAndEquipment` in its 10-Qs (Q1 direct, then
+six- and nine-month YTD) and as `PaymentsToAcquireProductiveAssets` in its
+10-Ks (fiscal year only), so neither base tag alone ever derives a Q4: PP&E
+has no year figure to difference, ProductiveAssets has no nine-month point
+before 2024. The gate picked PP&E (ProductiveAssets fails it on 2026, where
+the two series diverge: Q1 2026 reads 47.1M against 70.6M), which left
+2022-12, 2023-12 and 2024-12 empty and FTNT in `r40_trend` warm-up.
+
+Rule now: a fiscal Q4 the chosen base files nothing for at all, where a
+sibling base files that fiscal year over the same start date and the chosen
+base has the nine-month point one quarter before the year end, is the
+sibling's year minus the chosen base's nine months, kept only when it does
+not flip sign. Nothing else crosses between base tags: sibling quarters
+never fill or override the chosen base, so FTNT's divergent 2026 series
+stays out. Where the sibling also files the same nine months, the two must agree
+within the gate's 1 percent, so a sibling that measures more than the base
+cannot inflate a Q4 (FTNT's 2024 and 2025 nine months agree exactly, 281.3M
+and 322.0M, and its FY2024 sibling year of 378.9M gives the 97.6M Q4). The evidence that the subtraction is right is yfinance's own
+FY2025 Q4: 364.8M (ProductiveAssets year) minus 322.0M (PP&E nine months)
+is the cached 42.8M, which the rule now derives and the gate checks at
+0.00 percent.
+
+Live dry run (2026-10-04, read-only): identical to the note above except
+FTNT, which fills 3 capex cells (2022-12 30.9M, 2023-12 26.9M, 2024-12
+97.6M) with 61 of 61 overlap checks matched; 18 cells in total. Rescored in
+memory: FTNT 69.6 to 83.3, `r40_trend` +0.136, `insufficient_history`
+cleared (coverage 17 to 18 of 20 with HUBS and OKTA).

@@ -279,18 +279,96 @@ class TestCompositeCapex:
         assert values[Q2] == approx(6_000_000)
 
     def test_a_filed_but_underivable_addend_quarter_drops_the_quarter(self):
-        """A 6-month YTD with no Q1 point to difference: unknown, not zero."""
+        """A 9-month YTD with the 6-month point missing: unknown, not zero.
+
+        Q1 IS filed inside the span, so Q3 = YTD - Q1 would silently fold Q2
+        into Q3; the quarter is dropped instead.
+        """
         values = composite_values(
             tag_payload(
                 {
-                    PPE: [fact(Q1, 5_000_000), fact(Q2, 6_000_000)],
-                    DEVELOP_SW: [fact(Q2, 7_000_000, start=_STARTS[Q1])],
+                    PPE: [fact(Q1, 5_000_000), fact(Q2, 6_000_000), fact(Q3, 4_000_000)],
+                    DEVELOP_SW: [
+                        fact(Q1, 1_000_000),
+                        fact(Q3, 7_000_000, start=_STARTS[Q1]),
+                    ],
+                }
+            ),
+            "capex",
+        )
+        assert Q3 not in values
+        assert values[Q1] == approx(6_000_000)
+
+    def test_an_annual_only_addend_lands_in_q4(self):
+        """HUBS: the tag files in the 10-K only, so Q1 to Q3 were zero and Q4 is the year."""
+        annual = fact(Q4, 1_200_000, start=_STARTS[Q1]) | {"form": "10-K"}
+        values = composite_values(
+            tag_payload(
+                {
+                    PPE: [
+                        fact(Q1, 5_000_000),
+                        fact(Q2, 6_000_000),
+                        fact(Q3, 4_000_000),
+                        fact(Q4, 7_000_000),
+                    ],
+                    INTANGIBLES: [annual],
+                }
+            ),
+            "capex",
+        )
+        assert values == {
+            Q1: approx(5_000_000),
+            Q2: approx(6_000_000),
+            Q3: approx(4_000_000),
+            Q4: approx(8_200_000),
+        }
+
+    def test_a_mid_year_addend_tag_switch_is_not_double_counted(self):
+        """Q1 under one tag, then YTD under another: Q2 = YTD would recount Q1."""
+        values = composite_values(
+            tag_payload(
+                {
+                    PPE: [fact(Q1, 5_000_000), fact(Q2, 6_000_000), fact(Q3, 4_000_000)],
+                    DEVELOP_SW: [fact(Q1, 1_000_000)],
+                    INTERNAL_SW: [
+                        fact(Q2, 3_000_000, start=_STARTS[Q1]),
+                        fact(Q3, 4_000_000, start=_STARTS[Q1]),
+                    ],
                 }
             ),
             "capex",
         )
         assert Q2 not in values
-        assert values[Q1] == approx(5_000_000)
+        assert values[Q3] == approx(5_000_000)  # (4 - 3) + 4
+
+    def test_disagreeing_cumulative_facts_leave_the_quarter_unknown(self):
+        """Two unsplit spans ending on one date with different totals: no pick."""
+        values = composite_values(
+            tag_payload(
+                {
+                    PPE: [fact(Q4, 7_000_000)],
+                    INTANGIBLES: [
+                        fact(Q4, 900_000, start=_STARTS[Q3]) | {"form": "10-K"},
+                        fact(Q4, 1_200_000, start=_STARTS[Q1]) | {"form": "10-K"},
+                    ],
+                }
+            ),
+            "capex",
+        )
+        assert Q4 not in values
+
+    def test_a_zero_ytd_addend_counts_as_zero(self):
+        """OKTA: a 9-month 0 with nothing filed inside it means Q3 contributed 0."""
+        values = composite_values(
+            tag_payload(
+                {
+                    PPE: [fact(Q2, 6_000_000), fact(Q3, 4_000_000)],
+                    INTANGIBLES: [fact(Q3, 0.0, start=_STARTS[Q1])],
+                }
+            ),
+            "capex",
+        )
+        assert values[Q3] == approx(4_000_000)
 
     def test_productive_assets_is_an_alternative_base_not_an_addend(self):
         """Both tags filed: PP&E wins and ProductiveAssets is not added on top."""
@@ -316,6 +394,80 @@ class TestCompositeCapex:
             "capex",
         )
         assert values[Q1] == approx(8_000_000)
+
+    def _ppe_nine_months(self) -> list[dict]:
+        start = _STARTS[Q1]
+        return [
+            fact(Q1, 10_000_000),
+            fact(Q2, 25_000_000, start=start),
+            fact(Q3, 33_000_000, start=start),
+        ]
+
+    def test_a_q4_filed_only_under_the_sibling_base_is_its_year_minus_nine_months(self):
+        """FTNT: PP&E in the 10-Qs, the fiscal year under ProductiveAssets."""
+        payload = tag_payload(
+            {
+                PPE: self._ppe_nine_months(),
+                PRODUCTIVE: [fact(Q4, 45_000_000, start=_STARTS[Q1])],
+            }
+        )
+        values = composite_values(payload, "capex", base_tag=PPE)
+        assert values == {
+            Q1: approx(10_000_000),
+            Q2: approx(15_000_000),
+            Q3: approx(8_000_000),
+            Q4: approx(12_000_000),
+        }
+
+    def test_a_sibling_year_below_the_nine_months_is_not_a_q4(self):
+        payload = tag_payload(
+            {
+                PPE: self._ppe_nine_months(),
+                PRODUCTIVE: [fact(Q4, 20_000_000, start=_STARTS[Q1])],
+            }
+        )
+        assert Q4 not in composite_values(payload, "capex", base_tag=PPE)
+
+    @pytest.mark.parametrize("sibling_nine, filled", [(33_100_000, True), (40_000_000, False)])
+    def test_a_sibling_nine_months_must_agree_with_the_base(self, sibling_nine, filled):
+        """A broader sibling (intangibles folded in) would inflate the Q4."""
+        start = _STARTS[Q1]
+        payload = tag_payload(
+            {
+                PPE: self._ppe_nine_months(),
+                PRODUCTIVE: [
+                    fact(Q3, sibling_nine, start=start),
+                    fact(Q4, 60_000_000, start=start),
+                ],
+            }
+        )
+        assert (Q4 in composite_values(payload, "capex", base_tag=PPE)) is filled
+
+    def test_a_sibling_year_on_another_start_is_not_a_q4(self):
+        payload = tag_payload(
+            {
+                PPE: self._ppe_nine_months(),
+                PRODUCTIVE: [fact(Q4, 45_000_000, start="2024-01-25")],
+            }
+        )
+        assert Q4 not in composite_values(payload, "capex", base_tag=PPE)
+
+    def test_sibling_quarters_never_fill_or_override_the_chosen_base(self):
+        start = _STARTS[Q1]
+        payload = tag_payload(
+            {
+                PPE: [fact(Q1, 10_000_000), fact(Q3, 33_000_000, start=start)],
+                PRODUCTIVE: [
+                    fact(Q1, 7_000_000),
+                    fact(Q2, 9_000_000),
+                    fact(Q4, 45_000_000, start=start),
+                ],
+            }
+        )
+        values = composite_values(payload, "capex", base_tag=PPE)
+        assert values[Q1] == approx(10_000_000)
+        assert Q2 not in values  # PP&E's own hole stays a hole
+        assert values[Q4] == approx(12_000_000)
 
     def test_no_base_tag_at_all_yields_nothing(self):
         assert composite_values(tag_payload({DEVELOP_SW: [fact(Q1, 1_000_000)]}), "capex") == {}

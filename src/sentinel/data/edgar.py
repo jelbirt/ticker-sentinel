@@ -136,6 +136,9 @@ _PERIODIC_FORMS = {"10-K", "10-Q", "10-K/A", "10-Q/A"}
 _QUARTER_MIN_DAYS = 60
 _QUARTER_MAX_DAYS = 120
 _ANNUAL_MIN_DAYS = 300
+# a sibling base's own nine months must match the base's within the backfill
+# gate's 1 percent (D2) before its fiscal year may supply a Q4
+_SIBLING_AGREE_REL = 0.01
 
 
 @dataclass(frozen=True)
@@ -331,7 +334,13 @@ def composite_values(
 
     * BASE missing for a quarter -> that quarter is absent (NaN downstream).
       The base is the bulk of the number; without it there is nothing to
-      report.
+      report. One exception: a fiscal Q4 the chosen base files nothing for,
+      when a sibling base files that fiscal year's figure over the same
+      start, is the sibling's year minus the chosen base's nine months. FTNT
+      tags capex as PP&E in its 10-Qs and as ProductiveAssets in its 10-Ks,
+      so neither tag alone ever derives its Q4; yfinance's FY2025 Q4 (42.8M)
+      is exactly that subtraction. Only the Q4 hole is filled: the two
+      series are not otherwise merged (FTNT's diverge from 2026).
     * ADDEND missing for a quarter -> treated as 0, but ONLY when the addend
       tag files nothing at all ending on that period end. A filer that
       capitalizes no software in a quarter simply omits the tag, and reading
@@ -339,6 +348,13 @@ def composite_values(
       for that period end and the quarter still could not be derived (a
       missing intermediate YTD point), the addend is unknown rather than zero,
       so the whole quarter is dropped instead of silently understated.
+    * ADDEND filed only as a cumulative figure whose span holds no other
+      filing of the tag -> the quarter carries the whole cumulative value.
+      Every earlier quarter of that span was unfiled and already counted as
+      0 by the rule above, so this is the same rule applied consistently, and
+      it matches how yfinance derives Q4 (fiscal year minus nine months).
+      HUBS files PaymentsToAcquireIntangibleAssets in its 10-K only (Q4 =
+      the fiscal-year figure); OKTA files it as a nine-month 0 (Q3 = 0).
 
     The verification gate stays the arbiter either way: a composite that does
     not reconcile with the cached yfinance value inside the D2 tolerance still
@@ -353,30 +369,106 @@ def composite_values(
     # not. When `base_tag` is pinned (the backfill tries each candidate and
     # lets the verification gate choose), that tag is used; unpinned callers
     # get the deepest-coverage base (ties toward the earlier tag).
+    base_facts = {tag: facts_for_tag(payload, tag, field) for tag in base_tags}
     if base_tag is not None:
+        chosen_tag = base_tag
         chosen = quarterly_values(facts_for_tag(payload, base_tag, field))
     else:
-        chosen = {}
+        chosen_tag, chosen = None, {}
         for tag in base_tags:
-            values = quarterly_values(facts_for_tag(payload, tag, field))
+            values = quarterly_values(base_facts[tag])
             if len(values) > len(chosen):
-                chosen = values
+                chosen_tag, chosen = tag, values
+    if chosen:
+        siblings = [facts for tag, facts in base_facts.items() if tag != chosen_tag]
+        own = base_facts.get(chosen_tag) or facts_for_tag(payload, chosen_tag, field)
+        chosen.update(_q4_from_sibling_year(own, chosen, siblings))
     out = {end: abs(v) for end, v in chosen.items()}
     if not out:
         return {}
 
-    for tag in addend_tags:
-        facts = facts_for_tag(payload, tag, field)
+    addend_facts = {tag: facts_for_tag(payload, tag, field) for tag in addend_tags}
+    for tag, facts in addend_facts.items():
         if not facts:
             continue  # tag never filed: contributes 0 to every quarter
         values = quarterly_values(facts)
         filed_ends = {f.end for f in facts}
+        other_ends = [
+            {f.end for f in other} for t, other in addend_facts.items() if t != tag and other
+        ]
         for quarter in list(out):
-            if quarter in values:
-                out[quarter] += abs(values[quarter])
-            elif quarter in filed_ends:
-                del out[quarter]  # filed for this period but underivable
+            value = values.get(quarter)
+            if value is None and quarter in filed_ends:
+                value = _unsplit_cumulative(facts, quarter, other_ends)
+                if value is None:
+                    del out[quarter]  # filed for this period but underivable
+                    continue
+            if value is not None:
+                out[quarter] += abs(value)
     return out
+
+
+def _q4_from_sibling_year(
+    facts: list[Fact], values: dict[pd.Timestamp, float], siblings: list[list[Fact]]
+) -> dict[pd.Timestamp, float]:
+    """Fiscal Q4s the base files nothing for: a sibling's year minus nine months.
+
+    Only where the sibling's fiscal-year fact starts on the same day as the
+    base's year-to-date series, the base's nine-month point sits one quarter
+    before the year end, and the result keeps the year's sign (a sibling year
+    smaller than the base's nine months is a different concept, not a Q4).
+    When the sibling files its own nine months over the same span, the two
+    must agree: a sibling that measures more than the base (intangibles or
+    software folded in) would otherwise inflate the Q4 with no sign change,
+    and the gate never sees a filled cell.
+    """
+    own_ends = {f.end for f in facts}
+    cumulative = _latest_filed(facts)
+    out: dict[pd.Timestamp, float] = {}
+    for sibling in siblings:
+        theirs = _latest_filed(sibling)
+        for (start, end), year in theirs.items():
+            if year.period_type != "annual" or end in values or end in own_ends:
+                continue
+            nine = [
+                (e, fact.value)
+                for (s, e), fact in cumulative.items()
+                if s == start and _QUARTER_MIN_DAYS <= (end - e).days <= _QUARTER_MAX_DAYS
+            ]
+            if len(nine) != 1:
+                continue
+            nine_end, nine_value = nine[0]
+            check = theirs.get((start, nine_end))
+            if check is not None and abs(check.value - nine_value) > (
+                _SIBLING_AGREE_REL * abs(nine_value)
+            ):
+                continue
+            q4 = year.value - nine_value
+            if q4 * year.value >= 0:
+                out[end] = q4
+    return out
+
+
+def _unsplit_cumulative(
+    facts: list[Fact], end: pd.Timestamp, other_ends: list[set[pd.Timestamp]]
+) -> float | None:
+    """A cumulative fact ending at `end` with no other filing inside its span.
+
+    Returns its value (the quarter's share, since every earlier quarter of the
+    span was unfiled and so counted as 0), or None when the quarter stays
+    unknown: every such fact has a filing of its own tag inside its span (a
+    real missing YTD point), another addend tag files inside the span but not
+    at `end` (a mid-year tag switch, where the earlier quarters are already
+    counted under the old tag), or two qualifying facts disagree.
+    """
+    found: set[float] = set()
+    for (start, fact_end), fact in _latest_filed(facts).items():
+        if fact_end != end or any(start < f.end < end for f in facts):
+            continue
+        if any(end not in ends and any(start < e < end for e in ends) for ends in other_ends):
+            continue
+        found.add(fact.value)
+    return found.pop() if len(found) == 1 else None
 
 
 def canonical_from_companyfacts(
