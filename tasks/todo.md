@@ -17,11 +17,16 @@ made every second merge conflict here.
 ## Active workstreams
 - `fix/edgar-capex-addend` (opened 2026-10-04, PR #35): an addend filed only
   cumulatively (HUBS 10-K-only intangibles, OKTA nine-month 0) no longer
-  drops the capex quarter; HUBS and OKTA go r40_trend-live. Needs the
-  owner-gated post-merge `python -m sentinel.backfill --apply` (15 cells).
-  FTNT's holes (10-K base tag switch) stay open, out of scope.
+  drops the capex quarter, and a fiscal Q4 filed only under the sibling
+  base tag (FTNT) is its year minus nine months; HUBS, OKTA and FTNT go
+  r40_trend-live (coverage 15 to 18 of 20). Needs the owner-gated post-merge
+  `python -m sentinel.backfill --apply` (18 cells).
 - `rotation-round-8` (opened 2026-10-04, PR #36): refresh #8 (issue #34),
   ESTC to the bench, ADSK promoted (already seeded, no apply needed).
+- `fix/schedule-drift` (opened 2026-10-04, PR #37): daily cron 10:00 to
+  05:23 UTC (starts drifted past the open), an unfinished same-day bar is
+  dropped with a note, the weekly digest chains off the Saturday daily run
+  via `workflow_run`, and the digest's attention-list subheadings split.
 
   One branch per workstream via `scripts/new-worktree.sh <branch>`; main is the
   review inbox; merge back via PR.
