@@ -15,7 +15,13 @@ made every second merge conflict here.
   `run_history.json`; discard that change rather than committing it.
 
 ## Active workstreams
-- none open.
+- `fix/edgar-capex-addend` (opened 2026-10-04, PR #35): an addend filed only
+  cumulatively (HUBS 10-K-only intangibles, OKTA nine-month 0) no longer
+  drops the capex quarter; HUBS and OKTA go r40_trend-live. Needs the
+  owner-gated post-merge `python -m sentinel.backfill --apply` (15 cells).
+  FTNT's holes (10-K base tag switch) stay open, out of scope.
+- `rotation-round-8` (opened 2026-10-04, PR #36): refresh #8 (issue #34),
+  ESTC to the bench, ADSK promoted (already seeded, no apply needed).
 
   One branch per workstream via `scripts/new-worktree.sh <branch>`; main is the
   review inbox; merge back via PR.
