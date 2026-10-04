@@ -421,9 +421,10 @@ vs staying manual.
   commit before reading a boundary step as an event.
 - **The tape does not veto a promotion (round 8).** The swap reads the
   fundamental leg, so a replacement in a `downtrend` enters low on
-  composite: ADSK, second on the fundamental leg, enters about 16th of 20
-  on a technical score clamped at 0, while the name it replaces carries its
-  composite on the technical leg. That is the leg the level rule stays out
+  composite: ADSK, second on the fundamental leg, sits about 16th of 20 by
+  composite on a technical score clamped at 0 (the breadth-ranked report
+  still puts it 4th, since it passes all three R40 variants), while the
+  name it replaces carries its composite on the technical leg. That is the leg the level rule stays out
   of (the SHOP precedent, round 6); a promotion is not reconsidered because
   the replacement's tape is weak.
 
@@ -800,14 +801,17 @@ vs staying manual.
   the universe behind PLTR. ESTC: `r40_trend` -0.021, `r40_sbc_adj` the
   lowest in the universe, `high_sbc`; no fundamental change since the 09-12
   quarter. Next report 2026-11-19, now read from the bench.
-- The composite points the other way, and was not used: ESTC 42.9 (rank 20)
+- The composite points the other way, and was not used: ESTC 42.9 (16th by
+  composite, 20th in the breadth-ranked report)
   rides a technical 84 (up 58 percent in three months, near its 52-week
   high), while ADSK reads 44.1 on a technical score of 0.0 in all 5 runs.
   Checked against live prices on 10-04 that the 0.0 is real, not a price
   fetch failure: 212 against a 233 SMA50 and a 239 SMA200, 34 percent below
   its 52-week high, flat over three months while SPY rose, which clamps the
-  technical score at 0. ADSK enters about 16th by composite. Hence the
-  tape-does-not-veto rubric line.
+  technical score at 0. ADSK sits about 16th by composite, but the report
+  ranks by R40 breadth first and ADSK passes all three variants, so it
+  enters 4th (behind PLTR, SHOP, FTNT). Hence the tape-does-not-veto
+  rubric line.
 - Backfill: ADSK's history was already seeded to 16 quarters by `3001feb`
   (round 7), and the 2026-10-04 dry run accepts it with 0 cells to fill, so
   the swap needs no post-merge apply. ESTC keeps its parquet on the bench.
@@ -833,7 +837,7 @@ vs staying manual.
   lands, ZS, ESTC on the bench through its 11-19 report.
 - What mattered: the bench table's fundamental and `r40_fcf` columns (the
   whole decision), and the run count proving one full shadow window. What
-  was noise: IOT's 5 crossings (T 42 to 23 to 67), MNDY's 2 on a flat 0.0
+  was noise: IOT's 5 crossings (T 39 to 23 to 67), MNDY's 2 on a flat 0.0
   technical, and every composite on the swap pair.
 
 **What the digest carries as of 2026-08-16** (branch `rotation-evidence`,
