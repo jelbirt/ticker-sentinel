@@ -331,7 +331,13 @@ def composite_values(
 
     * BASE missing for a quarter -> that quarter is absent (NaN downstream).
       The base is the bulk of the number; without it there is nothing to
-      report.
+      report. One exception: a fiscal Q4 the chosen base files nothing for,
+      when a sibling base files that fiscal year's figure over the same
+      start, is the sibling's year minus the chosen base's nine months. FTNT
+      tags capex as PP&E in its 10-Qs and as ProductiveAssets in its 10-Ks,
+      so neither tag alone ever derives its Q4; yfinance's FY2025 Q4 (42.8M)
+      is exactly that subtraction. Only the Q4 hole is filled: the two
+      series are not otherwise merged (FTNT's diverge from 2026).
     * ADDEND missing for a quarter -> treated as 0, but ONLY when the addend
       tag files nothing at all ending on that period end. A filer that
       capitalizes no software in a quarter simply omits the tag, and reading
@@ -360,14 +366,20 @@ def composite_values(
     # not. When `base_tag` is pinned (the backfill tries each candidate and
     # lets the verification gate choose), that tag is used; unpinned callers
     # get the deepest-coverage base (ties toward the earlier tag).
+    base_facts = {tag: facts_for_tag(payload, tag, field) for tag in base_tags}
     if base_tag is not None:
+        chosen_tag = base_tag
         chosen = quarterly_values(facts_for_tag(payload, base_tag, field))
     else:
-        chosen = {}
+        chosen_tag, chosen = None, {}
         for tag in base_tags:
-            values = quarterly_values(facts_for_tag(payload, tag, field))
+            values = quarterly_values(base_facts[tag])
             if len(values) > len(chosen):
-                chosen = values
+                chosen_tag, chosen = tag, values
+    if chosen:
+        siblings = [facts for tag, facts in base_facts.items() if tag != chosen_tag]
+        own = base_facts.get(chosen_tag) or facts_for_tag(payload, chosen_tag, field)
+        chosen.update(_q4_from_sibling_year(own, chosen, siblings))
     out = {end: abs(v) for end, v in chosen.items()}
     if not out:
         return {}
@@ -390,6 +402,36 @@ def composite_values(
                     continue
             if value is not None:
                 out[quarter] += abs(value)
+    return out
+
+
+def _q4_from_sibling_year(
+    facts: list[Fact], values: dict[pd.Timestamp, float], siblings: list[list[Fact]]
+) -> dict[pd.Timestamp, float]:
+    """Fiscal Q4s the base files nothing for: a sibling's year minus nine months.
+
+    Only where the sibling's fiscal-year fact starts on the same day as the
+    base's year-to-date series, the base's nine-month point sits one quarter
+    before the year end, and the result keeps the year's sign (a sibling year
+    smaller than the base's nine months is a different concept, not a Q4).
+    """
+    own_ends = {f.end for f in facts}
+    cumulative = _latest_filed(facts)
+    out: dict[pd.Timestamp, float] = {}
+    for sibling in siblings:
+        for (start, end), year in _latest_filed(sibling).items():
+            if year.period_type != "annual" or end in values or end in own_ends:
+                continue
+            nine = [
+                fact.value
+                for (s, e), fact in cumulative.items()
+                if s == start and _QUARTER_MIN_DAYS <= (end - e).days <= _QUARTER_MAX_DAYS
+            ]
+            if len(nine) != 1:
+                continue
+            q4 = year.value - nine[0]
+            if q4 * year.value >= 0:
+                out[end] = q4
     return out
 
 

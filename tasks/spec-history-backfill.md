@@ -394,4 +394,32 @@ Rescored in memory: HUBS 35.8 to 39.0 and OKTA 23.6 to 23.1 go
 the other fills sit deeper than any TTM window reads. FTNT's 2023-12 and
 2024-12 holes have a different cause (its 10-K files capex under
 `PaymentsToAcquireProductiveAssets` while the verified base is PP&E) and are
-not addressed here. Applying needs the owner-gated `--apply` run.
+addressed by the next note. Applying needs the owner-gated `--apply` run.
+
+### Implementation note: a fiscal Q4 filed under a sibling base tag (2026-10-04)
+
+Added in the same branch as the note above. FTNT tags capex as
+`PaymentsToAcquirePropertyPlantAndEquipment` in its 10-Qs (Q1 direct, then
+six- and nine-month YTD) and as `PaymentsToAcquireProductiveAssets` in its
+10-Ks (fiscal year only), so neither base tag alone ever derives a Q4: PP&E
+has no year figure to difference, ProductiveAssets has no nine-month point
+before 2024. The gate picked PP&E (ProductiveAssets fails it on 2026, where
+the two series diverge: Q1 2026 reads 47.1M against 70.6M), which left
+2022-12, 2023-12 and 2024-12 empty and FTNT in `r40_trend` warm-up.
+
+Rule now: a fiscal Q4 the chosen base files nothing for at all, where a
+sibling base files that fiscal year over the same start date and the chosen
+base has the nine-month point one quarter before the year end, is the
+sibling's year minus the chosen base's nine months, kept only when it does
+not flip sign. Nothing else crosses between base tags: sibling quarters
+never fill or override the chosen base, so FTNT's divergent 2026 series
+stays out. The evidence that the subtraction is right is yfinance's own
+FY2025 Q4: 364.8M (ProductiveAssets year) minus 322.0M (PP&E nine months)
+is the cached 42.8M, which the rule now derives and the gate checks at
+0.00 percent.
+
+Live dry run (2026-10-04, read-only): identical to the note above except
+FTNT, which fills 3 capex cells (2022-12 30.9M, 2023-12 26.9M, 2024-12
+97.6M) with 61 of 61 overlap checks matched; 18 cells in total. Rescored in
+memory: FTNT 69.6 to 83.3, `r40_trend` +0.136, `insufficient_history`
+cleared (coverage 17 to 18 of 20 with HUBS and OKTA).

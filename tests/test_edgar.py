@@ -395,6 +395,56 @@ class TestCompositeCapex:
         )
         assert values[Q1] == approx(8_000_000)
 
+    def _ppe_nine_months(self) -> list[dict]:
+        start = _STARTS[Q1]
+        return [
+            fact(Q1, 10_000_000),
+            fact(Q2, 25_000_000, start=start),
+            fact(Q3, 33_000_000, start=start),
+        ]
+
+    def test_a_q4_filed_only_under_the_sibling_base_is_its_year_minus_nine_months(self):
+        """FTNT: PP&E in the 10-Qs, the fiscal year under ProductiveAssets."""
+        payload = tag_payload(
+            {
+                PPE: self._ppe_nine_months(),
+                PRODUCTIVE: [fact(Q4, 45_000_000, start=_STARTS[Q1])],
+            }
+        )
+        values = composite_values(payload, "capex", base_tag=PPE)
+        assert values == {
+            Q1: approx(10_000_000),
+            Q2: approx(15_000_000),
+            Q3: approx(8_000_000),
+            Q4: approx(12_000_000),
+        }
+
+    def test_a_sibling_year_below_the_nine_months_is_not_a_q4(self):
+        payload = tag_payload(
+            {
+                PPE: self._ppe_nine_months(),
+                PRODUCTIVE: [fact(Q4, 20_000_000, start=_STARTS[Q1])],
+            }
+        )
+        assert Q4 not in composite_values(payload, "capex", base_tag=PPE)
+
+    def test_sibling_quarters_never_fill_or_override_the_chosen_base(self):
+        start = _STARTS[Q1]
+        payload = tag_payload(
+            {
+                PPE: [fact(Q1, 10_000_000), fact(Q3, 33_000_000, start=start)],
+                PRODUCTIVE: [
+                    fact(Q1, 7_000_000),
+                    fact(Q2, 9_000_000),
+                    fact(Q4, 45_000_000, start=start),
+                ],
+            }
+        )
+        values = composite_values(payload, "capex", base_tag=PPE)
+        assert values[Q1] == approx(10_000_000)
+        assert Q2 not in values  # PP&E's own hole stays a hole
+        assert values[Q4] == approx(12_000_000)
+
     def test_no_base_tag_at_all_yields_nothing(self):
         assert composite_values(tag_payload({DEVELOP_SW: [fact(Q1, 1_000_000)]}), "capex") == {}
 
