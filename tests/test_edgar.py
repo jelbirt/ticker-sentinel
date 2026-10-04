@@ -428,6 +428,30 @@ class TestCompositeCapex:
         )
         assert Q4 not in composite_values(payload, "capex", base_tag=PPE)
 
+    @pytest.mark.parametrize("sibling_nine, filled", [(33_100_000, True), (40_000_000, False)])
+    def test_a_sibling_nine_months_must_agree_with_the_base(self, sibling_nine, filled):
+        """A broader sibling (intangibles folded in) would inflate the Q4."""
+        start = _STARTS[Q1]
+        payload = tag_payload(
+            {
+                PPE: self._ppe_nine_months(),
+                PRODUCTIVE: [
+                    fact(Q3, sibling_nine, start=start),
+                    fact(Q4, 60_000_000, start=start),
+                ],
+            }
+        )
+        assert (Q4 in composite_values(payload, "capex", base_tag=PPE)) is filled
+
+    def test_a_sibling_year_on_another_start_is_not_a_q4(self):
+        payload = tag_payload(
+            {
+                PPE: self._ppe_nine_months(),
+                PRODUCTIVE: [fact(Q4, 45_000_000, start="2024-01-25")],
+            }
+        )
+        assert Q4 not in composite_values(payload, "capex", base_tag=PPE)
+
     def test_sibling_quarters_never_fill_or_override_the_chosen_base(self):
         start = _STARTS[Q1]
         payload = tag_payload(

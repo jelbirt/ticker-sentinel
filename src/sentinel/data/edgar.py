@@ -136,6 +136,9 @@ _PERIODIC_FORMS = {"10-K", "10-Q", "10-K/A", "10-Q/A"}
 _QUARTER_MIN_DAYS = 60
 _QUARTER_MAX_DAYS = 120
 _ANNUAL_MIN_DAYS = 300
+# a sibling base's own nine months must match the base's within the backfill
+# gate's 1 percent (D2) before its fiscal year may supply a Q4
+_SIBLING_AGREE_REL = 0.01
 
 
 @dataclass(frozen=True)
@@ -414,22 +417,33 @@ def _q4_from_sibling_year(
     base's year-to-date series, the base's nine-month point sits one quarter
     before the year end, and the result keeps the year's sign (a sibling year
     smaller than the base's nine months is a different concept, not a Q4).
+    When the sibling files its own nine months over the same span, the two
+    must agree: a sibling that measures more than the base (intangibles or
+    software folded in) would otherwise inflate the Q4 with no sign change,
+    and the gate never sees a filled cell.
     """
     own_ends = {f.end for f in facts}
     cumulative = _latest_filed(facts)
     out: dict[pd.Timestamp, float] = {}
     for sibling in siblings:
-        for (start, end), year in _latest_filed(sibling).items():
+        theirs = _latest_filed(sibling)
+        for (start, end), year in theirs.items():
             if year.period_type != "annual" or end in values or end in own_ends:
                 continue
             nine = [
-                fact.value
+                (e, fact.value)
                 for (s, e), fact in cumulative.items()
                 if s == start and _QUARTER_MIN_DAYS <= (end - e).days <= _QUARTER_MAX_DAYS
             ]
             if len(nine) != 1:
                 continue
-            q4 = year.value - nine[0]
+            nine_end, nine_value = nine[0]
+            check = theirs.get((start, nine_end))
+            if check is not None and abs(check.value - nine_value) > (
+                _SIBLING_AGREE_REL * abs(nine_value)
+            ):
+                continue
+            q4 = year.value - nine_value
             if q4 * year.value >= 0:
                 out[end] = q4
     return out

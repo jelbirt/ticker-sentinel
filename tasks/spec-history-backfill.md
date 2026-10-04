@@ -413,7 +413,10 @@ base has the nine-month point one quarter before the year end, is the
 sibling's year minus the chosen base's nine months, kept only when it does
 not flip sign. Nothing else crosses between base tags: sibling quarters
 never fill or override the chosen base, so FTNT's divergent 2026 series
-stays out. The evidence that the subtraction is right is yfinance's own
+stays out. Where the sibling also files the same nine months, the two must agree
+within the gate's 1 percent, so a sibling that measures more than the base
+cannot inflate a Q4 (FTNT's 2024 and 2025 nine months agree exactly, 281.3M
+and 322.0M, and its FY2024 sibling year of 378.9M gives the 97.6M Q4). The evidence that the subtraction is right is yfinance's own
 FY2025 Q4: 364.8M (ProductiveAssets year) minus 322.0M (PP&E nine months)
 is the cached 42.8M, which the rule now derives and the gate checks at
 0.00 percent.
