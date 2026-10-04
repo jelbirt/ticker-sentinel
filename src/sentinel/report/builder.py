@@ -120,7 +120,7 @@ def local_timestamp(now: datetime, tz_name: str) -> tuple[str, str | None]:
     change-detection date come from the run's own `date.today()`, so a config
     change can never shift which day a run belongs to. The zone label is part
     of the string precisely because the two can disagree: the runner is on UTC
-    and a 6am ET report is written by a job that started the same calendar day
+    and a pre-market ET report is written by a job that started the same calendar day
     in UTC, but nothing guarantees that for an ad hoc run near midnight.
 
     Returns (stamp, note). `note` is a data note when the zone could not be

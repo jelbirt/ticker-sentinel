@@ -1,6 +1,7 @@
 """Twelve Data fallback: free-tier pacing, price basis, and history depth."""
 from __future__ import annotations
 
+from datetime import datetime, timezone
 from types import SimpleNamespace
 
 import pandas as pd
@@ -114,3 +115,56 @@ def test_fallback_note_records_the_basis(fallback_env):
     assert "split and dividend adjusted basis requested" in note
     assert "AAA" in note
     assert "—" not in note and "–" not in note        # no em or en dashes in output
+
+
+def _frames(last_day: str):
+    idx = pd.bdate_range(end=last_day, periods=3)
+    close = pd.DataFrame({"AAA": [1.0, 2.0, 3.0], "SPY": [4.0, 5.0, 6.0]}, index=idx)
+    return close, close * 10
+
+
+def _ny(stamp: str) -> datetime:
+    return datetime.fromisoformat(stamp).replace(tzinfo=prices.MARKET_TZ)
+
+
+def test_an_unfinished_same_day_bar_is_dropped_and_disclosed():
+    close, volume = _frames("2026-10-02")
+    close, volume, note = prices.drop_unfinished_session(
+        close, volume, _ny("2026-10-02T12:46")
+    )
+    assert close.index[-1] == pd.Timestamp("2026-10-01")
+    assert volume.index[-1] == pd.Timestamp("2026-10-01")
+    assert note == (
+        "today's unfinished session (2026-10-02, run at 12:46 New York time) "
+        "dropped; technicals scored on the 2026-10-01 close"
+    )
+    assert "\u2014" not in note and "\u2013" not in note
+
+
+@pytest.mark.parametrize(
+    "last_day, now",
+    [
+        ("2026-10-02", "2026-10-02T16:30"),   # session settled: today's bar is the close
+        ("2026-10-01", "2026-10-02T01:23"),   # pre-market: no same-day bar exists
+    ],
+)
+def test_a_settled_or_absent_same_day_bar_is_kept(last_day, now):
+    close, volume = _frames(last_day)
+    kept, kept_volume, note = prices.drop_unfinished_session(close, volume, _ny(now))
+    assert note is None
+    assert kept.equals(close) and kept_volume.equals(volume)
+
+
+def test_the_session_is_judged_in_new_york_time():
+    # 01:00 UTC on 10-03 is 21:00 on 10-02 in New York: the 10-02 bar is settled
+    close, volume = _frames("2026-10-02")
+    now = datetime(2026, 10, 3, 1, 0, tzinfo=timezone.utc)
+    assert prices.drop_unfinished_session(close, volume, now)[2] is None
+
+
+def test_fetch_prices_applies_the_session_check(monkeypatch):
+    close, volume = _frames("2026-10-02")
+    monkeypatch.setattr(prices, "_yf_download", lambda tickers, period: (close, volume))
+    got, _, notes = prices.fetch_prices(["AAA", "SPY"], now=_ny("2026-10-02T10:00"))
+    assert got.index[-1] == pd.Timestamp("2026-10-01")
+    assert any("unfinished session" in n for n in notes)

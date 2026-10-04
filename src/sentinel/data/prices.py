@@ -14,6 +14,8 @@ from __future__ import annotations
 import logging
 import os
 import time
+from datetime import datetime, time as clock, timezone
+from zoneinfo import ZoneInfo
 
 import pandas as pd
 import requests
@@ -38,6 +40,12 @@ TWELVEDATA_ADJUST = "all"
 # are mapped explicitly. A 1day interval yields roughly 252 bars a year; the
 # extra covers holidays and the reporting lag. Deliberately not a general period
 # parser: only these two are reachable, and an unmapped one is a code bug.
+# a bar dated today is the session in progress until the close has settled;
+# scoring it would read a partial day as the close (the scheduled run has
+# started hours late, after the open, since 2026-08-27)
+MARKET_TZ = ZoneInfo("America/New_York")
+SESSION_SETTLED = clock(16, 30)
+
 PERIOD_BARS = {"1y": 260, "2y": 520}
 DEFAULT_BARS = PERIOD_BARS["1y"]
 
@@ -99,12 +107,41 @@ def _twelvedata_series(
         return None
 
 
+def drop_unfinished_session(
+    close: pd.DataFrame | None, volume: pd.DataFrame | None, now: datetime
+) -> tuple[pd.DataFrame | None, pd.DataFrame | None, str | None]:
+    """Drop a bar dated today (New York) when the session has not settled yet.
+
+    Returns the trimmed frames and a note naming the session scored instead,
+    or None when nothing was dropped.
+    """
+    if close is None or close.empty:
+        return close, volume, None
+    local = now.astimezone(MARKET_TZ)
+    if local.time() >= SESSION_SETTLED:
+        return close, volume, None
+    today = pd.Timestamp(local.date())
+    if pd.Timestamp(close.index[-1]).normalize() != today:
+        return close, volume, None
+    close = close[close.index.normalize() < today]
+    if volume is not None:
+        volume = volume[volume.index.normalize() < today]
+    scored = close.index[-1].date().isoformat() if not close.empty else "n/a"
+    note = (
+        f"today's unfinished session ({today.date().isoformat()}, run at "
+        f"{local:%H:%M} New York time) dropped; technicals scored on the "
+        f"{scored} close"
+    )
+    return close, volume, note
+
+
 def fetch_prices(
-    tickers: list[str], period: str = "1y"
+    tickers: list[str], period: str = "1y", now: datetime | None = None
 ) -> tuple[pd.DataFrame | None, pd.DataFrame | None, list[str]]:
     """One batched pull; per-ticker Twelve Data fallback for whatever is missing.
 
     Returns (close frame, volume frame, human-readable degradation notes).
+    `now` is injectable for tests; the unfinished-session check reads it.
     """
     notes: list[str] = []
     close: pd.DataFrame | None = None
@@ -145,4 +182,9 @@ def fetch_prices(
             still = sorted(set(missing) - set(recovered))
             if still:
                 notes.append(f"prices unavailable: {', '.join(still)}")
+    close, volume, session_note = drop_unfinished_session(
+        close, volume, now or datetime.now(timezone.utc)
+    )
+    if session_note:
+        notes.append(session_note)
     return close, volume, notes
