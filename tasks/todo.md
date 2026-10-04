@@ -15,18 +15,7 @@ made every second merge conflict here.
   `run_history.json`; discard that change rather than committing it.
 
 ## Active workstreams
-- `fix/edgar-capex-addend` (opened 2026-10-04, PR #35): an addend filed only
-  cumulatively (HUBS 10-K-only intangibles, OKTA nine-month 0) no longer
-  drops the capex quarter, and a fiscal Q4 filed only under the sibling
-  base tag (FTNT) is its year minus nine months; HUBS, OKTA and FTNT go
-  r40_trend-live (coverage 15 to 18 of 20). Needs the owner-gated post-merge
-  `python -m sentinel.backfill --apply` (18 cells).
-- `rotation-round-8` (opened 2026-10-04, PR #36): refresh #8 (issue #34),
-  ESTC to the bench, ADSK promoted (already seeded, no apply needed).
-- `fix/schedule-drift` (opened 2026-10-04, PR #37): daily cron 10:00 to
-  05:23 UTC (starts drifted past the open), an unfinished same-day bar is
-  dropped with a note, the weekly digest chains off the Saturday daily run
-  via `workflow_run`, and the digest's attention-list subheadings split.
+- none open.
 
   One branch per workstream via `scripts/new-worktree.sh <branch>`; main is the
   review inbox; merge back via PR.
@@ -43,6 +32,31 @@ made every second merge conflict here.
   relation instead.
 
 ## Done
+- `fix/edgar-capex-addend` (2026-10-04, merged as PR #35, worktree torn
+  down; apply commit `5c71174`): two capex derivation fixes in
+  `data/edgar.py`. An addend filed only cumulatively with nothing else
+  filed inside its span (HUBS 10-K-only intangibles, OKTA nine-month 0)
+  carries its value into the quarter it ends on instead of dropping it,
+  guarded against a mid-year addend tag switch and disagreeing facts. A
+  fiscal Q4 filed only under the sibling base tag (FTNT's 10-K
+  ProductiveAssets) is that year minus the chosen base's nine months, only
+  when the start dates match and any sibling nine months agree within 1
+  percent. The apply filled 18 empty capex cells across 10 names, overwrote
+  nothing; HUBS, OKTA and FTNT leave warm-up (coverage 15 to 18 of 20; MNDY
+  and SHOP remain).
+- `rotation-round-8` (2026-10-04, merged as PR #36, worktree torn down):
+  refresh #8 (issue #34, closed). ESTC (level rule 3 of 3, the only live
+  name failing the Rule of 40) to the bench, ADSK promoted (F 73.6,
+  `passes_all_r40`, technical leg 0 in a downtrend; the tape does not veto
+  a promotion). ZS held as a penalty case.
+- `fix/schedule-drift` (2026-10-04, merged as PR #37, worktree torn down):
+  the daily cron moved 10:00 to 05:23 UTC (scheduled starts had drifted 3
+  to 11 hours late, past the open), `fetch_prices` drops an unfinished
+  same-day bar before 16:30 New York time with a note, the weekly digest
+  chains off the scheduled Saturday daily run via `workflow_run` (known
+  gap: if GitHub drops that run, no digest and no alert, dispatch by hand),
+  and the digest's attention list splits into "Persistent decay" and
+  "Persistently weak" subheadings.
 - `rotation-round-7` (2026-09-29, merged as PR #33, worktree torn down):
   refresh #7 (issue #31, closed). No watchlist change; bench refreshed from
   an in-memory screen of 28 candidates: ADSK, APPF, GWRE in (all
@@ -231,12 +245,15 @@ made every second merge conflict here.
   (PR #29). Round 7 (issue #31, 2026-09-26) read the computed level table
   (it matched the expectation: ESTC and ZS qualify), held ZS as a
   penalty case and refreshed the bench instead of swapping ESTC (PR #33).
-  Standing watch items for refresh #8 (Sat 2026-10-03): decide ESTC against
-  the shadow-scored bench on the fundamental leg (ADSK 73.6 highest, APPF
-  58.8 cleanest; the replacement must enter above the bottom 3), check the
-  new bench names read r40_trend-live in the digest (seeded by `3001feb`),
-  MDB's first live windows (44.1, leaves the bottom), RBRK at r40_trend
-  -0.035, S on the bench, ESTC's 2026-11-19 report as the fallback
-  checkpoint.
+  Round 8 (issue #34, 2026-10-03) swapped ESTC for ADSK (PR #36) and the
+  capex fix (PR #35, apply `5c71174`) took HUBS, OKTA and FTNT out of
+  warm-up. Standing watch items for refresh #9 (Sat 2026-10-10): the first
+  chained digest (PR #37; if no issue opens, check the Saturday daily run
+  and dispatch weekly-refresh by hand), ADSK's first ranked runs, OKTA
+  newly eligible for the level table (passes r40_fcf, so held if it
+  qualifies), FTNT and HUBS first live `r40_trend` readings, a boundary
+  step from the apply on those three, RBRK at r40_trend -0.035, S and ESTC
+  on the bench (ESTC reports 2026-11-19). With 18 of 20 live, revisit the
+  automate-vs-manual call.
 - (done) First scheduled run after merge created `data/cache/run_history.json`
   on 2026-08-07; change detection live since 2026-08-08.
