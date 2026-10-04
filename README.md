@@ -2,7 +2,7 @@
 
 [![ci](https://github.com/jelbirt/ticker-sentinel/actions/workflows/ci.yml/badge.svg)](https://github.com/jelbirt/ticker-sentinel/actions/workflows/ci.yml)
 
-A personal stock research service that runs in production on GitHub Actions: every trading morning it pulls end-of-day market and fundamentals data for a 20-name growth watchlist, computes a Rule-of-40-centered scorecard with a technical overlay, detects what changed since the prior run, has an LLM write the news brief under strict guardrails, and emails a pre-market HTML report before the open (10:00 UTC, Tue-Sat).
+A personal stock research service that runs in production on GitHub Actions: every trading morning it pulls end-of-day market and fundamentals data for a 20-name growth watchlist, computes a Rule-of-40-centered scorecard with a technical overlay, detects what changed since the prior run, has an LLM write the news brief under strict guardrails, and emails a pre-market HTML report before the open (scheduled 05:23 UTC, Tue-Sat).
 
 This is the live repo, not a demo: scheduled runs commit the bounded data cache (and, as of the Phase 4 change-detection release, the run history) back to this repository whenever state changes. See the commit log.
 

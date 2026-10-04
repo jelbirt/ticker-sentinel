@@ -533,7 +533,11 @@ def render_markdown(
     if digest.notes:
         lines.append("")
 
-    lines.append("## Attention list (persistent decay)")
+    # two row kinds share the section: decay (change) and the level rule,
+    # so each gets its own subheading rather than the parent naming one
+    lines.append("## Attention list")
+    lines.append("")
+    lines.append("### Persistent decay")
     if digest.attention:
         lines += [
             "",

@@ -1,9 +1,16 @@
 name: weekly-refresh
 on:
-  schedule:
-    # Sat 12:00 UTC: after the Saturday daily report (10:00 UTC) and its
-    # run-history commit land, so the digest covers the full Tue-Sat week.
-    - cron: "0 12 * * 6"
+  # chained off the Saturday daily report rather than a cron of its own, so
+  # the digest always reads that run's history commit: scheduled starts drift
+  # by hours (3 to 11 late in 2026-08 and 09), and two independent crons only
+  # stayed in order by luck. Runs whatever the daily conclusion, since a failed
+  # Saturday run is a coverage gap the digest should report, not hide.
+  # Known gap: GitHub can drop a scheduled run under load, and a Saturday
+  # daily run that never starts fires nothing here, no digest and no alert.
+  # A week with no refresh issue by Sunday means dispatch this by hand.
+  workflow_run:
+    workflows: [daily-report]
+    types: [completed]
   workflow_dispatch:
 
 permissions:
@@ -17,7 +24,20 @@ concurrency:
   cancel-in-progress: false
 
 jobs:
+  # the daily report runs Tue-Sat; only its scheduled Saturday run opens the
+  # week's digest (a dispatched daily run never does)
+  gate:
+    if: ${{ github.event_name == 'workflow_run' && github.event.workflow_run.event == 'schedule' }}
+    runs-on: ubuntu-latest
+    outputs:
+      saturday: ${{ steps.day.outputs.saturday }}
+    steps:
+      - id: day
+        run: echo "saturday=$([ "$(date -u +%u)" = 6 ] && echo true || echo false)" >> "$GITHUB_OUTPUT"
+
   digest:
+    needs: gate
+    if: ${{ always() && (github.event_name == 'workflow_dispatch' || needs.gate.outputs.saturday == 'true') }}
     runs-on: ubuntu-latest
     env:
       GH_TOKEN: ${{ github.token }}

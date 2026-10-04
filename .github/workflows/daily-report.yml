@@ -1,9 +1,14 @@
 name: daily-report
 on:
   schedule:
-    # 10:00 UTC = 6:00am EDT / 5:00am EST, pre-market briefing on the prior
+    # 05:23 UTC = 1:23am EDT / 12:23am EST, pre-market briefing on the prior
     # session's close. Tue-Sat so Friday's session arrives Saturday morning.
-    - cron: "0 10 * * 2-6"
+    # Scheduled starts drift: the old "0 10" slot ran 3 to 11 hours late
+    # from 2026-08-27 (after the 13:30 UTC open, scoring a partial session).
+    # An early off-the-hour slot makes a start before the open far more likely
+    # (though an 11 hour delay would still land after it); fetch_prices drops
+    # a same-day bar when a run does land mid-session.
+    - cron: "23 5 * * 2-6"
   workflow_dispatch:
     inputs:
       tickers: {description: "Optional comma-separated override", required: false}

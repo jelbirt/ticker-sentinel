@@ -447,6 +447,17 @@ class TestLevelRule:
         assert "| DDD | 20.0 | n/a | n/a | not eligible (insufficient history) |" in text
         assert "not eligible (growth from annual)" in text
 
+    def test_decay_and_level_rows_each_get_their_own_subheading(self):
+        # the parent heading names neither row kind: the level table is not decay
+        digest = build_digest(
+            _level_runs(15, lambda i: {k: _scored(v) for k, v in self.BASE.items()}),
+            list(self.BASE), [], CFG,
+        )
+        text = render_markdown(digest, 7, date(2026, 9, 26))
+        assert "## Attention list\n" in text
+        assert "(persistent decay)" not in text
+        assert text.index("### Persistent decay") < text.index("### Persistently weak")
+
     def test_liveness_is_checked_at_every_window_end(self):
         # went live only at the latest window end: one window, not three
         def per_run(i):
