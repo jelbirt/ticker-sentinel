@@ -845,8 +845,9 @@ vs staying manual.
   from PR #37 (weekday runs gate-skipped in seconds, Saturday opened #38).
   Attention list: no persistent decay; three persistently weak rows.
 - Level table: ZS (16.7, `r40_fcf` 48.7 pass) qualifies at 3 of 3 windows,
-  OKTA (23.1, 42.4 pass) and TEAM (24.9, 46.1 pass) at 1 of 3. All three
-  pass the Rule of 40, so all three are held under the round-7 line. OKTA
+  OKTA (23.1, 42.4 pass) and TEAM (24.9, 46.1 pass) at 1 of 3. ZS is held
+  under the round-7 line (a passing qualifier is penalties, not thesis);
+  OKTA and TEAM do not qualify yet, and both pass the rule too. OKTA
   entered as predicted in round 8, eligible now that the capex apply made
   it `r40_trend`-live. The third slot is a coin toss: IOT sits at 25.0
   against TEAM's 24.9, so only the three-window persistence keeps it from
@@ -857,11 +858,12 @@ vs staying manual.
   inside the window.
 - First live `r40_trend` readings: FTNT +0.136, HUBS +0.032, OKTA -0.006.
   RBRK unchanged at -0.035. Nothing near `deteriorating_r40_trend` (-0.10),
-  so the decay gate stays at 0 hits, now in 30 runs. Coverage 18 of 20
+  so the decay gate stays at 0 hits in 25 runs (the retained history,
+  09-08 to 10-10; none in any committed history since 08-07). Coverage 18 of 20
   `r40_trend`-live; MNDY (foreign filer, no quarterly XBRL) and SHOP remain
   in warm-up.
 - ADSK's first ranked window: 4th all week on R40 breadth, F 73.6. Its
-  tape turned from `downtrend` to `mixed` on 10-08 (T 0 to 24 to 29),
+  tape turned from `downtrend` to `mixed` on 10-08 (T 0 to 29 to 24),
   composite 44.1 to 53.8. The round-8 tape-does-not-veto call needed no
   revisiting.
 - Bench (fundamental, `r40_fcf`): APPF 58.8 (46.2 pass) and GWRE 46.2
@@ -885,7 +887,8 @@ vs staying manual.
 - What mattered: the `r40_fcf` column on the level table (the whole
   decision) and the boundary comparison attributing FTNT, HUBS and OKTA to
   the apply. What was noise: change activity (MNDY 5, HUBS 4, both
-  whipsaws across their SMAs) and the HUBS Deterioration listing.
+  SMA crossings; HUBS a whipsaw, MNDY one
+  cross into `uptrend` that held) and the HUBS Deterioration listing.
 
 **What the digest carries as of 2026-08-16** (branch `rotation-evidence`,
 answering round-1 gaps 1 and 2 and preparing the refresh #3 decision):
