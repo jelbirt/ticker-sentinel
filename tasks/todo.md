@@ -15,7 +15,15 @@ made every second merge conflict here.
   `run_history.json`; discard that change rather than committing it.
 
 ## Active workstreams
-- none open.
+- `fix/tone-rejection-logging` (opened 2026-10-10, PR #39): log why an LLM
+  news tone is rejected (missing `<REPORT>` block, dropped digest ticker, or
+  a claim about a name with no headlines). Reviewed, no fixes needed.
+- `fix/deterioration-double-count` (opened 2026-10-10, PR #40): one price
+  event counts once in the Deterioration watch (owner chose "net out
+  today's move"). Replay over 24 runs: 22 listings to 12. Reviewed; the
+  SPEC T-range wording and two test gaps were fixed in `36607aa`.
+- `rotation-round-9` (opened 2026-10-10, PR #41, closes issue #38): round-9
+  record in SPEC 7.0.1; no changes, stay manual. Docs only.
 
   One branch per workstream via `scripts/new-worktree.sh <branch>`; main is the
   review inbox; merge back via PR.
@@ -235,7 +243,7 @@ made every second merge conflict here.
 ## Next gates (owner)
 - Weekly watchlist candidate refresh: live since 2026-08-15. A digest issue
   opens Saturdays (label `watchlist-refresh`, owner-assigned); do the refresh
-  from the issue. Bench: WDAY, ZM, S, ADSK, APPF, GWRE (a structured `bench:`
+  from the issue. Bench: WDAY, ZM, S, APPF, GWRE, ESTC (a structured `bench:`
   key in watchlist.yaml). Calibration complete: rounds 1-5 (issues #6, #22, #24, #25, #26)
   all closed with no changes; the option-3 decision (2026-08-31, SPEC 7.0.1
   round 3) is STAY MANUAL, reaffirmed 2026-09-17 (round 5: 14 of 20
