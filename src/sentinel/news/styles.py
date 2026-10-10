@@ -214,10 +214,13 @@ def _sentence_start_symbol(ticker: str) -> re.Pattern:
     )
 
 
-def _narrative_valid(
+def _narrative_problem(
     text: str, digest: NewsDigest, known_tickers: set[str] | None = None
-) -> bool:
+) -> str | None:
     """Guard against hallucination shipping under authoritative source links.
+
+    Returns None for a valid narrative, else a short reason naming the check
+    and the ticker that tripped it, so the skip is diagnosable from the run log.
 
     Rejects a narrative that (a) drops a digest ticker entirely (neither its
     symbol nor company name appears — the sources footer would then point at
@@ -248,17 +251,19 @@ def _narrative_valid(
         symbol_present = re.search(rf"\b{re.escape(tn.ticker)}\b", text)
         name_present = company_name_matches(tn.company_name, text)
         if not symbol_present and not name_present:
-            return False
+            return f"dropped digest ticker {tn.ticker}"
     if known_tickers:
         in_digest = {tn.ticker for tn in digest.tickers}
-        for ticker in known_tickers - in_digest:
+        for ticker in sorted(known_tickers - in_digest):
             if ticker_pattern(ticker).search(text):
-                return False
+                return f"claim about {ticker}, which has no headlines today"
             if len(ticker) <= SHORT_TICKER_MAX_LEN and _sentence_start_symbol(
                 ticker
             ).search(text):
-                return False
-    return True
+                return (
+                    f"sentence opens with {ticker}, which has no headlines today"
+                )
+    return None
 
 # Named tone presets — presentation-layer only (Phase 3.1). A tone may shift
 # emphasis within the digest but never what the pipeline selected.
@@ -327,7 +332,7 @@ def _digest_text(digest: NewsDigest, budget: int | None = None) -> str | None:
     selection, a style may show less. Depth comes off the ticker that currently
     carries the most headlines, lowest-ranked (last) item first, so the cut goes
     round-robin and EVERY ticker keeps at least one headline for as long as the
-    budget allows. Coverage is what the prompt demands and what _narrative_valid
+    budget allows. Coverage is what the prompt demands and what _narrative_problem
     checks, so breadth is worth more here than depth.
 
     Degenerate case (one headline per ticker still over budget): returns None.
@@ -400,12 +405,19 @@ def _llm_brief(
         return None
     text = _extract_report(raw)
     if not text:  # model ignored the output contract — skip rather than leak meta-talk
+        log.warning(
+            "news tone '%s': no usable <REPORT> block (%s open, %s close markers "
+            "in %s chars); skipping",
+            tone, len(_OPEN_RE.findall(raw)), len(_CLOSE_RE.findall(raw)), len(raw),
+        )
         return None
     # Belt-and-braces on the prompt's no-dash rule: the reader must never see
     # an em/en dash, whatever the model does.
     text = re.sub(r"[ \t]*[—–][ \t]*", " - ", text)
-    if not _narrative_valid(text, digest, known_tickers):
-        return None  # dropped or fabricated ticker coverage — skip rather than mislead
+    problem = _narrative_problem(text, digest, known_tickers)
+    if problem:  # dropped or fabricated ticker coverage: skip rather than mislead
+        log.warning("news tone '%s': narrative rejected, %s; skipping", tone, problem)
+        return None
 
     narrative = _esc(text).replace("\n\n", "<br><br>").replace("\n", "<br>")
     source_bits = []
