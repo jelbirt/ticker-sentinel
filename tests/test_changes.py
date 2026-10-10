@@ -485,6 +485,25 @@ class TestDeteriorationGate:
             "composite fell 3.1", "composite fell 9.1",
         ]
 
+    def test_merged_break_keeps_a_week_decline_underway_before_today(self):
+        sc = _det_sc(composite=40.0, tech=TechnicalSnapshot(trend_state="downtrend"))
+        rows = deterioration_rows(
+            [sc], _prior_run(composite=50.0, trend_state="mixed"),
+            _prior_run("2026-07-30", composite=55.0), CFG,
+        )
+        assert rows[0].reasons == [
+            "broke into downtrend (composite fell 10.0 since prior run)",
+            "composite fell 15.0 over the week window",
+        ]
+
+    def test_pre_today_decline_exactly_at_week_drop_pts_counts(self):
+        # week-ago -> prior fell exactly week_drop_pts (5.0): the >= gate admits it
+        rows = deterioration_rows(
+            [_det_sc(composite=46.0)], _prior_run(composite=50.0),
+            _prior_run("2026-07-30", composite=55.0), CFG,
+        )
+        assert len(rows) == 1 and len(rows[0].reasons) == 2
+
     def test_plan6_confirmation_not_repeated_after_a_merged_break(self):
         sc = _det_sc(
             composite=40.0, r40_trend=-0.15, tech=TechnicalSnapshot(trend_state="downtrend")

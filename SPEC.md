@@ -164,9 +164,10 @@ alone):
 | Worsening short interest | MoM shares-short rise > `SHORT_MOM_ALERT` (0.20, reused), or short_pct_float rose >= `short_delta` |
 
 One price event counts once (2026-10-10, refresh #9 review). A technical
-breakdown moves T by itself (a downtrend step is -20 to -24 T, a death cross
--15 T, so 6 to 10 composite points at the 0.4 weight), and a drop that happened
-entirely today also appears in the week window. So:
+breakdown moves T by itself (the trend term alone is -20 T from mixed or -60 T
+from uptrend, a new death cross -15 T, so 6 or more composite points at the
+default 0.4 `technicals_weight`), and a drop that happened entirely today also
+appears in the week window. So:
 - A technical breakdown and the 1-run drop in the same run merge into one
   signal, reported as one clause: "broke into downtrend (composite fell 9.8
   since prior run)".
