@@ -1,6 +1,7 @@
 """LLM news style — subprocess mocked throughout; the suite never calls Claude."""
 from __future__ import annotations
 
+import logging
 import subprocess
 from datetime import datetime, timedelta, timezone
 from types import SimpleNamespace
@@ -586,3 +587,60 @@ class TestTones:
         )
         assert html is None
         assert not any("fell back" in n for n in notes)  # caller decides what to do
+
+
+class TestRejectionLogging:
+    """A skipped tone names its reason in the run log; the data note alone only
+    says the tone failed, which left real rejections undiagnosable."""
+
+    def _warnings(self, caplog) -> str:
+        return " | ".join(
+            r.getMessage() for r in caplog.records if r.levelno >= logging.WARNING
+        )
+
+    def _render(self, digest, monkeypatch, raw, known_tickers=None, tone="skeptic"):
+        monkeypatch.setattr(llm, "call_claude", lambda *a, **k: raw)
+        return render_news(
+            digest, "llm-brief", model="claude-sonnet-5", tone=tone,
+            known_tickers=known_tickers,
+        )
+
+    def test_missing_markers_logs_the_marker_counts(self, digest, monkeypatch, caplog):
+        self._render(digest, monkeypatch, "unmarked output")
+        assert "news tone 'skeptic': no usable <REPORT> block (0 open, 0 close" in (
+            self._warnings(caplog)
+        )
+
+    def test_unbalanced_markers_log_the_marker_counts(self, digest, monkeypatch, caplog):
+        self._render(digest, monkeypatch, "<REPORT>CRWD beat.</REPORT> tail </REPORT>")
+        assert "(1 open, 2 close markers" in self._warnings(caplog)
+
+    def test_dropped_ticker_is_named(self, digest, monkeypatch, caplog):
+        self._render(digest, monkeypatch, "<REPORT>Markets were quiet.</REPORT>")
+        assert "news tone 'skeptic': narrative rejected, dropped digest ticker CRWD" in (
+            self._warnings(caplog)
+        )
+
+    def test_fabricated_claim_names_the_ticker(self, digest, monkeypatch, caplog):
+        self._render(
+            digest, monkeypatch, "<REPORT>CRWD beat. DDOG collapsed 20%.</REPORT>",
+            known_tickers={"CRWD", "DDOG"}, tone="morning-brew",
+        )
+        assert (
+            "news tone 'morning-brew': narrative rejected, claim about DDOG, "
+            "which has no headlines today"
+        ) in self._warnings(caplog)
+
+    def test_sentence_start_veto_names_the_ticker(self, digest, monkeypatch, caplog):
+        self._render(
+            digest, monkeypatch, "<REPORT>CRWD beat.\n\nS fell 30%.</REPORT>",
+            known_tickers={"CRWD", "S"},
+        )
+        assert "sentence opens with S, which has no headlines today" in (
+            self._warnings(caplog)
+        )
+
+    def test_accepted_narrative_logs_no_warning(self, digest, monkeypatch, caplog):
+        html, notes = self._render(digest, monkeypatch, "<REPORT>CRWD beat.</REPORT>")
+        assert notes == []
+        assert self._warnings(caplog) == ""
