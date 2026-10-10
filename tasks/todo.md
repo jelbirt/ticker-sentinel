@@ -15,15 +15,7 @@ made every second merge conflict here.
   `run_history.json`; discard that change rather than committing it.
 
 ## Active workstreams
-- `fix/tone-rejection-logging` (opened 2026-10-10, PR #39): log why an LLM
-  news tone is rejected (missing `<REPORT>` block, dropped digest ticker, or
-  a claim about a name with no headlines). Reviewed, no fixes needed.
-- `fix/deterioration-double-count` (opened 2026-10-10, PR #40): one price
-  event counts once in the Deterioration watch (owner chose "net out
-  today's move"). Replay over 24 runs: 22 listings to 12. Reviewed; the
-  SPEC T-range wording and two test gaps were fixed in `36607aa`.
-- `rotation-round-9` (opened 2026-10-10, PR #41, closes issue #38): round-9
-  record in SPEC 7.0.1; no changes, stay manual. Docs only.
+- none open.
 
   One branch per workstream via `scripts/new-worktree.sh <branch>`; main is the
   review inbox; merge back via PR.
@@ -40,6 +32,20 @@ made every second merge conflict here.
   relation instead.
 
 ## Done
+- `rotation-round-9` (2026-10-10, merged as PR #41, worktree torn down;
+  closes issue #38): round-9 record in SPEC 7.0.1. No changes: ZS (3 of 3
+  windows) held as a passing qualifier, OKTA and TEAM at 1 of 3. Stay
+  manual, revisit when the decay gate first fires. Fact-check pass fixed
+  the gate run count (25 retained runs, not 30) and three wording points.
+- `fix/deterioration-double-count` (2026-10-10, merged as PR #40, worktree
+  torn down): one price event counts once in the Deterioration watch. A
+  technical breakdown merges with its own 1-run drop, and the week drop
+  counts beside a 1-run drop only when the decline was underway before
+  today. Replay over 24 runs: 22 listings to 12. Rule in SPEC section 4.
+- `fix/tone-rejection-logging` (2026-10-10, merged as PR #39, worktree torn
+  down): `_llm_brief` logs why a tone narrative was rejected (no usable
+  `<REPORT>` block, dropped digest ticker, claim or sentence opener naming
+  a name with no headlines). Accept/reject behavior unchanged.
 - `fix/edgar-capex-addend` (2026-10-04, merged as PR #35, worktree torn
   down; apply commit `5c71174`): two capex derivation fixes in
   `data/edgar.py`. An addend filed only cumulatively with nothing else
@@ -255,13 +261,13 @@ made every second merge conflict here.
   penalty case and refreshed the bench instead of swapping ESTC (PR #33).
   Round 8 (issue #34, 2026-10-03) swapped ESTC for ADSK (PR #36) and the
   capex fix (PR #35, apply `5c71174`) took HUBS, OKTA and FTNT out of
-  warm-up. Standing watch items for refresh #9 (Sat 2026-10-10): the first
-  chained digest (PR #37; if no issue opens, check the Saturday daily run
-  and dispatch weekly-refresh by hand), ADSK's first ranked runs, OKTA
-  newly eligible for the level table (passes r40_fcf, so held if it
-  qualifies), FTNT and HUBS first live `r40_trend` readings, a boundary
-  step from the apply on those three, RBRK at r40_trend -0.035, S and ESTC
-  on the bench (ESTC reports 2026-11-19). With 18 of 20 live, revisit the
-  automate-vs-manual call.
+  warm-up. Round 9 (issue #38, 2026-10-10) made no changes (PR #41): the
+  first chained digest arrived on schedule, ZS held again, automation stays
+  manual. Standing watch items for refresh #10 (Sat 2026-10-17): ZS in its
+  4th window, OKTA and TEAM toward 3 of 3, IOT (25.0) against TEAM (24.9)
+  for the third level-table slot, ADSK's tape (`mixed` since 10-08), ESTC
+  on the bench through its 2026-11-19 report, and the first Deterioration
+  listings after PR #40 (expect fewer, each multi-signal). Any LLM tone
+  skip now logs its reason (PR #39): read it in the run log.
 - (done) First scheduled run after merge created `data/cache/run_history.json`
   on 2026-08-07; change detection live since 2026-08-08.
