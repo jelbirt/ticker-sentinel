@@ -444,6 +444,59 @@ class TestDeteriorationGate:
         rows = deterioration_rows([bad, worse], prior, None, CFG)
         assert [r.ticker for r in rows] == ["WRS", "BAD"]
 
+    def test_trend_break_and_its_own_drop_are_one_signal(self):
+        # HUBS 2026-10-10: a one-day SMA whipsaw (mixed -> downtrend, -9.8)
+        # with the week window up 1.1 was listed as two signals
+        sc = _det_sc(composite=23.4, tech=TechnicalSnapshot(trend_state="downtrend"))
+        prior = _prior_run(composite=33.2, trend_state="mixed")
+        week_ago = _prior_run("2026-07-30", composite=22.3)
+        assert deterioration_rows([sc], prior, week_ago, CFG) == []
+        rows = deterioration_rows([sc], prior, week_ago, ONE_SIGNAL)
+        assert rows[0].reasons == [
+            "broke into downtrend (composite fell 9.8 since prior run)"
+        ]
+
+    def test_death_cross_and_its_own_drop_are_one_signal(self):
+        sc = _det_sc(
+            composite=44.0,
+            tech=TechnicalSnapshot(trend_state="mixed", death_cross_recent=True),
+        )
+        rows = deterioration_rows(
+            [sc], _prior_run(composite=50.0, death_cross=False), None, ONE_SIGNAL
+        )
+        assert rows[0].reasons == ["new death cross (composite fell 6.0 since prior run)"]
+
+    def test_todays_drop_does_not_also_count_as_the_week_drop(self):
+        # ZS 2026-10-06: -5.9 vs the prior run and -5.9 over the week is one move
+        rows = deterioration_rows(
+            [_det_sc(composite=41.6)], _prior_run(composite=47.5),
+            _prior_run("2026-07-30", composite=47.5), CFG,
+        )
+        assert rows == []
+
+    def test_decline_underway_before_today_still_counts_twice(self):
+        # week-ago 56 -> prior 50 is a decay of its own; today's -3.1 adds to it
+        rows = deterioration_rows(
+            [_det_sc(composite=46.9)], _prior_run(composite=50.0),
+            _prior_run("2026-07-30", composite=56.0), CFG,
+        )
+        assert len(rows) == 1
+        assert [r.split(" since")[0].split(" over")[0] for r in rows[0].reasons] == [
+            "composite fell 3.1", "composite fell 9.1",
+        ]
+
+    def test_plan6_confirmation_not_repeated_after_a_merged_break(self):
+        sc = _det_sc(
+            composite=40.0, r40_trend=-0.15, tech=TechnicalSnapshot(trend_state="downtrend")
+        )
+        rows = deterioration_rows(
+            [sc], _prior_run(composite=50.0, trend_state="mixed"), None, CFG
+        )
+        assert rows[0].reasons == [
+            "broke into downtrend (composite fell 10.0 since prior run)",
+            "R40 fell 15pts YoY",
+        ]
+
     def test_reasons_have_no_em_or_en_dashes(self):
         sc = _det_sc(
             composite=40.0, r40_trend=-0.2,

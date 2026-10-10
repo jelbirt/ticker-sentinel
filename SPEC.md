@@ -163,6 +163,22 @@ alone):
 | Estimate cuts | net_revisions_30d <= -`revision_cut` (2), or down > up (existing alert rule) |
 | Worsening short interest | MoM shares-short rise > `SHORT_MOM_ALERT` (0.20, reused), or short_pct_float rose >= `short_delta` |
 
+One price event counts once (2026-10-10, refresh #9 review). A technical
+breakdown moves T by itself (a downtrend step is -20 to -24 T, a death cross
+-15 T, so 6 to 10 composite points at the 0.4 weight), and a drop that happened
+entirely today also appears in the week window. So:
+- A technical breakdown and the 1-run drop in the same run merge into one
+  signal, reported as one clause: "broke into downtrend (composite fell 9.8
+  since prior run)".
+- When the 1-run drop counts, the week drop counts too only if the decline was
+  already underway before today (week-ago to prior run fell >= `week_drop_pts`).
+  With no 1-run drop counted, the week drop stands alone as before.
+
+Replayed over the 24 committed runs to that date, this cut listings from 22 to
+12; every dropped listing was a lone price event (one-day SMA whipsaws, or a
+single large drop counted as both 1-run and week). Those still surface in What
+changed and Movers.
+
 - Rendered as its own clearly-visible subsection directly after "What changed
   today": red-accented header, table of ticker, composite (with 1-run and week
   deltas), and a one-line reason string listing every triggered signal.

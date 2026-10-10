@@ -447,18 +447,45 @@ def _negative_signals(
 ) -> list[str]:
     reasons: list[str] = []
 
+    # One price event must count as one signal. A trend break or death cross
+    # moves T by itself (-15 to -24 points of T, so 6 to 10 of composite), and
+    # a drop that happened entirely today shows up in the week window too, so
+    # neither may clear the min_signals gate alone.
+    drop_1run: float | None = None
     if (
         sc.composite is not None and prior is not None and prior.composite is not None
         and _scorecard_basis_matches(sc, prior)
         and prior.composite - sc.composite >= cfg.score_delta_pts
     ):
-        reasons.append(f"composite fell {prior.composite - sc.composite:.1f} since prior run")
+        drop_1run = prior.composite - sc.composite
+
+    breakdown: str | None = None
+    if sc.tech is not None and prior is not None:
+        if sc.tech.death_cross_recent and not prior.death_cross:
+            breakdown = "new death cross"
+        elif (
+            sc.tech.trend_state == "downtrend"
+            and prior.trend_state is not None
+            and prior.trend_state != "downtrend"
+        ):
+            breakdown = "broke into downtrend"
+
+    if drop_1run is not None and breakdown is not None:
+        reasons.append(f"{breakdown} (composite fell {drop_1run:.1f} since prior run)")
+    elif drop_1run is not None:
+        reasons.append(f"composite fell {drop_1run:.1f} since prior run")
 
     if (
         sc.composite is not None and week_ago is not None
         and week_ago.composite is not None
         and _scorecard_basis_matches(sc, week_ago)
         and week_ago.composite - sc.composite >= cfg.week_drop_pts
+        # with today's drop already counted, the week signal needs a decline
+        # that was underway before today (week-ago to prior run)
+        and (
+            drop_1run is None
+            or week_ago.composite - prior.composite >= cfg.week_drop_pts
+        )
     ):
         reasons.append(
             f"composite fell {week_ago.composite - sc.composite:.1f} over the week window"
@@ -467,15 +494,8 @@ def _negative_signals(
     if sc.r40_trend is not None and sc.r40_trend < cfg.deteriorating_r40_trend:
         reasons.append(f"R40 fell {abs(sc.r40_trend) * 100:.0f}pts YoY")
 
-    if sc.tech is not None and prior is not None:
-        if sc.tech.death_cross_recent and not prior.death_cross:
-            reasons.append("new death cross")
-        elif (
-            sc.tech.trend_state == "downtrend"
-            and prior.trend_state is not None
-            and prior.trend_state != "downtrend"
-        ):
-            reasons.append("broke into downtrend")
+    if breakdown is not None and drop_1run is None:
+        reasons.append(breakdown)
 
     sig = sc.signals
     if sig is not None:
