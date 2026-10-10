@@ -857,6 +857,56 @@ vs staying manual.
   was noise: IOT's 5 crossings (T 39 to 23 to 67), MNDY's 2 on a flat 0.0
   technical, and every composite on the swap pair.
 
+**Round 9 (issue #38, 2026-10-10, window 2026-10-06 to 2026-10-10, 5 runs):**
+- Outcome: no changes. First digest delivered by the `workflow_run` chain
+  from PR #37 (weekday runs gate-skipped in seconds, Saturday opened #38).
+  Attention list: no persistent decay; three persistently weak rows.
+- Level table: ZS (16.7, `r40_fcf` 48.7 pass) qualifies at 3 of 3 windows,
+  OKTA (23.1, 42.4 pass) and TEAM (24.9, 46.1 pass) at 1 of 3. ZS is held
+  under the round-7 line (a passing qualifier is penalties, not thesis);
+  OKTA and TEAM do not qualify yet, and both pass the rule too. OKTA
+  entered as predicted in round 8, eligible now that the capex apply made
+  it `r40_trend`-live. The third slot is a coin toss: IOT sits at 25.0
+  against TEAM's 24.9, so only the three-window persistence keeps it from
+  being noise.
+- Boundary steps 10-03 to 10-06, all from the `5c71174` apply (round-8
+  apply-step line): FTNT 69.6 to 83.3, HUBS 35.8 to 39.0, OKTA 23.6 to 23.1.
+  An apply can step a name down as well as up. No fundamental score moved
+  inside the window.
+- First live `r40_trend` readings: FTNT +0.136, HUBS +0.032, OKTA -0.006.
+  RBRK unchanged at -0.035. Nothing near `deteriorating_r40_trend` (-0.10),
+  so the decay gate stays at 0 hits in 25 runs (the retained history,
+  09-08 to 10-10; none in any committed history since 08-07). Coverage 18 of 20
+  `r40_trend`-live; MNDY (foreign filer, no quarterly XBRL) and SHOP remain
+  in warm-up.
+- ADSK's first ranked window: 4th all week on R40 breadth, F 73.6. Its
+  tape turned from `downtrend` to `mixed` on 10-08 (T 0 to 29 to 24),
+  composite 44.1 to 53.8. The round-8 tape-does-not-veto call needed no
+  revisiting.
+- Bench (fundamental, `r40_fcf`): APPF 58.8 (46.2 pass) and GWRE 46.2
+  (47.0 pass) remain the ready replacements, both above the tail; GWRE's
+  composite rose 16.0 in the window to 59.2, all technical. ZM 33.8 (43.6
+  pass), WDAY 24.1 (41.4 pass, `high_sbc`). S 0.0 (23.9 fail) and ESTC 15.4
+  (35.5 fail) fail the rule; ESTC reports 2026-11-19.
+- Found this round, fixed in their own PRs: the Deterioration watch counted
+  one price event as two signals (HUBS 10-10, a one-day SMA whipsaw at +1.1
+  over the week, and ZS 10-06 at -5.9 one-run and -5.9 week; PR #40,
+  replay 22 listings to 12), and LLM news tones were rejected with no log
+  line naming why (2 of 25 this week, about 1 per 2 runs since 08-19;
+  PR #39).
+- Automate-vs-manual: stay manual. The gate has never fired, and the one
+  swap the rubric has produced (round 8) still needed a judgment call on
+  which bench name. Revisit when the decay gate first fires.
+- Watch items for round 10: ZS (4th window), OKTA and TEAM (2 of 3), IOT
+  against TEAM for the third slot, ADSK's tape, ESTC through its 11-19
+  report, and the first runs after PR #40 merges (fewer Deterioration
+  listings, each multi-signal).
+- What mattered: the `r40_fcf` column on the level table (the whole
+  decision) and the boundary comparison attributing FTNT, HUBS and OKTA to
+  the apply. What was noise: change activity (MNDY 5, HUBS 4, both
+  SMA crossings; HUBS a whipsaw, MNDY one
+  cross into `uptrend` that held) and the HUBS Deterioration listing.
+
 **What the digest carries as of 2026-08-16** (branch `rotation-evidence`,
 answering round-1 gaps 1 and 2 and preparing the refresh #3 decision):
 
