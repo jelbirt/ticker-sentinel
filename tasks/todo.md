@@ -15,6 +15,10 @@ made every second merge conflict here.
   `run_history.json`; discard that change rather than committing it.
 
 ## Active workstreams
+- `spec/p2-methodology` (opened 2026-10-20): the two P2 findings of the
+  2026-10-20 audit. Spec approved (`tasks/spec-p2-methodology.md` on the branch):
+  dilution on basic average shares, SBC gap penalty restated as an explicit
+  -20 tier above 20 percent. Implementation pending.
 - `fix/audit-p3` (opened 2026-10-20): the six P3 findings from the 2026-10-20
   methodology audit: stale `next_earnings` daily refetch, date-aligned relative
   strength, same-quarter debt and cash for EV, market cap on shares outstanding,
