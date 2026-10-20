@@ -62,7 +62,7 @@ bench: [WDAY, ZM, S, APPF, GWRE, ESTC]   # reserve swap candidates, shadow-score
 benchmark: SPY
 report:
   top_n: 10
-  bottom_n: 4   # weak-performers table always gets this many names; with 8 tickers that's a 4/4 split
+  bottom_n: 4   # weak-performers table always gets this many names; strong takes up to top_n of the rest, never overlapping
   timezone: America/New_York
   ranking: breadth   # breadth = most R40 variants ≥ 40 first, score as tiebreak; or: score
 scoring:               # weights, overridable without code changes
