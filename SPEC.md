@@ -451,10 +451,15 @@ vs staying manual.
   all 8 attention names fell on the technical leg through two software
   selloff sessions (10-14 and 10-16 closes, QQQ -2.0 and -2.5 percent,
   the names -6.3 to -8.4 percent on 10-16), with every fundamental score
-  flat. The technical leg's trend-state cliffs amplify a sector day into
-  17 to 56 points of T in one run, and part of it reversed one run later (IOT T 12.2 to
-  71.0 on a +1.8 percent session). A shared drop is a market reading, and
-  the level rule already stays out of it.
+  flat. The technical leg's trend-state cliffs turn a multi-session
+  decline into one step, and the step can land on a quiet session: PANW
+  and NET lost 48 and 51 points of T on the 10-15 close (QQQ -0.1 percent)
+  after the 10-14 leg, while FTNT, IOT, SNOW, CRWD and MDB stepped on the
+  10-16 close; DDOG, which never left uptrend, lost 17. Part of it
+  reversed one run later (IOT T 12.2 to 71.0 on a +1.8 percent session).
+  So date a step by the closes around it, not by the run it lands on. A
+  shared drop is a market reading, and the level rule already stays out
+  of it.
 
 **Round 1 (issue #6, 2026-08-15, window 2026-08-11 to 2026-08-15, 5 runs):**
 - Outcome: no changes. DDOG held (0 of 5 gate hits, drop was composite-only,
