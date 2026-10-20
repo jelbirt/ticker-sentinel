@@ -15,7 +15,12 @@ made every second merge conflict here.
   `run_history.json`; discard that change rather than committing it.
 
 ## Active workstreams
-- none open.
+- `fix/audit-p3` (opened 2026-10-20): the six P3 findings from the 2026-10-20
+  methodology audit: stale `next_earnings` daily refetch, date-aligned relative
+  strength, same-quarter debt and cash for EV, market cap on shares outstanding,
+  annual revenue through the alias layer, stale config comment. The two P2
+  findings (dilution on diluted shares across a loss-to-profit turn; the SBC gap
+  penalty duplicating sbc_intensity) are held for an owner decision.
 
   One branch per workstream via `scripts/new-worktree.sh <branch>`; main is the
   review inbox; merge back via PR.
