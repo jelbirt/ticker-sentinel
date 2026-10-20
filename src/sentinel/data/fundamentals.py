@@ -18,6 +18,9 @@ from sentinel.indicators.fundamentals import FundamentalInputs, TTMWindow
 
 log = logging.getLogger(__name__)
 
+# days after a report date during which the cache is refetched daily
+EARNINGS_REFETCH_DAYS = 14
+
 # canonical field -> (statement, [yfinance row-label aliases, first match wins])
 ALIASES: dict[str, tuple[str, list[str]]] = {
     "revenue": ("income", ["Total Revenue", "Operating Revenue"]),
@@ -434,6 +437,24 @@ def fetch_statements(ticker: str) -> tuple[pd.DataFrame, dict[str, Any]]:
     return stmts, meta
 
 
+def earnings_refetch_due(next_earnings: Any, today: date) -> bool:
+    """Earnings-aware refresh: once a report date passes, refetch daily until the
+    new quarter shows up (cheaper than waiting out the weekly window).
+
+    Only for EARNINGS_REFETCH_DAYS after the date. Yahoo sometimes keeps serving
+    a past report date for weeks after the quarter has landed, and without the
+    cap that turned into a refetch (and a fresh chance to merge a bad pull) on
+    every run until Yahoo noticed. Past the cap the weekly window governs.
+    """
+    if not next_earnings:
+        return False
+    try:
+        report = date.fromisoformat(next_earnings)
+    except (TypeError, ValueError):
+        return False
+    return 0 <= (today - report).days <= EARNINGS_REFETCH_DAYS
+
+
 def get_fundamentals(ticker: str, force_refresh: bool = False) -> tuple[FundamentalInputs | None, list[str]]:
     """Cache-aware fundamentals: (inputs, notes). Degrades to cache, then to None."""
     notes: list[str] = []
@@ -446,14 +467,8 @@ def get_fundamentals(ticker: str, force_refresh: bool = False) -> tuple[Fundamen
         and cache.is_fresh(cached_meta)
         and "company_name" in (cached_meta or {})
     )
-    # earnings-aware refresh: once a report date passes, refetch daily until the
-    # new quarter shows up (cheaper than waiting out the weekly window)
-    if fresh and (cached_meta or {}).get("next_earnings"):
-        try:
-            if date.today() >= date.fromisoformat(cached_meta["next_earnings"]):
-                fresh = False
-        except (TypeError, ValueError):
-            pass
+    if fresh and earnings_refetch_due((cached_meta or {}).get("next_earnings"), date.today()):
+        fresh = False
     refetched = False
     if fresh:
         df, meta = cached_df, cached_meta
