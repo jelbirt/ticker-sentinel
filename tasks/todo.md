@@ -15,7 +15,11 @@ made every second merge conflict here.
   `run_history.json`; discard that change rather than committing it.
 
 ## Active workstreams
-- none open.
+- `rotation-round-10` (opened 2026-10-20, PR #43; closes issue #42):
+  round-10 record in SPEC 7.0.1 plus the breadth rubric line. No changes:
+  the 8 attention names moved on the 10-14 and 10-16 software selloff with
+  every fundamental flat, ZS (4th window) held as a passing qualifier,
+  OKTA and TEAM at 2 of 3. Stay manual. Docs only, no cache or config.
 
   One branch per workstream via `scripts/new-worktree.sh <branch>`; main is the
   review inbox; merge back via PR.
