@@ -7,6 +7,7 @@ from pytest import approx
 
 from sentinel.data.cache import merge_statements
 from sentinel.data.fundamentals import (
+    annual_revenue_from,
     inputs_from_canonical,
     normalize_statements,
     sanitize_share_counts,
@@ -209,3 +210,27 @@ class TestShareCountGuard:
         inp = inputs_from_canonical("CRWD", clean, market_cap=None, notes=notes)
         assert inp.diluted_shares_now == approx(1031.5e6)
         assert inp.diluted_shares_1y_ago is None
+
+
+class TestAnnualRevenue:
+    """The growth fallback reads annual revenue through ALIASES, not a literal."""
+
+    def _annual(self, label):
+        cols = pd.to_datetime(["2025-12-31", "2024-12-31"])
+        return pd.DataFrame({c: {label: v} for c, v in zip(cols, [1232.0, 972.0])})
+
+    def test_primary_label(self):
+        assert annual_revenue_from(self._annual("Total Revenue")) == {
+            "2025-12-31": 1232.0, "2024-12-31": 972.0,
+        }
+
+    def test_alias_fallback(self):
+        # a relabel to the second alias still yields the fallback
+        assert annual_revenue_from(self._annual("Operating Revenue")) == {
+            "2025-12-31": 1232.0, "2024-12-31": 972.0,
+        }
+
+    def test_empty_or_unlabelled(self):
+        assert annual_revenue_from(None) == {}
+        assert annual_revenue_from(pd.DataFrame()) == {}
+        assert annual_revenue_from(self._annual("Gross Profit")) == {}

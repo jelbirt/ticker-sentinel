@@ -371,6 +371,22 @@ def inputs_from_canonical(
     )
 
 
+def annual_revenue_from(annual: pd.DataFrame | None) -> dict[str, float]:
+    """Fiscal-year revenue keyed by ISO period end, read through the same
+    revenue aliases as the quarterly frame so a Yahoo relabel cannot silently
+    drop the growth fallback (MNDY's growth rides on it)."""
+    if annual is None or annual.empty:
+        return {}
+    for label in ALIASES["revenue"][1]:
+        if label in annual.index:
+            return {
+                pd.to_datetime(col).date().isoformat(): float(val)
+                for col, val in annual.loc[label].items()
+                if pd.notna(val)
+            }
+    return {}
+
+
 @retry(stop=stop_after_attempt(3), wait=wait_exponential(multiplier=1, max=20), reraise=True)
 def fetch_statements(ticker: str) -> tuple[pd.DataFrame, dict[str, Any]]:
     """Network fetch: quarterly statements + annual revenue + market cap.
@@ -386,11 +402,7 @@ def fetch_statements(ticker: str) -> tuple[pd.DataFrame, dict[str, Any]]:
 
     annual_revenue: dict[str, float] = {}
     try:
-        annual = t.income_stmt
-        if annual is not None and not annual.empty and "Total Revenue" in annual.index:
-            for col, val in annual.loc["Total Revenue"].items():
-                if pd.notna(val):
-                    annual_revenue[pd.to_datetime(col).date().isoformat()] = float(val)
+        annual_revenue = annual_revenue_from(t.income_stmt)
     except Exception:  # annual revenue is a fallback nicety, never fatal
         pass
 
