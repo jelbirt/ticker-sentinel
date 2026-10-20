@@ -15,11 +15,7 @@ made every second merge conflict here.
   `run_history.json`; discard that change rather than committing it.
 
 ## Active workstreams
-- `rotation-round-10` (opened 2026-10-20, PR #43; closes issue #42):
-  round-10 record in SPEC 7.0.1 plus the breadth rubric line. No changes:
-  the 8 attention names moved on the 10-14 and 10-16 software selloff with
-  every fundamental flat, ZS (4th window) held as a passing qualifier,
-  OKTA and TEAM at 2 of 3. Stay manual. Docs only, no cache or config.
+- none open.
 
   One branch per workstream via `scripts/new-worktree.sh <branch>`; main is the
   review inbox; merge back via PR.
@@ -36,6 +32,13 @@ made every second merge conflict here.
   relation instead.
 
 ## Done
+- `rotation-round-10` (2026-10-20, merged as PR #43, worktree torn down;
+  closes issue #42): round-10 record in SPEC 7.0.1 plus the "read breadth
+  before names" rubric line. No changes: all 8 attention names fell on the
+  technical leg in the 10-14 and 10-16 software selloff with every
+  fundamental flat, ZS (4th window) held as a passing qualifier, OKTA and
+  TEAM at 2 of 3. Stay manual. Fact-check pass fixed where the T cliffs
+  landed (PANW and NET on the quiet 10-15 close, not the sector day).
 - `rotation-round-9` (2026-10-10, merged as PR #41, worktree torn down;
   closes issue #38): round-9 record in SPEC 7.0.1. No changes: ZS (3 of 3
   windows) held as a passing qualifier, OKTA and TEAM at 1 of 3. Stay
@@ -267,11 +270,14 @@ made every second merge conflict here.
   capex fix (PR #35, apply `5c71174`) took HUBS, OKTA and FTNT out of
   warm-up. Round 9 (issue #38, 2026-10-10) made no changes (PR #41): the
   first chained digest arrived on schedule, ZS held again, automation stays
-  manual. Standing watch items for refresh #10 (Sat 2026-10-17): ZS in its
-  4th window, OKTA and TEAM toward 3 of 3, IOT (25.0) against TEAM (24.9)
-  for the third level-table slot, ADSK's tape (`mixed` since 10-08), ESTC
-  on the bench through its 2026-11-19 report, and the first Deterioration
-  listings after PR #40 (expect fewer, each multi-signal). Any LLM tone
-  skip now logs its reason (PR #39): read it in the run log.
+  manual. Round 10 (issue #42, 2026-10-17) made no changes (PR #43): a
+  sector selloff moved the whole attention list on the technical leg,
+  PR #40's Deterioration watch and PR #39's tone logging checked out (10
+  listings, 0 rejections in 30 calls). Standing watch items for refresh
+  #11 (Sat 2026-10-24): OKTA and TEAM may reach 3 of 3 while passing,
+  which would leave the level table all held qualifiers (the absolute
+  floor question), ZS in its 5th window, earnings season stepping the
+  fundamental column mid-window, the PANW, NET, SNOW and CRWD tapes, and
+  ESTC's 2026-11-19 report.
 - (done) First scheduled run after merge created `data/cache/run_history.json`
   on 2026-08-07; change detection live since 2026-08-08.
