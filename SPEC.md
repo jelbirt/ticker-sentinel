@@ -311,7 +311,7 @@ written from observed rounds rather than guessed up front. From refresh #3 the
 checklist adds the decision on automating proposal drafting against this rubric
 vs staying manual.
 
-**Working rubric (as of round 8):**
+**Working rubric (as of round 10):**
 - Act on **decay-gate hit counts**, not on composite deltas. A name with 0 gate
   hits has not shown persistent decay however far its composite moved. But read
   a zero for what it is: the gate needs `r40_trend` below
@@ -444,6 +444,17 @@ vs staying manual.
   name it replaces carries its composite on the technical leg. That is the leg the level rule stays out
   of (the SHOP precedent, round 6); a promotion is not reconsidered because
   the replacement's tape is weak.
+- **Read breadth before names (round 10).** When most of the attention
+  list moves on the same runs, the cause is the market or the sector, not
+  any one business: check the composite moves against QQQ and peers, and
+  read the next run before reading a single name. In window 10-13 to 10-17
+  all 8 attention names fell on the technical leg through two software
+  selloff sessions (10-14 and 10-16 closes, QQQ -2.0 and -2.5 percent,
+  the names -6.3 to -8.4 percent on 10-16), with every fundamental score
+  flat. The technical leg's trend-state cliffs amplify a sector day into
+  17 to 56 points of T in one run, and part of it reversed one run later (IOT T 12.2 to
+  71.0 on a +1.8 percent session). A shared drop is a market reading, and
+  the level rule already stays out of it.
 
 **Round 1 (issue #6, 2026-08-15, window 2026-08-11 to 2026-08-15, 5 runs):**
 - Outcome: no changes. DDOG held (0 of 5 gate hits, drop was composite-only,
@@ -906,6 +917,63 @@ vs staying manual.
   the apply. What was noise: change activity (MNDY 5, HUBS 4, both
   SMA crossings; HUBS a whipsaw, MNDY one
   cross into `uptrend` that held) and the HUBS Deterioration listing.
+
+**Round 10 (issue #42, 2026-10-17, window 2026-10-13 to 2026-10-17, 5 runs):**
+- Outcome: no changes. Second digest delivered by the `workflow_run` chain
+  (weekday runs gate-skipped in seconds, Saturday opened #42). Attention
+  list: 8 persistent-decay rows, all at 0 of 5 gate hits; three
+  persistently weak rows.
+- Every fundamental score is identical across the 7 runs from 10-10 to
+  10-20 for all 20 names, and `data/cache` has only bot commits since
+  10-09 (no apply), so the boundary carries no step and 100 percent of
+  every attention delta is technical: PANW -29.0, NET -24.5, FTNT -24.1,
+  IOT -23.6, SNOW -22.1, CRWD -19.9, MDB -10.1, DDOG -9.8.
+- The move is a real sector selloff, checked against live closes on 10-20:
+  on 10-16 CRWD -7.0, DDOG -7.2, FTNT -7.0, IOT -7.1, MDB -7.9, NET -6.3,
+  PANW -7.6 and SNOW -8.4 percent against QQQ -2.5 and SPY -1.1, after a
+  10-14 leg (NET -6.7, SNOW -6.3, PANW -5.5, QQQ -2.0). Not a fetch
+  defect. Part of it reversed by the 10-20 run: IOT composite 19.9 to 43.4,
+  FTNT 57.0 to 75.7, MDB 26.5 to 39.2; PANW (32.8), NET (33.2), SNOW
+  (35.5) and CRWD (33.7) stayed low. Hence the breadth rubric line.
+- Level table: ZS (16.7, `r40_fcf` 48.7 pass) qualifies for a 4th
+  consecutive window and is held under the round-7 line. OKTA (23.1, 42.4
+  pass) and TEAM (24.9, 46.1 pass) at 2 of 3; IOT (25.0) still just
+  outside the third slot. With no failing qualifier there is no swap
+  candidate.
+- Bench (fundamental, `r40_fcf`): APPF 58.8 (46.2 pass) and GWRE 46.2
+  (47.0 pass) remain the ready replacements; their composite gains (APPF
+  +20.2 to 68.1, GWRE +13.6 to 55.5) are technical and were not used. ZM
+  33.8 (43.6 pass), WDAY 24.1 (41.4 pass). S 0.0 (23.9 fail) and ESTC 15.4
+  (35.5 fail); ESTC reports 2026-11-19.
+- ADSK's tape: `mixed` 10-13, `downtrend` 10-14 and 10-15 (T 4.4, 0.0),
+  `uptrend` from 10-16 (T 67.5, 73.5 on 10-20); rank 4 then 3. The
+  round-8 promotion needed no revisiting.
+- First full window under PR #40: 10 Deterioration listings in 5 runs,
+  each with two or more signals (ADSK 10-13 to 10-15 on estimates cut 20
+  down vs 1 up plus a price or short-float signal, PANW 10-15 and 10-16,
+  and five on 10-17: HUBS, PANW, NET, DDOG, FTNT); none on 10-20. Checked
+  against the rule: each week-drop signal beside a 1-run drop had a
+  decline already underway before that run (NET fell about 21 on 10-16
+  before -3.5 on 10-17), and HUBS paired a whipsaw drop with short
+  interest up 69 percent MoM. Working as designed; the volume is the
+  selloff, not double counting.
+- LLM tone (PR #39): no rejection logged in 30 calls (6 runs, 10-13 to
+  10-20).
+- Decay gate: 0 hits in 25 runs (the retained history, 09-16 to 10-20).
+  Lowest `r40_trend` RBRK -0.035, then ZS -0.018, TEAM -0.007, OKTA
+  -0.006, against -0.10. Coverage 18 of 20 live (MNDY, SHOP in warm-up).
+- Automate-vs-manual: stay manual (owner decision). Revisit when the gate
+  first fires.
+- Watch items for round 11: OKTA and TEAM reach 3 of 3 if they hold the
+  slots; both pass the rule, so the level table would be three held
+  qualifiers, and the absolute floor named under the level rule becomes
+  the question if that persists. ZS in its 5th window. The earnings
+  season can step fundamentals on a non-boundary run (round-5 line).
+  PANW, NET, SNOW and CRWD tapes after the selloff. ESTC through 11-19.
+- What mattered: the flat fundamental column and checking the drop against
+  QQQ and peers, which made the whole attention list one market event.
+  What was noise: every attention-list delta, change activity (MNDY 9 on
+  a T of 58 to 0.8 to 91.9 whipsaw, HUBS 6) and the bench composite gains.
 
 **What the digest carries as of 2026-08-16** (branch `rotation-evidence`,
 answering round-1 gaps 1 and 2 and preparing the refresh #3 decision):
