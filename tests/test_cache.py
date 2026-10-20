@@ -215,23 +215,39 @@ class TestEarningsRefetchWindow:
         for raw in (None, "", "not-a-date", 20260827):
             assert not earnings_refetch_due(raw, date(2026, 10, 20))
 
-    def test_fresh_cache_with_long_past_date_is_served(self, tmp_path, monkeypatch):
+    def _seed(self, tmp_path, monkeypatch, next_earnings):
         from datetime import datetime, timezone
 
         from sentinel.data import fundamentals as fnd
         from tests.conftest import make_canonical
 
         monkeypatch.setenv("SENTINEL_ROOT", str(tmp_path))
-        frame = make_canonical({"revenue": [100.0] * 4})
-        cache.save("X", frame, {
+        cache.save("X", make_canonical({"revenue": [100.0] * 4}), {
             "fetched_at": datetime.now(timezone.utc).isoformat(),
             "company_name": "X Corp",
-            "next_earnings": "2020-01-01",
+            "next_earnings": next_earnings,
+            "shares_outstanding": 1234.0,
         })
+        calls: list[str] = []
 
-        def no_fetch(ticker):
-            raise AssertionError("a long-past report date must not force a refetch")
+        def recording_fetch(ticker):
+            calls.append(ticker)
+            raise RuntimeError("refetch attempted")  # served from cache either way
 
-        monkeypatch.setattr(fnd, "fetch_statements", no_fetch)
-        inputs, _ = fnd.get_fundamentals("X")
-        assert inputs is not None
+        monkeypatch.setattr(fnd, "fetch_statements", recording_fetch)
+        return fnd, calls
+
+    def test_fresh_cache_with_long_past_date_is_served(self, tmp_path, monkeypatch):
+        fnd, calls = self._seed(tmp_path, monkeypatch, "2020-01-01")
+        inputs, notes = fnd.get_fundamentals("X")
+        assert calls == []
+        assert not any("fetch failed" in n for n in notes)
+        # meta's outstanding count reaches the inputs the repricer reads
+        assert inputs.shares_outstanding == 1234.0
+
+    def test_report_date_inside_window_still_refetches(self, tmp_path, monkeypatch):
+        from datetime import date
+
+        fnd, calls = self._seed(tmp_path, monkeypatch, date.today().isoformat())
+        fnd.get_fundamentals("X")
+        assert calls == ["X"]

@@ -104,8 +104,8 @@ SHARES_AGREE_TOL = 0.10
 
 def _repricing_shares(inp: FundamentalInputs) -> float | None:
     out, dil = inp.shares_outstanding, inp.diluted_shares_now
-    if dil is None:
-        return None   # nothing guarded to vouch for outstanding
+    if dil is None or dil <= 0:
+        return dil    # nothing guarded to vouch for outstanding
     if out and abs(out / dil - 1) <= SHARES_AGREE_TOL:
         return out
     return dil
