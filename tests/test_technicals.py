@@ -73,6 +73,25 @@ class TestRatios:
         b = _series([100.0] * 1 + [100.0] * 63 + [105.0])   # +5%
         assert t.rel_strength_3m(p, b) == approx(1.10 / 1.05 - 1)
 
+    def test_rel_strength_aligns_on_dates(self):
+        # the ticker misses one mid-window session, so counting back 63 bars
+        # positionally anchors it one session earlier than SPY; aligned, both
+        # legs anchor on the same date (SPY's 50.0 bar)
+        p = _series([100.0] * 65 + [110.0])
+        p = p.drop(p.index[30])
+        b = _series([100.0, 50.0] + [100.0] * 63 + [105.0])
+        assert t.rel_strength_3m(p, b) == approx(1.10 / (105.0 / 50.0) - 1)
+
+    def test_rel_strength_window_ends_on_common_last_session(self):
+        # SPY has one more (newer) bar than the ticker: both legs stop at the
+        # ticker's last bar instead of comparing different end dates
+        p = _series([100.0] * 64 + [110.0])
+        b = pd.concat([
+            _series([100.0] * 64 + [105.0]),
+            pd.Series([200.0], index=[pd.Timestamp("2026-07-03")]),
+        ])
+        assert t.rel_strength_3m(p, b) == approx(1.10 / 1.05 - 1)
+
     def test_rel_strength_needs_benchmark(self):
         assert t.rel_strength_3m(_series(range(100)), None) is None
 
