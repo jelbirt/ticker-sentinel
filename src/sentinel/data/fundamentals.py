@@ -354,6 +354,12 @@ def inputs_from_canonical(
         diluted_shares_now=shares_now,
         diluted_shares_1y_ago=shares_1y,
         market_cap=market_cap,
+        # newest reading of each, deliberately not forced into one quarter:
+        # Yahoo leaves Total Debt empty in quarters whose filing does not break
+        # out the (often lease-only) debt, so an empty cell means "not
+        # disclosed", not zero. Pairing on a shared quarter would trade current
+        # cash for a stale balance sheet (GTLB and S: last debt 2026-01-31,
+        # cash through 2026-07-31). Settled in the 2026-10-20 audit follow-up.
         total_debt=_first_valid(stmts, "total_debt"),
         cash=_first_valid(stmts, "cash"),
         statement_date=statement_date,
