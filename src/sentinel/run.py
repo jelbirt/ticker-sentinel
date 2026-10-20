@@ -99,25 +99,43 @@ def _column(frame: pd.DataFrame | None, ticker: str) -> pd.Series | None:
     return frame[ticker]
 
 
+SHARES_AGREE_TOL = 0.10
+
+
+def _repricing_shares(inp: FundamentalInputs) -> float | None:
+    out, dil = inp.shares_outstanding, inp.diluted_shares_now
+    if dil is None:
+        return None   # nothing guarded to vouch for outstanding
+    if out and abs(out / dil - 1) <= SHARES_AGREE_TOL:
+        return out
+    return dil
+
+
 def _reprice_market_cap(
     inputs_list: list[FundamentalInputs], close: pd.DataFrame | None
 ) -> list[str]:
-    """Daily market-cap repricing: latest close × TTM-average diluted shares.
+    """Daily market-cap repricing: latest close x shares outstanding.
 
     Keeps the valuation label moving with the market instead of the weekly cache.
-    Approximation (TTM-average shares, not today's count); cached value is the
-    fallback. Returns the tickers whose valuation is still riding a cached (up
+    Shares outstanding is Yahoo's current count on the same split basis as the
+    adjusted close; the newest quarter's diluted average is the fallback, which
+    runs high by the option overhang (CRWD about 2 percent). Outstanding has no
+    integrity guard of its own (it IS the reference the share-count guard checks
+    diluted against), so it is used only when it agrees with the guarded diluted
+    count within SHARES_AGREE_TOL; otherwise diluted wins. The cached value is
+    the fallback when neither is usable. Returns the tickers whose valuation is still riding a cached (up
     to week-old) market cap so the report can disclose it.
     """
     stale: list[str] = []
     for inp in inputs_list:
         series = _column(close, inp.ticker)
         prices = series.dropna() if series is not None else None
-        if prices is None or prices.empty or inp.diluted_shares_now is None:
+        shares = _repricing_shares(inp)
+        if prices is None or prices.empty or shares is None:
             if inp.market_cap is not None:
                 stale.append(inp.ticker)
             continue
-        inp.market_cap = float(prices.iloc[-1]) * inp.diluted_shares_now
+        inp.market_cap = float(prices.iloc[-1]) * shares
     return stale
 
 

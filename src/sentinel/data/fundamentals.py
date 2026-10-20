@@ -69,7 +69,8 @@ MAX_QUARTER_GAP_DAYS = 120
 
 # --- share-count integrity ---------------------------------------------------
 # diluted_shares is the one row a bad cell corrupts invisibly: it drives
-# dilution and (via run._reprice_market_cap) market cap, hence ev_revenue,
+# dilution and (via run._reprice_market_cap, which also gates Yahoo's shares
+# outstanding against it) market cap, hence ev_revenue,
 # fcf_yield and the valuation label. Two upstream failure modes have been seen
 # on this watchlist, and neither is detectable from a single value:
 #   1. Basis breaks. A split rebases every share count Yahoo serves, statements
@@ -305,6 +306,7 @@ def inputs_from_canonical(
     annual_revenue: dict[date, float] | None = None,
     notes: list[str] | None = None,
     company_name: str | None = None,
+    shares_outstanding: float | None = None,
 ) -> FundamentalInputs:
     """Canonical statements frame -> FundamentalInputs for the indicator engine.
 
@@ -354,6 +356,7 @@ def inputs_from_canonical(
         diluted_shares_now=shares_now,
         diluted_shares_1y_ago=shares_1y,
         market_cap=market_cap,
+        shares_outstanding=shares_outstanding,
         # newest reading of each, deliberately not forced into one quarter:
         # Yahoo leaves Total Debt empty in quarters whose filing does not break
         # out the (often lease-only) debt, so an empty cell means "not
@@ -518,5 +521,6 @@ def get_fundamentals(ticker: str, force_refresh: bool = False) -> tuple[Fundamen
         annual_revenue,
         notes,
         company_name=(meta or {}).get("company_name"),
+        shares_outstanding=(meta or {}).get("shares_outstanding"),
     )
     return inputs, notes
