@@ -202,3 +202,19 @@ flag_cleared, possibly a digest change-activity spike). Options in D3.
 - Never: write `data/cache/` from the branch (the scheduled job holds the pen
   and adds `basic_shares` on its next refetch of each name); force-refresh the
   cache to make the switch land faster; change the decay gate.
+
+### Amendment 1 (proposed in PR #45, approved by merging it)
+
+- A cache with no `basic_shares` row counts as stale once, so every name
+  refetches on the first run after merge and switches basis on that run. This
+  replaces the "never force-refresh" boundary above for this one migration.
+  Reason: the D3 note fires once, on the first run on method 2; trickling over
+  the weekly window would make that note wrong for most names and move them
+  later with no explanation. Cost: one extra Yahoo fetch per name, once,
+  through the existing degrade-to-cache path.
+- D2 gains a disclosure: a name still scoring dilution on diluted shares (its
+  migration refetch failed, or Yahoo serves no basic row) carries a data note
+  saying so, every run, until it switches.
+- Row presence is the schema marker, so a backfill `--apply` (which builds
+  every canonical row, `basic_shares` as NaN) must not run before the
+  migration refetch; after it, the row is already there.

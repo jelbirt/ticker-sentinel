@@ -169,3 +169,59 @@ class TestMethodChangeNote:
         assert "—" not in note and "–" not in note
         assert method_change_note(self._run(SCORING_METHOD), current) is None
         assert method_change_note(None, current) is None
+
+
+class TestMethodWiring:
+    """The note only works end to end if snapshots are stamped and run.py
+    surfaces it; both are pinned here, not just the helper."""
+
+    def test_snapshots_are_stamped_with_the_current_method(self):
+        from datetime import date
+
+        from sentinel.report.changes import SCORING_METHOD, snapshot_from_scorecards
+        assert snapshot_from_scorecards([], date(2026, 10, 21), "scheduled").method == SCORING_METHOD
+
+    def _dry_run_html(self, tmp_path, monkeypatch, strip_method):
+        import json
+
+        from sentinel.data import fixtures
+        from sentinel.run import main
+
+        if strip_method:
+            raw = json.loads(fixtures.fixture_history_path().read_text())
+            for run in raw["runs"]:
+                run.pop("method", None)
+            old = tmp_path / "history.json"
+            old.write_text(json.dumps(raw))
+            monkeypatch.setattr(fixtures, "fixture_history_path", lambda: old)
+        out = tmp_path / "out"
+        assert main(["--dry-run", "--no-email", "--out-dir", str(out)]) == 0
+        return (out / "report.html").read_text()
+
+    def test_first_run_on_new_method_carries_the_note(self, tmp_path, monkeypatch):
+        html = self._dry_run_html(tmp_path, monkeypatch, strip_method=True)
+        assert "scoring method changed since the last run" in html
+
+    def test_no_note_once_history_is_on_the_method(self, tmp_path, monkeypatch):
+        html = self._dry_run_html(tmp_path, monkeypatch, strip_method=False)
+        assert "scoring method changed" not in html
+
+
+class TestDigestAndFallbackDisclosure:
+    def test_digest_flag_cell_dedupes_sbc_tiers(self):
+        from sentinel.digest import _flag_cell
+        assert _flag_cell([FLAG_HIGH_SBC, FLAG_SBC_INFLATED]) == "sbc inflated"
+
+    def test_diluted_fallback_is_disclosed(self):
+        df = make_canonical({"revenue": [100.0] * 5, "diluted_shares": CRWD_DILUTED})
+        notes: list[str] = []
+        inputs_from_canonical("X", df, None, notes=notes)
+        assert any("dilution on diluted shares" in n for n in notes)
+
+    def test_no_disclosure_once_basic_is_paired(self):
+        df = make_canonical({
+            "revenue": [100.0] * 5, "diluted_shares": CRWD_DILUTED, "basic_shares": CRWD_BASIC,
+        })
+        notes: list[str] = []
+        inputs_from_canonical("X", df, None, notes=notes)
+        assert not any("dilution on diluted shares" in n for n in notes)

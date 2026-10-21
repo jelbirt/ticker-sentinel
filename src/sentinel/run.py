@@ -15,7 +15,7 @@ import pandas as pd
 
 from sentinel.config import Config, load_config, repo_root
 from sentinel.data import history
-from sentinel.indicators.fundamentals import FundamentalInputs, compute_scorecard
+from sentinel.indicators.fundamentals import FundamentalInputs, compute_scorecard, display_flags
 from sentinel.indicators.technicals import TechnicalSnapshot, compute_technicals
 from sentinel.report.builder import build_context, rank_key, render_report, write_outputs
 from sentinel.report.changes import (
@@ -494,7 +494,7 @@ def main(argv: list[str] | None = None) -> int:
         print(
             f"{sc.ticker:<8}{fmt(sc.composite, 1):>8}{fmt(sc.score, 1):>7}"
             f"{fmt(sc.technical_score, 1):>7}{fmt(sc.r40_fcf):>10}"
-            f"{fmt(sc.r40_ebitda):>12}{fmt(sc.r40_sbc_adj):>13}  {trend};{';'.join(sc.flags)}"
+            f"{fmt(sc.r40_ebitda):>12}{fmt(sc.r40_sbc_adj):>13}  {trend};{';'.join(display_flags(sc.flags))}"
         )
     print()
 

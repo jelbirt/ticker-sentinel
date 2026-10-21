@@ -369,6 +369,11 @@ def inputs_from_canonical(
 
     shares_now, shares_1y = _paired_shares(stmts)
     basic_now, basic_1y = _paired_shares(stmts, "basic_shares")
+    if notes is not None and shares_1y is not None and (basic_now is None or basic_1y is None):
+        # D2 fallback, disclosed: a name that has not switched to basic yet (a
+        # failed migration refetch, or Yahoo serving no basic row) would
+        # otherwise move later with no explanation
+        notes.append(f"{ticker}: dilution on diluted shares (basic share count unavailable)")
     return FundamentalInputs(
         ticker=ticker,
         company_name=company_name,

@@ -975,6 +975,10 @@ vs staying manual.
   the question if that persists. ZS in its 5th window. The earnings
   season can step fundamentals on a non-boundary run (round-5 line).
   PANW, NET, SNOW and CRWD tapes after the selloff. ESTC through 11-19.
+  If PR #45 (scoring method 2) merges before or inside the window, CRWD,
+  IOT and DDOG step +10 F (about +6 composite) on the switch run by
+  construction: dilution moved to basic shares and their flag cleared.
+  Read that step as the method change, not the business.
 - What mattered: the flat fundamental column and checking the drop against
   QQQ and peers, which made the whole attention list one market event.
   What was noise: every attention-list delta, change activity (MNDY 9 on
