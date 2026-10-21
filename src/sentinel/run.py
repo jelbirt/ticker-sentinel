@@ -24,6 +24,7 @@ from sentinel.report.changes import (
     baseline_reference,
     deterioration_rows,
     diff_runs,
+    method_change_note,
     select_baselines,
     snapshot_from_scorecards,
 )
@@ -354,6 +355,9 @@ def main(argv: list[str] | None = None) -> int:
                 prior, week_ago, week_span = select_baselines(
                     prior_runs, current_run.date, cfg.changes.week_window_runs
                 )
+                method_note = method_change_note(prior, current_run)
+                if method_note:
+                    notes.append(method_note)
                 change_set = diff_runs(
                     current_run, prior, cfg.changes, unscored_reasons
                 )

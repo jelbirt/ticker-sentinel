@@ -171,7 +171,7 @@ def test_weakest_rows_keep_reason_and_flags(scored):
     assert len(ctx["weakest"]) == 2
     html = render_report(ctx)
     assert "Why weakest" in html
-    assert "⚠ Dilution" in html and "⚠ High SBC" in html  # flags survive in weakest cells
+    assert "⚠ Dilution" in html and "⚠ SBC-inflated" in html  # flags survive in weakest cells
 
 
 def test_movers_grouped_by_ticker(scored):

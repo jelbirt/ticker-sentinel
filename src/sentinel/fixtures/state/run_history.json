@@ -3,6 +3,7 @@
     {
       "date": "2026-07-28",
       "run_type": "scheduled",
+      "method": 2,
       "tickers": {
         "ALFA": {
           "composite": 67.0,
@@ -63,6 +64,7 @@
     {
       "date": "2026-07-29",
       "run_type": "scheduled",
+      "method": 2,
       "tickers": {
         "ALFA": {
           "composite": 67.3,
@@ -123,6 +125,7 @@
     {
       "date": "2026-07-30",
       "run_type": "scheduled",
+      "method": 2,
       "tickers": {
         "ALFA": {
           "composite": 67.6,
@@ -183,6 +186,7 @@
     {
       "date": "2026-07-31",
       "run_type": "scheduled",
+      "method": 2,
       "tickers": {
         "ALFA": {
           "composite": 67.9,
@@ -243,6 +247,7 @@
     {
       "date": "2026-08-01",
       "run_type": "scheduled",
+      "method": 2,
       "tickers": {
         "ALFA": {
           "composite": 68.2,
@@ -303,6 +308,7 @@
     {
       "date": "2026-08-04",
       "run_type": "scheduled",
+      "method": 2,
       "tickers": {
         "ALFA": {
           "composite": 68.5,

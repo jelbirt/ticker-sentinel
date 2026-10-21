@@ -90,7 +90,7 @@ Let `Rev_TTM` = trailing-12-month revenue; `Rev_TTM_prior` = TTM revenue one yea
 - `rule_of_x = 2 × growth + fcf_margin` (growth-weighted variant; target ≥ 50)
 - `r40_trend = r40_fcf(now) − r40_fcf(−4Q)`; also store −2Q point for the sparkline
 **Dilution & valuation guards**
-- `dilution = (DilutedShares_now / DilutedShares_1y_ago) − 1` — flag if > 3%/yr
+- `dilution = (BasicShares_now / BasicShares_1y_ago) − 1`: flag if > 3%/yr. Amended 2026-10-20 (`tasks/spec-p2-methodology.md`): basic average shares, not diluted. Under ASC 260 options are antidilutive in a loss quarter, so the diluted series changes basis when a company turns profitable (CRWD read 4.5% against 2.0% basic), and under the treasury stock method it also swells with the share price (DDOG). Falls back to diluted until a name's cache carries the basic row.
 - `sbc_intensity = SBC_TTM / Rev_TTM` — flag if > 15%
 - `ev_revenue = EnterpriseValue / Rev_TTM` (EV = MarketCap + TotalDebt − Cash)
 - `fcf_yield = (OCF − CapEx)_TTM / MarketCap`
@@ -108,7 +108,7 @@ Applies fully only to tickers tagged `r40`; others get technicals-only rows in a
 - + `min(max(rule_of_x − 50, 0), 30)` × 0.5 (bonus up to 15 for growth-weighted excellence)
 - + `10` if `r40_ebitda ≥ 40` (passes the strict version too)
 - + `15 × clamp(r40_trend / 15, −1, 1)` (improving/deteriorating trajectory, ±15)
-- Penalties: −10 if `dilution > 3%`; −10 if `sbc_intensity > 15%`; −10 if `r40_fcf − r40_sbc_adj > 20` (SBC is doing the heavy lifting)
+- Penalties: −10 if `dilution > 3%`; −10 if `sbc_intensity > 15%`, and a further −10 if `sbc_intensity > 20%` (SBC is doing the heavy lifting). Amended 2026-10-20: the third penalty was written as `r40_fcf − r40_sbc_adj > 20`, which is `SBC / Rev > 20%` by construction, so it was always a second SBC tier rather than an independent signal; it is now stated as one. Scores are unchanged.
 - Clamp to [0, 100].
 **Technical score T (0–100):** +40 uptrend / +0 mixed / −20 downtrend (rescaled), +30 × clamp(rel_strength_3m / 0.15, −1, 1), +15 if golden cross recent / −15 death cross, +15 proximity to 52-week high (`1 + dist_52w_high` scaled). Clamp [0, 100].
 **Composite:** `C = 0.6 F + 0.4 T` (weights from config).
@@ -118,7 +118,7 @@ Applies fully only to tickers tagged `r40`; others get technicals-only rows in a
 - `score`: sort by composite alone (the pre-breadth behavior), for when a raw ranking is wanted.
 Either way the composite is what gets displayed and what change detection diffs; ranking only decides row order and therefore which names fall into the strongest/weakest tables.
 **Weakest-buy list:** lowest composites among r40-tagged names, prioritizing the combination `r40_trend < −10` AND downtrend/death-cross — "deteriorating fundamentals with technical confirmation."
-**Flags rendered in report:** `⚠ SBC-inflated`, `⚠ Dilution`, `⚠ Stale fundamentals`, `★ Passes all 3 R40 variants`, `📉 Death cross`, `📈 Golden cross`, `🏷 priced-for-perfection`.
+**Flags rendered in report:** `⚠ SBC-inflated` (the second SBC tier; shown instead of `⚠ High SBC`, never beside it), `⚠ Dilution`, `⚠ Stale fundamentals`, `★ Passes all 3 R40 variants`, `📉 Death cross`, `📈 Golden cross`, `🏷 priced-for-perfection`.
 ---
 ## 7. Report Design (HTML email)
 1. **Header:** date, build time, run type (scheduled/ad hoc), data freshness notes. **Display timezone (2026-08-17):** `report.timezone` (default America/New_York) was parsed but unread; it now renders the header's build time as a zone-labelled wall clock ("built 06:02 EDT"), so a report written by a UTC runner reads in the owner's clock. Presentation only, and deliberately so: the run date beside it is the run's own `date.today()`, the same value that names `reports/YYYY-MM-DD`, keys change detection and lands in `run_history.json`, so changing the config can never move which day a run belongs to (pinned by tests). An unloadable or misspelled zone degrades to a UTC stamp plus a data note naming the bad value, never a crash.

@@ -29,7 +29,7 @@ MAX_QUARTERS = 16  # formulas need 12 (TTM windows at offsets 0..8); cap keeps p
 # combine_first stitches the two together and dilution reads as a 300% share
 # issuance. Carrying the observed factor back over the cached-only quarters is
 # exactly the restatement the source already applied to the ones it serves.
-REBASED_ROWS = ("diluted_shares",)
+REBASED_ROWS = ("diluted_shares", "basic_shares")
 MIN_REBASE_OVERLAP = 2  # a single matching pair could be any restatement
 REBASE_TOLERANCE = 0.02  # ratios this tight across the overlap mean one factor
 

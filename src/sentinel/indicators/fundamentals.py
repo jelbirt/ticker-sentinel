@@ -16,7 +16,7 @@ from sentinel.indicators.technicals import TechnicalSnapshot
 FLAG_INSUFFICIENT_DATA = "insufficient_data"      # <4 quarters: no TTM at all
 FLAG_INSUFFICIENT_HISTORY = "insufficient_history"  # trend/growth window unavailable
 FLAG_GROWTH_FROM_ANNUAL = "growth_from_annual"    # growth fell back to FY-over-FY
-FLAG_SBC_INFLATED = "sbc_inflated"                # r40_fcf − r40_sbc_adj > 20 pts
+FLAG_SBC_INFLATED = "sbc_inflated"                # sbc_intensity > 20% (second SBC tier)
 FLAG_DILUTION = "dilution"                        # dilution > 3%/yr
 FLAG_HIGH_SBC = "high_sbc"                        # sbc_intensity > 15%
 FLAG_STALE = "stale_fundamentals"                 # statements > 200 days old
@@ -26,7 +26,20 @@ R40_BAR = 0.40        # the "40" in Rule of 40, as a fraction; shared with the d
 STALE_DAYS = 200
 DILUTION_LIMIT = 0.03
 SBC_INTENSITY_LIMIT = 0.15
-SBC_GAP_LIMIT = 0.20  # 20 points
+# Second SBC tier. PROJECT_PLAN once wrote this as r40_fcf - r40_sbc_adj > 20
+# pts, but that difference IS sbc_intensity (the two variants differ only by
+# SBC / Rev), so it was always "SBC above 20% of revenue". Kept as a deliberate
+# tier on top of SBC_INTENSITY_LIMIT (2026-10-21, spec-p2-methodology D4).
+SBC_HEAVY_LIMIT = 0.20
+
+
+def display_flags(flags: list[str]) -> list[str]:
+    """Flags as a reader should see them: the second SBC tier implies the
+    first, so `high_sbc` is not shown beside `sbc_inflated`. Display only; the
+    persisted flags (change detection, digest classification) keep both."""
+    if FLAG_SBC_INFLATED in flags:
+        return [f for f in flags if f != FLAG_HIGH_SBC]
+    return list(flags)
 
 
 @dataclass(frozen=True)
@@ -56,6 +69,8 @@ class FundamentalInputs:
     ttm_minus_8q: TTMWindow | None = None
     diluted_shares_now: float | None = None
     diluted_shares_1y_ago: float | None = None
+    basic_shares_now: float | None = None     # dilution reads these (PLAN section 5)
+    basic_shares_1y_ago: float | None = None
     shares_outstanding: float | None = None   # current count, same basis as price
     market_cap: float | None = None
     total_debt: float | None = None
@@ -250,7 +265,14 @@ def compute_scorecard(inp: FundamentalInputs, today: date | None = None) -> Scor
         sc.flags.append(FLAG_INSUFFICIENT_HISTORY)
 
     # dilution & valuation guards
-    sc.dilution = dilution(inp.diluted_shares_now, inp.diluted_shares_1y_ago)
+    # basic shares (PLAN section 5, 2026-10-21): diluted counts change basis
+    # when profitability turns (ASC 260 antidilution) and swell with the share
+    # price (treasury stock method), neither of which is issuance. Diluted is
+    # the fallback for a cache that has no basic row yet.
+    if inp.basic_shares_now is not None and inp.basic_shares_1y_ago is not None:
+        sc.dilution = dilution(inp.basic_shares_now, inp.basic_shares_1y_ago)
+    else:
+        sc.dilution = dilution(inp.diluted_shares_now, inp.diluted_shares_1y_ago)
     sc.sbc_intensity = sbc_intensity(now.sbc, now.revenue)
     ev = enterprise_value(inp.market_cap, inp.total_debt, inp.cash)
     sc.ev_revenue = ev_revenue(ev, now.revenue)
@@ -261,11 +283,7 @@ def compute_scorecard(inp: FundamentalInputs, today: date | None = None) -> Scor
         sc.flags.append(FLAG_DILUTION)
     if sc.sbc_intensity is not None and sc.sbc_intensity > SBC_INTENSITY_LIMIT:
         sc.flags.append(FLAG_HIGH_SBC)
-    if (
-        sc.r40_fcf is not None
-        and sc.r40_sbc_adj is not None
-        and sc.r40_fcf - sc.r40_sbc_adj > SBC_GAP_LIMIT
-    ):
+    if sc.sbc_intensity is not None and sc.sbc_intensity > SBC_HEAVY_LIMIT:
         sc.flags.append(FLAG_SBC_INFLATED)
     if all(v is not None and v >= R40_BAR for v in (sc.r40_fcf, sc.r40_ebitda, sc.r40_sbc_adj)):
         sc.flags.append(FLAG_ALL_R40)
