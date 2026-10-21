@@ -42,9 +42,10 @@ made every second merge conflict here.
   Runs carry a scoring `method` (now 2) and the first run on a new method gets
   one note. Amendment 1 (owner approved 2026-10-20): a cache without a
   `basic_shares` row refetches once, so every name switches on the same run.
-  PR #45 merged after the 2026-10-21 scheduled run, so the switch lands on the
-  2026-10-22 run; refresh #11 should read the CRWD, IOT and DDOG steps as the
-  method change (SPEC 7.0.1 round-11 watch line).
+  The switch lands on the first scheduled run after the merge (2026-10-21
+  10:13 UTC; no 10-21 daily run had fired by then); refresh #11 should read
+  the CRWD, IOT and DDOG steps as the method change (SPEC 7.0.1 round-11
+  watch line).
 - `fix/audit-p3` (2026-10-21, merged as PR #44, worktree torn down): P3
   findings of the 2026-10-20 methodology audit. Fixed: earnings refetch capped
   at 14 days past a report date, relative strength date-aligned, market cap
