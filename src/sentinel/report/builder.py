@@ -12,7 +12,7 @@ import pandas as pd
 from jinja2 import Environment, FileSystemLoader, select_autoescape
 
 from sentinel.config import Config
-from sentinel.indicators.fundamentals import Scorecard
+from sentinel.indicators.fundamentals import Scorecard, display_flags
 from sentinel.indicators.signals import short_change_mom, signal_alerts
 from sentinel.report.changes import ChangeSet, DeteriorationRow, deteriorating
 
@@ -144,7 +144,7 @@ def local_timestamp(now: datetime, tz_name: str) -> tuple[str, str | None]:
 
 
 def flag_labels(sc: Scorecard) -> list[str]:
-    return [FLAG_LABELS.get(f, f) for f in sc.flags]
+    return [FLAG_LABELS.get(f, f) for f in display_flags(sc.flags)]
 
 
 def r40_breadth(sc: Scorecard) -> int:

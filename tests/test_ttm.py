@@ -117,6 +117,7 @@ class TestPartialQuarterAnchoring:
         "ocf": [90.0, 85, 80, 75, 70, 65, 60],
         "capex": [10.0, 10, 10, 10, 10, 10, 10],
         "diluted_shares": [100.0] * 7,
+        "basic_shares": [97.0] * 7,   # a current-schema frame: no diluted-fallback note
     }
 
     def _inputs(self, fields, notes=None):

@@ -63,6 +63,29 @@ def _snapshots(raw: object) -> dict[str, TickerSnapshot]:
     return out
 
 
+# Bumped when a scoring-method change shifts scores by construction, so the
+# first run on the new method can say why names moved (method_change_note).
+# 2: dilution on basic average shares; second SBC tier read from sbc_intensity
+# (tasks/spec-p2-methodology.md). History written before the field reads as 1.
+SCORING_METHOD = 2
+
+METHOD_CHANGES = {
+    2: "dilution now measured on basic shares (diluted counts misread a profit "
+       "turn as issuance); names that lose the dilution flag gain 10 points of F",
+}
+
+
+def method_change_note(prior: "RunSnapshot | None", current: "RunSnapshot") -> str | None:
+    """One-run disclosure when the baseline was scored on an older method:
+    the day-over-day moves it explains are real in the numbers but not in the
+    business. Nothing is suppressed; the note just names the cause."""
+    if prior is None or prior.method >= current.method:
+        return None
+    changes = [METHOD_CHANGES[m] for m in range(prior.method + 1, current.method + 1)
+               if m in METHOD_CHANGES]
+    return "scoring method changed since the last run: " + "; ".join(changes)
+
+
 @dataclass(frozen=True)
 class RunSnapshot:
     date: str                 # ISO date; one entry per calendar date
@@ -73,11 +96,13 @@ class RunSnapshot:
     # the weekly digest can compare rotation candidates on the same basis as
     # the attention list (spec 7.0.1).
     bench: dict[str, TickerSnapshot] = field(default_factory=dict)
+    method: int = 1
 
     def to_dict(self) -> dict:
         return {
             "date": self.date,
             "run_type": self.run_type,
+            "method": self.method,
             "tickers": {t: asdict(snap) for t, snap in sorted(self.tickers.items())},
             "bench": {t: asdict(snap) for t, snap in sorted(self.bench.items())},
         }
@@ -89,6 +114,7 @@ class RunSnapshot:
             run_type=str(raw.get("run_type", "")),
             tickers=_snapshots(raw.get("tickers")),
             bench=_snapshots(raw.get("bench")),
+            method=int(raw.get("method", 1)),
         )
 
 
@@ -134,7 +160,7 @@ def snapshot_from_scorecards(
     }
     return RunSnapshot(
         date=today.isoformat(), run_type=run_type,
-        tickers=tickers, bench=bench_snaps,
+        tickers=tickers, bench=bench_snaps, method=SCORING_METHOD,
     )
 
 

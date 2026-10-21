@@ -45,7 +45,9 @@ def fundamental_score(sc: Scorecard) -> float | None:
         score -= 10.0
     if sc.sbc_intensity is not None and sc.sbc_intensity > 0.15:
         score -= 10.0
-    if sc.r40_sbc_adj is not None and (sc.r40_fcf - sc.r40_sbc_adj) * 100 > 20.0:
+    # second SBC tier, a further -10 above 20% (PLAN section 6; the old
+    # "r40_fcf - r40_sbc_adj > 20" wording was this same quantity)
+    if sc.sbc_intensity is not None and sc.sbc_intensity > 0.20:
         score -= 10.0
 
     return clamp(score, 0.0, 100.0)

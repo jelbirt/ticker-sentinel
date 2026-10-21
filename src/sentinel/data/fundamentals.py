@@ -37,6 +37,7 @@ ALIASES: dict[str, tuple[str, list[str]]] = {
     "capex": ("cashflow", ["Capital Expenditure", "Purchase Of PPE"]),
     "sbc": ("cashflow", ["Stock Based Compensation"]),
     "diluted_shares": ("income", ["Diluted Average Shares"]),
+    "basic_shares": ("income", ["Basic Average Shares"]),
     "total_debt": ("balance", ["Total Debt"]),
     "cash": (
         "balance",
@@ -68,6 +69,8 @@ MAX_ANCHOR_SKIP = 2
 MAX_QUARTER_GAP_DAYS = 120
 
 # --- share-count integrity ---------------------------------------------------
+SHARE_ROWS = ("diluted_shares", "basic_shares")
+SHARE_ROW_LABELS = {"diluted_shares": "diluted", "basic_shares": "basic"}
 # diluted_shares is the one row a bad cell corrupts invisibly: it drives
 # dilution and (via run._reprice_market_cap, which also gates Yahoo's shares
 # outstanding against it) market cap, hence ev_revenue,
@@ -157,7 +160,10 @@ def sanitize_share_counts(
     shares_outstanding: float | None = None,
     notes: list[str] | None = None,
 ) -> pd.DataFrame:
-    """Blank diluted-share cells that cannot be on the current share basis.
+    """Blank share-count cells that cannot be on the current share basis.
+
+    Runs over every row in SHARE_ROWS: diluted feeds the market-cap repricer,
+    basic feeds dilution, and a split or a units slip corrupts either alike.
 
     Returns a copy with the offending cells set to NaN and appends one data
     note per check that fired; the input frame is left alone and nothing here
@@ -167,10 +173,26 @@ def sanitize_share_counts(
     perfectly reasonable.
     """
     notes = notes if notes is not None else []
-    if "diluted_shares" not in stmts.index:
+    rows = [r for r in SHARE_ROWS if r in stmts.index]
+    if not rows:
         return stmts
     out = stmts.copy()
-    row = out.loc["diluted_shares"].copy()
+    for field_name in rows:
+        out.loc[field_name] = _sanitize_share_row(
+            ticker, out.loc[field_name].copy(), SHARE_ROW_LABELS[field_name],
+            shares_outstanding, notes,
+        )
+    return out
+
+
+def _sanitize_share_row(
+    ticker: str,
+    row: pd.Series,
+    label: str,
+    shares_outstanding: float | None,
+    notes: list[str],
+) -> pd.Series:
+    """One share row through the scale band and the neighbour-step check."""
 
     low, high = SHARE_COUNT_BAND
     if shares_outstanding is not None and shares_outstanding > 0:
@@ -179,7 +201,7 @@ def sanitize_share_counts(
         if off_scale.any():
             quarters = ", ".join(c.date().isoformat() for c in row.index[off_scale])
             notes.append(
-                f"{ticker}: diluted share count implausible against "
+                f"{ticker}: {label} share count implausible against "
                 f"{shares_outstanding:,.0f} shares outstanding; dropped ({quarters})"
             )
             row[off_scale] = float("nan")
@@ -201,7 +223,7 @@ def sanitize_share_counts(
             continue
         if shares_outstanding is None or shares_outstanding <= 0:
             notes.append(
-                f"{ticker}: diluted share count steps {older:,.0f} to "
+                f"{ticker}: {label} share count steps {older:,.0f} to "
                 f"{newer:,.0f} at {valid.index[i].date().isoformat()} with no "
                 "shares outstanding reference to arbitrate the basis; all "
                 f"{len(valid)} share readings dropped"
@@ -216,18 +238,17 @@ def sanitize_share_counts(
         keep_newer = _off_basis(newer_side) <= _off_basis(older_side)
         dropped_side = older_side if keep_newer else newer_side
         which = "older" if keep_newer else "newer"
-        label = "quarter" if len(dropped_side) == 1 else "quarters"
+        unit = "quarter" if len(dropped_side) == 1 else "quarters"
         notes.append(
-            f"{ticker}: diluted share count steps {older:,.0f} to {newer:,.0f} "
+            f"{ticker}: {label} share count steps {older:,.0f} to {newer:,.0f} "
             f"at {valid.index[i].date().isoformat()} (a split or a source "
-            f"error, not issuance); {len(dropped_side)} {which} {label} dropped "
+            f"error, not issuance); {len(dropped_side)} {which} {unit} dropped "
             "as a different share basis"
         )
         row[list(dropped_side.index)] = float("nan")
         break
 
-    out.loc["diluted_shares"] = row
-    return out
+    return row
 
 
 def build_ttm(stmts: pd.DataFrame | None, offset: int = 0) -> TTMWindow | None:
@@ -279,16 +300,18 @@ def _first_valid(stmts: pd.DataFrame, field: str, start: int = 0) -> float | Non
     return None
 
 
-def _paired_shares(stmts: pd.DataFrame) -> tuple[float | None, float | None]:
-    """Diluted shares "now" and exactly 4 quarters earlier, from one anchor.
+def _paired_shares(
+    stmts: pd.DataFrame, field_name: str = "diluted_shares"
+) -> tuple[float | None, float | None]:
+    """A share row "now" and exactly 4 quarters earlier, from one anchor.
 
     If the newest quarter lacks the row, anchor on the first quarter that has
     it and take the prior reading 4 quarters behind THAT — the dilution ratio
     must always span a true year, never a mixed 3-quarter window.
     """
-    if "diluted_shares" not in stmts.index:
+    if field_name not in stmts.index:
         return None, None
-    row = stmts.loc["diluted_shares"]
+    row = stmts.loc[field_name]
     for i in range(len(row)):
         if pd.notna(row.iloc[i]):
             prior = row.iloc[i + 4] if len(row) > i + 4 else None
@@ -345,6 +368,12 @@ def inputs_from_canonical(
             statement_date = valid.index.max().date()
 
     shares_now, shares_1y = _paired_shares(stmts)
+    basic_now, basic_1y = _paired_shares(stmts, "basic_shares")
+    if notes is not None and shares_1y is not None and (basic_now is None or basic_1y is None):
+        # D2 fallback, disclosed: a name that has not switched to basic yet (a
+        # failed migration refetch, or Yahoo serving no basic row) would
+        # otherwise move later with no explanation
+        notes.append(f"{ticker}: dilution on diluted shares (basic share count unavailable)")
     return FundamentalInputs(
         ticker=ticker,
         company_name=company_name,
@@ -355,6 +384,8 @@ def inputs_from_canonical(
         ttm_minus_8q=build_ttm(stmts, 8),
         diluted_shares_now=shares_now,
         diluted_shares_1y_ago=shares_1y,
+        basic_shares_now=basic_now,
+        basic_shares_1y_ago=basic_1y,
         market_cap=market_cap,
         shares_outstanding=shares_outstanding,
         # newest reading of each, deliberately not forced into one quarter:
@@ -487,6 +518,12 @@ def get_fundamentals(ticker: str, force_refresh: bool = False) -> tuple[Fundamen
         not force_refresh
         and cache.is_fresh(cached_meta)
         and "company_name" in (cached_meta or {})
+        # same trick for the basic_shares row (2026-10-21 dilution basis
+        # change): a cache written before it existed refetches once, so every
+        # name moves to the new basis on the same run instead of trickling
+        # over the weekly window
+        and cached_df is not None
+        and "basic_shares" in cached_df.index
     )
     if fresh and earnings_refetch_due((cached_meta or {}).get("next_earnings"), date.today()):
         fresh = False

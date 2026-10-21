@@ -16,7 +16,7 @@ from pathlib import Path
 
 from sentinel.config import ChangesCfg, Config, load_config
 from sentinel.data.history import load_history
-from sentinel.indicators.fundamentals import R40_BAR
+from sentinel.indicators.fundamentals import R40_BAR, display_flags
 from sentinel.report.changes import RunSnapshot, TickerSnapshot, diff_runs
 
 # manual refreshes before the digest starts prompting the automation decision
@@ -40,7 +40,7 @@ DATA_QUALITY_FLAGS = frozenset({
 # gets round to classifying it; the test enforces that "round to" is the same
 # commit that adds the flag.
 BUSINESS_FLAGS = frozenset({
-    "sbc_inflated",            # r40_fcf minus r40_sbc_adj > 20 pts
+    "sbc_inflated",            # sbc_intensity > 20% (second SBC tier)
     "high_sbc",                # sbc_intensity > 15%
     "dilution",                # dilution > 3%/yr
     "passes_all_r40",          # all three R40 variants clear 40
@@ -478,7 +478,7 @@ def _fmt(value: float | None, spec: str = ".1f") -> str:
 
 
 def _flag_cell(flags: list[str]) -> str:
-    return ", ".join(f.replace("_", " ") for f in flags) or "n/a"
+    return ", ".join(f.replace("_", " ") for f in display_flags(flags)) or "n/a"
 
 
 def _r40_cell(value: float | None) -> str:

@@ -42,10 +42,31 @@ def test_unscorable_when_r40_missing_or_stale():
 
 
 def test_all_three_penalties():
+    # r40_fcf - r40_sbc_adj is SBC / Rev by construction, so a consistent
+    # fixture sets sbc_intensity to the gap: 30% clears both SBC tiers
     sc = Scorecard(
-        ticker="X", r40_fcf=0.40, r40_sbc_adj=0.10, dilution=0.05, sbc_intensity=0.20
+        ticker="X", r40_fcf=0.40, r40_sbc_adj=0.10, dilution=0.05, sbc_intensity=0.30
     )
-    assert fundamental_score(sc) == approx(0.0)  # 30 − 30 = 0
+    assert fundamental_score(sc) == approx(0.0)  # 30 - 30 = 0
+
+
+class TestSbcTiers:
+    """-10 above 15% SBC, a further -10 above 20% (PLAN section 6, D4)."""
+
+    def _f(self, sbc):
+        return fundamental_score(Scorecard(ticker="X", r40_fcf=0.40, sbc_intensity=sbc))
+
+    def test_tiers(self):
+        base = self._f(0.10)
+        assert self._f(0.151) == approx(base - 10)
+        assert self._f(0.20) == approx(base - 10)   # strict: exactly 20% is tier one
+        assert self._f(0.201) == approx(base - 20)
+
+    def test_second_tier_reads_sbc_not_the_gap(self):
+        # the penalty no longer depends on r40_sbc_adj being populated
+        assert fundamental_score(
+            Scorecard(ticker="X", r40_fcf=0.40, sbc_intensity=0.25, r40_sbc_adj=None)
+        ) == approx(self._f(0.25))
 
 
 class TestTechnicalScore:
