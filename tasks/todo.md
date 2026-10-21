@@ -15,10 +15,7 @@ made every second merge conflict here.
   `run_history.json`; discard that change rather than committing it.
 
 ## Active workstreams
-- `spec/p2-methodology` (opened 2026-10-20): the two P2 findings of the
-  2026-10-20 audit. Spec approved (`tasks/spec-p2-methodology.md` on the branch):
-  dilution on basic average shares, SBC gap penalty restated as an explicit
-  -20 tier above 20 percent. Implementation pending.
+- none open.
 
   One branch per workstream via `scripts/new-worktree.sh <branch>`; main is the
   review inbox; merge back via PR.
@@ -35,6 +32,19 @@ made every second merge conflict here.
   relation instead.
 
 ## Done
+- `spec/p2-methodology` (2026-10-21, merged as PR #45, worktree torn down):
+  the two P2 findings of the 2026-10-20 audit, spec in
+  `tasks/spec-p2-methodology.md`. Dilution now reads basic average shares
+  (diluted as a disclosed fallback); CRWD, IOT and DDOG lose a false dilution
+  flag and gain 10 F. The SBC gap penalty is restated as an explicit second
+  tier (-10 above 15 percent of revenue, a further -10 above 20); no score
+  changes, and SBC-inflated now renders instead of High SBC, never beside it.
+  Runs carry a scoring `method` (now 2) and the first run on a new method gets
+  one note. Amendment 1 (owner approved 2026-10-20): a cache without a
+  `basic_shares` row refetches once, so every name switches on the same run.
+  PR #45 merged after the 2026-10-21 scheduled run, so the switch lands on the
+  2026-10-22 run; refresh #11 should read the CRWD, IOT and DDOG steps as the
+  method change (SPEC 7.0.1 round-11 watch line).
 - `fix/audit-p3` (2026-10-21, merged as PR #44, worktree torn down): P3
   findings of the 2026-10-20 methodology audit. Fixed: earnings refetch capped
   at 14 days past a report date, relative strength date-aligned, market cap
