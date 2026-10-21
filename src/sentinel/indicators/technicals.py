@@ -86,12 +86,19 @@ def recent_cross(
 
 
 def rel_strength_3m(close: pd.Series, bench_close: pd.Series | None) -> float | None:
-    """(P/P_63d) / (SPY/SPY_63d) − 1"""
+    """(P/P_63d) / (SPY/SPY_63d) - 1, both legs over the same sessions.
+
+    Aligned on dates before counting back: positional indexing on each series
+    separately let a ticker with a missing bar, or a last bar behind SPY's,
+    measure a different 63-session window than the benchmark. The window ends
+    on the latest session both have.
+    """
     if bench_close is None:
         return None
-    p, b = close.dropna(), bench_close.dropna()
-    if len(p) < RS_WINDOW + 1 or len(b) < RS_WINDOW + 1:
+    both = pd.concat([close, bench_close], axis=1, join="inner").dropna()
+    if len(both) < RS_WINDOW + 1:
         return None
+    p, b = both.iloc[:, 0], both.iloc[:, 1]
     p_ratio = p.iloc[-1] / p.iloc[-(RS_WINDOW + 1)]
     b_ratio = b.iloc[-1] / b.iloc[-(RS_WINDOW + 1)]
     if b_ratio == 0:

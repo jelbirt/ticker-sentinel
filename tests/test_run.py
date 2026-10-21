@@ -22,6 +22,24 @@ def test_reprices_from_latest_close():
     assert inp.market_cap == approx(5000.0)
 
 
+def test_reprices_on_shares_outstanding_when_known():
+    # outstanding wins over the diluted average, which carries the option overhang
+    inp = FundamentalInputs(
+        ticker="AAA", diluted_shares_now=102.0, shares_outstanding=100.0, market_cap=1.0
+    )
+    assert _reprice_market_cap([inp], _close("AAA", 50.0)) == []
+    assert inp.market_cap == approx(5000.0)
+
+
+def test_disagreeing_shares_outstanding_falls_back_to_diluted():
+    # a units slip on the unguarded outstanding count must not reach the cap
+    inp = FundamentalInputs(
+        ticker="AAA", diluted_shares_now=100.0, shares_outstanding=100_000.0, market_cap=1.0
+    )
+    assert _reprice_market_cap([inp], _close("AAA", 50.0)) == []
+    assert inp.market_cap == approx(5000.0)
+
+
 def test_missing_price_reports_stale_cached_cap():
     inp = FundamentalInputs(ticker="AAA", diluted_shares_now=100.0, market_cap=4200.0)
     stale = _reprice_market_cap([inp], None)

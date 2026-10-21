@@ -18,6 +18,9 @@ from sentinel.indicators.fundamentals import FundamentalInputs, TTMWindow
 
 log = logging.getLogger(__name__)
 
+# days after a report date during which the cache is refetched daily
+EARNINGS_REFETCH_DAYS = 14
+
 # canonical field -> (statement, [yfinance row-label aliases, first match wins])
 ALIASES: dict[str, tuple[str, list[str]]] = {
     "revenue": ("income", ["Total Revenue", "Operating Revenue"]),
@@ -66,7 +69,8 @@ MAX_QUARTER_GAP_DAYS = 120
 
 # --- share-count integrity ---------------------------------------------------
 # diluted_shares is the one row a bad cell corrupts invisibly: it drives
-# dilution and (via run._reprice_market_cap) market cap, hence ev_revenue,
+# dilution and (via run._reprice_market_cap, which also gates Yahoo's shares
+# outstanding against it) market cap, hence ev_revenue,
 # fcf_yield and the valuation label. Two upstream failure modes have been seen
 # on this watchlist, and neither is detectable from a single value:
 #   1. Basis breaks. A split rebases every share count Yahoo serves, statements
@@ -302,6 +306,7 @@ def inputs_from_canonical(
     annual_revenue: dict[date, float] | None = None,
     notes: list[str] | None = None,
     company_name: str | None = None,
+    shares_outstanding: float | None = None,
 ) -> FundamentalInputs:
     """Canonical statements frame -> FundamentalInputs for the indicator engine.
 
@@ -351,12 +356,35 @@ def inputs_from_canonical(
         diluted_shares_now=shares_now,
         diluted_shares_1y_ago=shares_1y,
         market_cap=market_cap,
+        shares_outstanding=shares_outstanding,
+        # newest reading of each, deliberately not forced into one quarter:
+        # Yahoo leaves Total Debt empty in quarters whose filing does not break
+        # out the (often lease-only) debt, so an empty cell means "not
+        # disclosed", not zero. Pairing on a shared quarter would trade current
+        # cash for a stale balance sheet (GTLB and S: last debt 2026-01-31,
+        # cash through 2026-07-31). Settled in the 2026-10-20 audit follow-up.
         total_debt=_first_valid(stmts, "total_debt"),
         cash=_first_valid(stmts, "cash"),
         statement_date=statement_date,
         annual_revenue=annual_revenue or {},
         data_notes=notes,
     )
+
+
+def annual_revenue_from(annual: pd.DataFrame | None) -> dict[str, float]:
+    """Fiscal-year revenue keyed by ISO period end, read through the same
+    revenue aliases as the quarterly frame so a Yahoo relabel cannot silently
+    drop the growth fallback (MNDY's growth rides on it)."""
+    if annual is None or annual.empty:
+        return {}
+    for label in ALIASES["revenue"][1]:
+        if label in annual.index:
+            return {
+                pd.to_datetime(col).date().isoformat(): float(val)
+                for col, val in annual.loc[label].items()
+                if pd.notna(val)
+            }
+    return {}
 
 
 @retry(stop=stop_after_attempt(3), wait=wait_exponential(multiplier=1, max=20), reraise=True)
@@ -374,11 +402,7 @@ def fetch_statements(ticker: str) -> tuple[pd.DataFrame, dict[str, Any]]:
 
     annual_revenue: dict[str, float] = {}
     try:
-        annual = t.income_stmt
-        if annual is not None and not annual.empty and "Total Revenue" in annual.index:
-            for col, val in annual.loc["Total Revenue"].items():
-                if pd.notna(val):
-                    annual_revenue[pd.to_datetime(col).date().isoformat()] = float(val)
+        annual_revenue = annual_revenue_from(t.income_stmt)
     except Exception:  # annual revenue is a fallback nicety, never fatal
         pass
 
@@ -434,6 +458,24 @@ def fetch_statements(ticker: str) -> tuple[pd.DataFrame, dict[str, Any]]:
     return stmts, meta
 
 
+def earnings_refetch_due(next_earnings: Any, today: date) -> bool:
+    """Earnings-aware refresh: once a report date passes, refetch daily until the
+    new quarter shows up (cheaper than waiting out the weekly window).
+
+    Only for EARNINGS_REFETCH_DAYS after the date. Yahoo sometimes keeps serving
+    a past report date for weeks after the quarter has landed, and without the
+    cap that turned into a refetch (and a fresh chance to merge a bad pull) on
+    every run until Yahoo noticed. Past the cap the weekly window governs.
+    """
+    if not next_earnings:
+        return False
+    try:
+        report = date.fromisoformat(next_earnings)
+    except (TypeError, ValueError):
+        return False
+    return 0 <= (today - report).days <= EARNINGS_REFETCH_DAYS
+
+
 def get_fundamentals(ticker: str, force_refresh: bool = False) -> tuple[FundamentalInputs | None, list[str]]:
     """Cache-aware fundamentals: (inputs, notes). Degrades to cache, then to None."""
     notes: list[str] = []
@@ -446,14 +488,8 @@ def get_fundamentals(ticker: str, force_refresh: bool = False) -> tuple[Fundamen
         and cache.is_fresh(cached_meta)
         and "company_name" in (cached_meta or {})
     )
-    # earnings-aware refresh: once a report date passes, refetch daily until the
-    # new quarter shows up (cheaper than waiting out the weekly window)
-    if fresh and (cached_meta or {}).get("next_earnings"):
-        try:
-            if date.today() >= date.fromisoformat(cached_meta["next_earnings"]):
-                fresh = False
-        except (TypeError, ValueError):
-            pass
+    if fresh and earnings_refetch_due((cached_meta or {}).get("next_earnings"), date.today()):
+        fresh = False
     refetched = False
     if fresh:
         df, meta = cached_df, cached_meta
@@ -497,5 +533,6 @@ def get_fundamentals(ticker: str, force_refresh: bool = False) -> tuple[Fundamen
         annual_revenue,
         notes,
         company_name=(meta or {}).get("company_name"),
+        shares_outstanding=(meta or {}).get("shares_outstanding"),
     )
     return inputs, notes

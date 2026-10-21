@@ -183,3 +183,71 @@ class TestPruneKeepsBench:
 
         cfg = Config(universe=(TickerCfg("CRWD", ("r40",)),), bench=("WDAY",))
         assert prune(set(cfg.all_tickers)) == ["WDAY.parquet"]
+
+
+class TestEarningsRefetchWindow:
+    """A passed report date forces a daily refetch, but only for
+    EARNINGS_REFETCH_DAYS: Yahoo can keep serving a past date for weeks (RBRK,
+    S and WDAY carried 2026-08-27 into October), which turned every run into
+    a refetch of a quarter that had long since landed."""
+
+    def test_window(self):
+        from datetime import date
+
+        from sentinel.data.fundamentals import EARNINGS_REFETCH_DAYS, earnings_refetch_due
+
+        report = date(2026, 8, 27)
+        assert not earnings_refetch_due("2026-08-27", date(2026, 8, 26))
+        assert earnings_refetch_due("2026-08-27", report)
+        assert earnings_refetch_due(
+            "2026-08-27", date.fromordinal(report.toordinal() + EARNINGS_REFETCH_DAYS)
+        )
+        assert not earnings_refetch_due(
+            "2026-08-27", date.fromordinal(report.toordinal() + EARNINGS_REFETCH_DAYS + 1)
+        )
+        assert not earnings_refetch_due("2026-08-27", date(2026, 10, 20))
+
+    def test_missing_or_malformed_date_never_forces(self):
+        from datetime import date
+
+        from sentinel.data.fundamentals import earnings_refetch_due
+
+        for raw in (None, "", "not-a-date", 20260827):
+            assert not earnings_refetch_due(raw, date(2026, 10, 20))
+
+    def _seed(self, tmp_path, monkeypatch, next_earnings):
+        from datetime import datetime, timezone
+
+        from sentinel.data import fundamentals as fnd
+        from tests.conftest import make_canonical
+
+        monkeypatch.setenv("SENTINEL_ROOT", str(tmp_path))
+        cache.save("X", make_canonical({"revenue": [100.0] * 4}), {
+            "fetched_at": datetime.now(timezone.utc).isoformat(),
+            "company_name": "X Corp",
+            "next_earnings": next_earnings,
+            "shares_outstanding": 1234.0,
+        })
+        calls: list[str] = []
+
+        def recording_fetch(ticker):
+            calls.append(ticker)
+            raise RuntimeError("refetch attempted")  # served from cache either way
+
+        monkeypatch.setattr(fnd, "fetch_statements", recording_fetch)
+        return fnd, calls
+
+    def test_fresh_cache_with_long_past_date_is_served(self, tmp_path, monkeypatch):
+        fnd, calls = self._seed(tmp_path, monkeypatch, "2020-01-01")
+        inputs, notes = fnd.get_fundamentals("X")
+        assert calls == []
+        assert not any("fetch failed" in n for n in notes)
+        # meta's outstanding count reaches the inputs the repricer reads
+        assert inputs.shares_outstanding == 1234.0
+
+    def test_report_date_inside_window_still_refetches(self, tmp_path, monkeypatch):
+        from datetime import date
+
+        fnd, calls = self._seed(tmp_path, monkeypatch, date.today().isoformat())
+        fnd.get_fundamentals("X")
+        assert calls == ["X"]

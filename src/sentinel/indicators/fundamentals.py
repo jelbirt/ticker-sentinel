@@ -56,6 +56,7 @@ class FundamentalInputs:
     ttm_minus_8q: TTMWindow | None = None
     diluted_shares_now: float | None = None
     diluted_shares_1y_ago: float | None = None
+    shares_outstanding: float | None = None   # current count, same basis as price
     market_cap: float | None = None
     total_debt: float | None = None
     cash: float | None = None
