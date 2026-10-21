@@ -19,12 +19,6 @@ made every second merge conflict here.
   2026-10-20 audit. Spec approved (`tasks/spec-p2-methodology.md` on the branch):
   dilution on basic average shares, SBC gap penalty restated as an explicit
   -20 tier above 20 percent. Implementation pending.
-- `fix/audit-p3` (opened 2026-10-20): the six P3 findings from the 2026-10-20
-  methodology audit: stale `next_earnings` daily refetch, date-aligned relative
-  strength, same-quarter debt and cash for EV, market cap on shares outstanding,
-  annual revenue through the alias layer, stale config comment. The two P2
-  findings (dilution on diluted shares across a loss-to-profit turn; the SBC gap
-  penalty duplicating sbc_intensity) are held for an owner decision.
 
   One branch per workstream via `scripts/new-worktree.sh <branch>`; main is the
   review inbox; merge back via PR.
@@ -41,6 +35,13 @@ made every second merge conflict here.
   relation instead.
 
 ## Done
+- `fix/audit-p3` (2026-10-21, merged as PR #44, worktree torn down): P3
+  findings of the 2026-10-20 methodology audit. Fixed: earnings refetch capped
+  at 14 days past a report date, relative strength date-aligned, market cap
+  repriced on shares outstanding gated within 10 percent of guarded diluted,
+  annual revenue through ALIASES, stale config comment. Not a bug (documented
+  in code): EV takes the newest debt and cash independently because Yahoo
+  leaves debt empty in non-disclosing quarters.
 - `rotation-round-10` (2026-10-20, merged as PR #43, worktree torn down;
   closes issue #42): round-10 record in SPEC 7.0.1 plus the "read breadth
   before names" rubric line. No changes: all 8 attention names fell on the
