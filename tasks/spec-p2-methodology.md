@@ -203,7 +203,7 @@ flag_cleared, possibly a digest change-activity spike). Options in D3.
   and adds `basic_shares` on its next refetch of each name); force-refresh the
   cache to make the switch land faster; change the decay gate.
 
-### Amendment 1 (proposed in PR #45, approved by merging it)
+### Amendment 1 (proposed in PR #45, approved by the owner 2026-10-20)
 
 - A cache with no `basic_shares` row counts as stale once, so every name
   refetches on the first run after merge and switches basis on that run. This
