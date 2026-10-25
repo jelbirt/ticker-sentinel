@@ -311,7 +311,7 @@ written from observed rounds rather than guessed up front. From refresh #3 the
 checklist adds the decision on automating proposal drafting against this rubric
 vs staying manual.
 
-**Working rubric (as of round 10):**
+**Working rubric (as of round 11):**
 - Act on **decay-gate hit counts**, not on composite deltas. A name with 0 gate
   hits has not shown persistent decay however far its composite moved. But read
   a zero for what it is: the gate needs `r40_trend` below
@@ -460,6 +460,16 @@ vs staying manual.
   So date a step by the closes around it, not by the run it lands on. A
   shared drop is a market reading, and the level rule already stays out
   of it.
+- **A scoring-method switch steps fundamentals on the switch run (round
+  11).** Like a backfill apply (round 8), a formula change moves the
+  fundamental score with nothing new in the business, and it lands on the
+  first scheduled run after the merge, which can be mid-window rather than
+  at the boundary. Runs carry a scoring `method` in `run_history.json`
+  (absent on older runs, which read as 1; 2 since PR #45) and the first run on a new method prints one "scoring
+  method changed" note: CRWD 28.0 to 38.0, DDOG 33.2 to 43.2 and IOT 25.0
+  to 35.0 on 10-21, each losing a dilution flag the diluted share count had
+  misread. Check the `method` field before reading an in-window step as an
+  event.
 
 **Round 1 (issue #6, 2026-08-15, window 2026-08-11 to 2026-08-15, 5 runs):**
 - Outcome: no changes. DDOG held (0 of 5 gate hits, drop was composite-only,
@@ -983,6 +993,72 @@ vs staying manual.
   QQQ and peers, which made the whole attention list one market event.
   What was noise: every attention-list delta, change activity (MNDY 9 on
   a T of 58 to 0.8 to 91.9 whipsaw, HUBS 6) and the bench composite gains.
+
+**Round 11 (issue #46, 2026-10-24, window 2026-10-20 to 2026-10-24, 5 runs):**
+- Outcome: no changes. Third digest delivered by the `workflow_run` chain;
+  every daily-report and weekly-refresh run in the window succeeded.
+  Attention list: no persistent decay; three persistently weak rows.
+- Level table: ZS (16.7, `r40_fcf` 48.7 pass, 5th consecutive window), OKTA
+  (23.1, 42.4 pass) and TEAM (24.9, 46.1 pass) all qualify at 3 of 3. This
+  is the case round 10 anticipated: three passing qualifiers, all held under
+  the round-7 line, so no swap candidate. IOT leaving 25.0 on the switch run
+  settled the IOT against TEAM coin toss (rounds 9 and 10) for TEAM.
+- Absolute floor deferred (owner decision). All three qualifiers sit low on
+  penalties, not on thesis: ZS carries dilution (3.44 percent on basic
+  shares against the 3.0 limit) and both SBC tiers (SBC 24.5 percent of
+  revenue), TEAM both SBC tiers (24.4 percent, while its basic average
+  shares fell 3.8 percent), OKTA the first tier (16.4 percent). A floor on the raw
+  fundamental score would count the same penalties a second time, so it is
+  not adopted on this evidence. Revisit after TEAM (11-05) and ZS (11-24)
+  report, or when a qualifier fails the rule.
+- The PR #45 method switch landed on the 10-21 run as predicted: CRWD 28.0
+  to 38.0, DDOG 33.2 to 43.2, IOT 25.0 to 35.0, each with its dilution flag
+  cleared (the digest's 3 flag-cleared rows), and that run's report printed
+  the one-run method note. Every other fundamental score, watchlist and
+  bench, is identical across the 7 runs from 10-16 to 10-24, and
+  `data/cache` has only bot commits since 10-17 (no apply), so the 10-17 to
+  10-20 boundary carries no step. Every cache refetched on 10-21 (PR #45
+  Amendment 1; APPF again on 10-24). Hence the method-switch rubric line.
+- Earnings season: no new quarter landed in the window. APPF reported 10-22
+  and was refetched on 10-24, but Yahoo had not posted the quarter yet
+  (newest cached quarter 2026-06-30, F flat at 58.8).
+- Breadth first, then names: the 10-24 run (10-23 close) took NET T 36.1 to
+  83.5 and PANW 24.2 to 83.6, both `mixed` to `uptrend`, NET composite 37.6
+  to 56.6 (rank 19 to 9) and PANW 38.5 to 62.3, on a security-name rally
+  (CRWD +8.2, NET +7.3, PANW +7.2, S +6.7 percent) with QQQ flat and SPY
+  -0.5. CRWD returned to `uptrend` on the 10-22 run (T 42.2 to 82.9), HUBS
+  on the 10-21 run (T 16.2 to 77.6). Of the four tapes on the round-10
+  watch, NET, PANW and CRWD recovered; SNOW stays `mixed` (T about 43, rank
+  20), as does MDB (T about 42).
+- Bench (fundamental, `r40_fcf`): APPF 58.8 (46.2 pass) and GWRE 46.2
+  (47.0 pass) remain the ready replacements above the tail. APPF's
+  composite fell 68.3 to 52.1 on the 10-24 run (a -3.1 percent session
+  after its report) with F flat, so technical; ZM 33.8 (43.6 pass) fell
+  51.7 to 26.9 over the last two runs, also technical. WDAY 24.1 (41.4
+  pass). S 0.0 (23.9 fail) and ESTC 15.4 (35.5 fail); ESTC reports 11-19.
+- Deterioration watch: one listing in 5 runs, ADSK on 10-24 (composite
+  -5.4 on one run, estimates cut 20 down vs 1 up over 30 days), the same
+  estimate signal behind its 10-13 to 10-15 listings. ADSK stays 3rd on F
+  73.6; the drop is T 82.2 to 68.7.
+- LLM tone (PR #39): 2 rejections in 25 calls, both on 10-21 (barrons and
+  neutral-analyst, each a narrative that dropped a digest ticker, DT and
+  MNDY), each logged with its reason as PR #39 intended.
+- Decay gate: 0 hits in 25 runs (the retained history, 09-22 to 10-24).
+  Lowest `r40_trend` unchanged: RBRK -0.035, ZS -0.018, TEAM -0.007, OKTA
+  -0.006, against -0.10. Coverage 18 of 20 live (MNDY, SHOP in warm-up).
+- Automate-vs-manual: stay manual. Revisit when the gate first fires.
+- Watch items for round 12: FTNT and NOW report 10-28, inside the window,
+  so their fundamentals can step on a non-boundary run (round-5 line).
+  APPF's quarter when Yahoo posts it. ZS in its 6th window. SNOW's tape.
+  The early-November cluster lands in round 13's window: PLTR 11-02 (a
+  Monday, so its step would land on the boundary run, invisible to the
+  window delta), DT and SHOP 11-03, DDOG and HUBS 11-04, NET and TEAM
+  11-05. MNDY 11-09 is also a Monday and lands in round 14.
+- What mattered: the run `method` field and the method note (the only
+  fundamental moves in the window), the `r40_fcf` column, and the penalty
+  breakdown of the three qualifiers (the floor decision). What was noise:
+  change activity (DDOG 6, CRWD 5, NET 4), the bench composite moves and
+  the 10-24 rank jumps.
 
 **What the digest carries as of 2026-08-16** (branch `rotation-evidence`,
 answering round-1 gaps 1 and 2 and preparing the refresh #3 decision):
