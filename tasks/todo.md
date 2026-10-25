@@ -15,12 +15,7 @@ made every second merge conflict here.
   `run_history.json`; discard that change rather than committing it.
 
 ## Active workstreams
-- `rotation-round-11` (opened 2026-10-25, PR #47; closes issue #46):
-  round-11 record in SPEC 7.0.1 plus the method-switch rubric line. No
-  changes: ZS, OKTA and TEAM all qualify at 3 of 3 and all pass the rule,
-  so all held; absolute floor deferred (every qualifier is a penalty case).
-  PR #45 stepped CRWD, DDOG and IOT +10 F on 10-21 as predicted. Stay
-  manual. Docs only, no cache or config.
+- none open.
 
   One branch per workstream via `scripts/new-worktree.sh <branch>`; main is the
   review inbox; merge back via PR.
@@ -37,6 +32,16 @@ made every second merge conflict here.
   relation instead.
 
 ## Done
+- `rotation-round-11` (2026-10-25, merged as PR #47, worktree torn down;
+  closes issue #46): round-11 record in SPEC 7.0.1 plus the "a scoring-
+  method switch steps fundamentals on the switch run" rubric line. No
+  changes: ZS (5th window), OKTA and TEAM all qualify at 3 of 3 and all
+  pass the rule, so all held; the absolute floor is deferred by owner
+  decision (every qualifier is low on SBC or dilution penalties, so a raw-F
+  floor would count them twice). PR #45 stepped CRWD, DDOG and IOT +10 F on
+  10-21 as predicted, no other F moved. Stay manual. Fact-check pass moved
+  MNDY's 11-09 report to round 14 and marked PLTR's 11-02 as a boundary
+  step.
 - `spec/p2-methodology` (2026-10-21, merged as PR #45, worktree torn down):
   the two P2 findings of the 2026-10-20 audit, spec in
   `tasks/spec-p2-methodology.md`. Dilution now reads basic average shares
@@ -299,11 +304,14 @@ made every second merge conflict here.
   manual. Round 10 (issue #42, 2026-10-17) made no changes (PR #43): a
   sector selloff moved the whole attention list on the technical leg,
   PR #40's Deterioration watch and PR #39's tone logging checked out (10
-  listings, 0 rejections in 30 calls). Standing watch items for refresh
-  #11 (Sat 2026-10-24): OKTA and TEAM may reach 3 of 3 while passing,
-  which would leave the level table all held qualifiers (the absolute
-  floor question), ZS in its 5th window, earnings season stepping the
-  fundamental column mid-window, the PANW, NET, SNOW and CRWD tapes, and
-  ESTC's 2026-11-19 report.
+  listings, 0 rejections in 30 calls). Round 11 (issue #46, 2026-10-24) made no changes (PR #47): the level
+  table became three held qualifiers (ZS, OKTA, TEAM), the absolute floor
+  is deferred until TEAM (11-05) and ZS (11-24) report or a qualifier
+  fails the rule, and PR #45's method switch stepped CRWD, DDOG and IOT on
+  10-21 as predicted. Standing watch items for refresh #12 (Sat
+  2026-10-31): FTNT and NOW report 10-28 (inside the window), APPF's
+  10-22 quarter once Yahoo posts it, ZS in its 6th window, SNOW's tape,
+  and the early-November earnings cluster ahead (round 13: PLTR on the
+  boundary run, DT, SHOP, DDOG, HUBS, NET, TEAM; MNDY in round 14).
 - (done) First scheduled run after merge created `data/cache/run_history.json`
   on 2026-08-07; change detection live since 2026-08-08.
