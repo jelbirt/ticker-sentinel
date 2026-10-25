@@ -15,7 +15,12 @@ made every second merge conflict here.
   `run_history.json`; discard that change rather than committing it.
 
 ## Active workstreams
-- none open.
+- `rotation-round-11` (opened 2026-10-25, PR #47; closes issue #46):
+  round-11 record in SPEC 7.0.1 plus the method-switch rubric line. No
+  changes: ZS, OKTA and TEAM all qualify at 3 of 3 and all pass the rule,
+  so all held; absolute floor deferred (every qualifier is a penalty case).
+  PR #45 stepped CRWD, DDOG and IOT +10 F on 10-21 as predicted. Stay
+  manual. Docs only, no cache or config.
 
   One branch per workstream via `scripts/new-worktree.sh <branch>`; main is the
   review inbox; merge back via PR.
