@@ -464,8 +464,8 @@ vs staying manual.
   11).** Like a backfill apply (round 8), a formula change moves the
   fundamental score with nothing new in the business, and it lands on the
   first scheduled run after the merge, which can be mid-window rather than
-  at the boundary. Runs carry a scoring `method` in `run_history.json` (2
-  since PR #45) and the first run on a new method prints one "scoring
+  at the boundary. Runs carry a scoring `method` in `run_history.json`
+  (absent on older runs, which read as 1; 2 since PR #45) and the first run on a new method prints one "scoring
   method changed" note: CRWD 28.0 to 38.0, DDOG 33.2 to 43.2 and IOT 25.0
   to 35.0 on 10-21, each losing a dilution flag the diluted share count had
   misread. Check the `method` field before reading an in-window step as an
@@ -1006,8 +1006,8 @@ vs staying manual.
 - Absolute floor deferred (owner decision). All three qualifiers sit low on
   penalties, not on thesis: ZS carries dilution (3.44 percent on basic
   shares against the 3.0 limit) and both SBC tiers (SBC 24.5 percent of
-  revenue), TEAM both SBC tiers (24.4 percent, while its basic share count
-  fell 3.8 percent), OKTA the first tier (16.4 percent). A floor on the raw
+  revenue), TEAM both SBC tiers (24.4 percent, while its basic average
+  shares fell 3.8 percent), OKTA the first tier (16.4 percent). A floor on the raw
   fundamental score would count the same penalties a second time, so it is
   not adopted on this evidence. Revisit after TEAM (11-05) and ZS (11-24)
   report, or when a qualifier fails the rule.
@@ -1017,8 +1017,8 @@ vs staying manual.
   the one-run method note. Every other fundamental score, watchlist and
   bench, is identical across the 7 runs from 10-16 to 10-24, and
   `data/cache` has only bot commits since 10-17 (no apply), so the 10-17 to
-  10-20 boundary carries no step. Every cache meta shows a fetch on or
-  after 10-21 (Amendment 1). Hence the method-switch rubric line.
+  10-20 boundary carries no step. Every cache refetched on 10-21 (PR #45
+  Amendment 1; APPF again on 10-24). Hence the method-switch rubric line.
 - Earnings season: no new quarter landed in the window. APPF reported 10-22
   and was refetched on 10-24, but Yahoo had not posted the quarter yet
   (newest cached quarter 2026-06-30, F flat at 58.8).
@@ -1050,8 +1050,10 @@ vs staying manual.
 - Watch items for round 12: FTNT and NOW report 10-28, inside the window,
   so their fundamentals can step on a non-boundary run (round-5 line).
   APPF's quarter when Yahoo posts it. ZS in its 6th window. SNOW's tape.
-  The early-November cluster lands in round 13's window: PLTR 11-02, DT
-  and SHOP 11-03, DDOG and HUBS 11-04, NET and TEAM 11-05, MNDY 11-09.
+  The early-November cluster lands in round 13's window: PLTR 11-02 (a
+  Monday, so its step would land on the boundary run, invisible to the
+  window delta), DT and SHOP 11-03, DDOG and HUBS 11-04, NET and TEAM
+  11-05. MNDY 11-09 is also a Monday and lands in round 14.
 - What mattered: the run `method` field and the method note (the only
   fundamental moves in the window), the `r40_fcf` column, and the penalty
   breakdown of the three qualifiers (the floor decision). What was noise:
