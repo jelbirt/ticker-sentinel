@@ -485,7 +485,7 @@ def _flag_cell(flags: list[str]) -> str:
 def _r40_cell(value: float | None) -> str:
     """r40_fcf as points with the Rule of 40 verdict beside it: a low score for
     penalties and a low score for a failed thesis are different conversations
-    (SPEC 7.0.1 round 6)."""
+    (SPEC 7.0.1 round 6). Since round 14 the verdict is context, not a hold."""
     if value is None:
         return "n/a"
     verdict = "pass" if value >= R40_BAR else "fail"

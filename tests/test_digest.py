@@ -538,6 +538,8 @@ class TestLevelRule:
         assert "| DDD | 20.0 | 48.7 pass | 19 | qualifies (3 of 3 windows) | n/a |" in text
         assert "qualifies and is a swap candidate" in text
         assert "At most one swap per round, longest-standing qualifier first" in text
+        assert "on entry, otherwise refresh the bench" in text
+        assert "r40 fcf is context, not a hold" in text
         assert "Surfacing only" not in text
 
     def test_r40_cell_never_reads_as_40_point_0_with_a_verdict(self):

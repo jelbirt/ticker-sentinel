@@ -54,7 +54,7 @@ universe:
     tags: [software, r40]
   # rotation round 14 (2026-11-14, SPEC 7.0.1): ZS demoted to bench, APPF
   # promoted. First swap under the amended level rule (the round-7 r40_fcf
-  # hold is retired): ZS sat bottom-3 for 8 consecutive windows; APPF, the
+  # hold is retired): ZS sat bottom-3 for 10 consecutive windows; APPF, the
   # highest-scoring bench name, enters 5th on the fundamental leg.
   - ticker: APPF
     tags: [software, r40]
@@ -62,7 +62,7 @@ universe:
 # 28 candidates on the watchlist basis. ADSK, APPF, GWRE added (r40_trend-live,
 # pass r40_fcf, 18 to 23 percent growth, fundamental 46 to 74); TWLO dropped
 # (fails r40_fcf even on corrected revenue history).
-bench: [WDAY, ZM, S, ZS, GWRE, ESTC]   # reserve swap candidates, shadow-scored, never ranked; owner-gated like universe
+bench: [WDAY, ZM, S, GWRE, ESTC, ZS]   # reserve swap candidates, shadow-scored, never ranked; owner-gated like universe
 benchmark: SPY
 report:
   top_n: 10

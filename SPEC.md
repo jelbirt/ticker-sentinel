@@ -376,10 +376,13 @@ vs staying manual.
      level is not yet trustworthy; a data-quality flag disqualifies.
   2. A qualifier is a swap candidate (amended round 14). Swap it for the
      bench name with the highest fundamental score, provided that name would
-     rank above the bottom `weak_bottom_n` on entry (the round-7 tail rule
-     below). At most one swap per round: when several names qualify, the one
-     with the most consecutive windows goes first and the rest wait for the
-     next round. If no bench name clears the tail, the action is refreshing
+     rank above the bottom `weak_bottom_n` on entry, meaning in the universe
+     after the outgoing name is removed (the round-7 tail rule below). At
+     most one swap per round: when several names qualify, the one with the
+     most consecutive bottom-3 windows goes first and the rest wait for the
+     next round. The digest caps its count at `weak_windows`, so the full
+     count comes from the weekly records below; a tie goes to the lower
+     fundamental score, which is the order the digest prints. If no bench name clears the tail, the action is refreshing
      the bench. Rounds 5 to 13 read this row as surfacing only, which,
      together with the round-7 `r40_fcf` hold below, left no path to a swap
      for any name passing `r40_fcf`.
@@ -389,8 +392,9 @@ vs staying manual.
   composite-level rule would have swapped GTLB for SHOP in round 3 and been
   wrong within two weeks. Bottom 3 is relative, so the row never goes empty;
   the three-window persistence and the bench comparison are what keep it
-  from being noise, and an absolute floor is the natural next tune if they
-  prove insufficient. On 09-19 the bottom 3 are S (0.0), ESTC (15.4) and ZS
+  from being noise. An absolute floor was the candidate next tune if they
+  proved insufficient; round 14 closed that question (the bottom slots
+  needed the round-7 hold gone, not a floor). On 09-19 the bottom 3 are S (0.0), ESTC (15.4) and ZS
   (16.7), all live; ZS only entered the bottom 3 on 09-09 (CRWD held the
   slot before). Window membership (decided round 6): a name is "in the bottom 3
   for a window" when it is bottom 3 on the window's LAST run, matching the
@@ -401,7 +405,8 @@ vs staying manual.
   of 40, its score is three penalties (dilution, SBC, SBC-inflated), while
   S fails the rule outright at 23.9. A low score for penalties and a low
   score for a failed thesis are different conversations, and the row has
-  to say which one it is opening. DDOG, the weakest composite outside the S
+  to say which one it is opening. Since round 14 that column is context for
+  the owner, not a hold. DDOG, the weakest composite outside the S
   clamp, would not qualify:
   its 33.2 fundamental is mid-pack and its weakness is a technical score of
   0 to 17 across the 15 runs from 09-01 to 09-19, exactly the leg the rule
@@ -1241,8 +1246,12 @@ recorded 2026-11-14 with round 13):**
   2026-11-14, after the review found that rounds 9 to 13 could not have
   swapped any name. Every daily-report and weekly-refresh run in the window
   succeeded.
-- Level table: ZS (16.7, `r40_fcf` 48.7, `r40_sbc_adj` 24.1, 8th
-  consecutive window) and OKTA (23.1, 42.4 and 26.1, 6th) qualify. One swap
+- Level table: ZS (16.7, `r40_fcf` 48.7, `r40_sbc_adj` 24.1, 10th
+  consecutive bottom-3 window, windows 5 to 14) and OKTA (23.1, 42.4 and
+  26.1, 6th, windows 9 to 14) qualify. Counts are bottom-3 windows, the
+  measure condition 2 orders by; rounds 11 to 13 counted ZS by qualifying
+  round instead (its 5th to 7th) but OKTA and TEAM by bottom-3 window, so
+  those records understate ZS by two. One swap
   per round, longest-standing first, so ZS goes now and OKTA is next in line
   for round 15 if it still qualifies. RBRK (27.3, 61.0 and 38.8) enters at
   1 of 3, with dilution, both SBC tiers and the lowest `r40_trend` in the
@@ -1254,8 +1263,7 @@ recorded 2026-11-14 with round 13):**
   `r40_fcf` 45.5, no flags, `r40_trend` 0.036 live, `uptrend`, composite
   66.7) and enters 5th of 20 on the fundamental leg, well above the tail
   (after the swap the bottom 3 are OKTA 23.1, RBRK 27.3 and GTLB 30.7). Its
-  cache already
-  holds 16 quarters from the round-7 seed, so no backfill apply is needed.
+  cache already holds 16 quarters from the round-7 seed, so no backfill apply is needed.
   Its `r40_sbc_adj` was not checked (bench names are not in the daily raw
   file); no SBC flag means SBC is under 15 percent of revenue.
 - Absolute floor: closed. Round 11 deferred it until TEAM and ZS reported.
@@ -1279,17 +1287,20 @@ recorded 2026-11-14 with round 13):**
   lookback expiry (set 10-28).
 - Bench: composite moves are technical (ZM +18.6, WDAY +14.4, S -18.7,
   ESTC -5.8); fundamentals unchanged. After this swap the bench is WDAY
-  24.1, ZM 33.8, S 0.0, ZS 16.7, GWRE 46.2 and ESTC 15.4 on the
-  fundamental leg. GWRE is the replacement for OKTA in round 15; after it,
-  only ZM clears the tail, by a hair, so the bench needs new candidates
-  soon (round-7 screen pattern).
+  24.1, ZM 33.8, S 0.0, GWRE 46.2, ESTC 15.4 and ZS 16.7 on the
+  fundamental leg. GWRE is the replacement for OKTA in round 15. After it
+  no bench name clears the tail on entry: with RBRK as the next qualifier
+  out, ZM's 33.8 would land in the bottom 3 behind GTLB 30.7 and SNOW
+  33.3. The bench needs new candidates before round 16 (round-7 screen
+  pattern).
 - Deterioration watch: 20 listings in 5 runs (7, 3, 7, 3, 0); 11-14 printed
   "nothing cleared a threshold". NOW's post-earnings cuts widened to 32
   down vs 1 up from 11-10.
 - LLM tone (PR #39): 3 rejections in 25 calls (11-10, 11-11, 11-14), each a
   narrative that dropped a digest ticker (MNDY, MDB, HUBS).
-- Decay gate: 0 hits. Lowest `r40_trend` RBRK -0.035, ZS -0.018, OKTA
-  -0.006 against -0.10. Coverage 18 of 20 live (MNDY, SHOP still in
+- Decay gate: 0 hits. Lowest `r40_trend` in the window RBRK -0.035, ZS
+  -0.018, TEAM -0.007 (through 11-12, before its quarter), OKTA -0.006,
+  against -0.10. Coverage 18 of 20 live (MNDY, SHOP still in
   warm-up).
 - Automate-vs-manual: stay manual.
 - Watch items for round 15: OKTA against GWRE under the amended rule. APPF's
