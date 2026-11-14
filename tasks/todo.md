@@ -15,15 +15,7 @@ made every second merge conflict here.
   `run_history.json`; discard that change rather than committing it.
 
 ## Active workstreams
-- `rotation-round-14` (opened 2026-11-14, PR #52; closes issue #50):
-  replaces the round-7 `r40_fcf` hold with a swap rule (a level-rule
-  qualifier is swapped for the top bench name if it enters above the
-  bottom 3; one swap per round, longest-standing first, counted in
-  consecutive bottom-3 windows, ties to the lower score). First swap under
-  it: ZS (10 windows, F 16.7) out to the bench, APPF (F 55.5) in, 5th of
-  20. OKTA is next in line, GWRE its replacement. Touches SPEC,
-  PROJECT_PLAN 4.3, digest text and tests, `config/watchlist.yaml`; no
-  cache.
+- none open.
 
   One branch per workstream via `scripts/new-worktree.sh <branch>`; main is the
   review inbox; merge back via PR.
@@ -40,6 +32,14 @@ made every second merge conflict here.
   relation instead.
 
 ## Done
+- `rotation-round-14` (2026-11-14, merged as PR #52, worktree torn down;
+  closes issue #50): retired the round-7 `r40_fcf` hold. A level-rule
+  qualifier is now swapped for the top bench name if that name enters
+  above the bottom 3 (one swap per round, longest-standing first, counted
+  in consecutive bottom-3 windows, ties to the lower score). First swap
+  under it: ZS (10 windows, F 16.7) to the bench, APPF (F 55.5) in, 5th
+  of 20. OKTA next in line with GWRE as its replacement; after that no
+  bench name clears the tail on entry.
 - `rotation-round-13` (2026-11-14, merged as PR #51, worktree torn down;
   closes issues #48 and #49): round-12 catch-up record (issue #48 had been
   skipped) and round-13 record in SPEC 7.0.1, plus the "a quarter lands
