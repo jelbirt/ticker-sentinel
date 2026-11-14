@@ -175,8 +175,10 @@ def _swap_min_growth(changes_kwargs: dict[str, object]) -> None:
     if "swap_min_growth" not in changes_kwargs:
         return
     value = changes_kwargs["swap_min_growth"]
+    growth: float | None
     try:
-        growth = float(value)  # type: ignore[arg-type]
+        # a YAML `true` would otherwise pass as 1.0 (every name slow)
+        growth = None if isinstance(value, bool) else float(value)  # type: ignore[arg-type]
     except (TypeError, ValueError):
         growth = None
     if growth is None or not 0.0 <= growth <= 1.0:

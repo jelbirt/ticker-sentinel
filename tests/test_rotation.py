@@ -19,6 +19,13 @@ class TestGrowthTier:
 
     def test_unknown_growth_has_no_tier(self):
         assert growth_tier(None, 0.15) is None
+        assert growth_tier(float("nan"), 0.15) is None
+
+    def test_growth_computed_from_revenues_at_the_floor_is_growth(self):
+        # 1150 / 1000 - 1 is 0.1499999999999999: "15% or more" includes it
+        assert growth_tier(1150 / 1000 - 1, 0.15) == GROWTH
+        assert growth_tier(2300 / 2000 - 1, 0.15) == GROWTH
+        assert growth_tier(0.1499, 0.15) == FALLBACK
 
 
 class TestEntersAboveTail:
@@ -65,3 +72,13 @@ class TestPickEntrant:
             Entrant("AAA", 50.0, GROWTH, True),
         ])
         assert pick is not None and pick.ticker == "AAA"
+
+    def test_a_nan_score_never_clears_or_disturbs_the_order(self):
+        nan = float("nan")
+        assert not enters_above_tail(nan, {"A": 10.0}, None, 0)
+        pick = pick_entrant([
+            Entrant("A", 50.0, GROWTH, True),
+            Entrant("B", nan, GROWTH, True),
+            Entrant("C", 60.0, GROWTH, True),
+        ])
+        assert pick is not None and pick.ticker == "C"

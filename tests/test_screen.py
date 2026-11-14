@@ -127,6 +127,15 @@ class TestReport:
         text = format_report([row], _baseline(LOW_TAIL), CFG)
         assert "none clears the tail on entry" in text
 
+    def test_values_just_under_a_floor_never_print_as_the_floor(self):
+        from sentinel.screen import ScreenRow
+        row = ScreenRow("NEAR", score=50.0, growth=0.1496, tier="fallback",
+                        r40_fcf=0.3996, r40_trend=0.01, live=True, clears=False,
+                        history="yfinance only")
+        text = format_report([row], _baseline(LOW_TAIL), CFG)
+        assert "| 14.96 | fallback |" in text and "| 39.96 fail |" in text
+        assert "15.0 |" not in text and "40.0 fail" not in text
+
     def test_pick_line_names_a_warm_up_row_the_table_shows_clearing(self):
         from sentinel.screen import ScreenRow
         rows = [ScreenRow("WARM", score=95.0, growth=0.40, tier="growth",

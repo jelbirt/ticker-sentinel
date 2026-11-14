@@ -32,7 +32,12 @@ from sentinel.config import Config, load_config
 from sentinel.data import cache
 from sentinel.data.fundamentals import inputs_from_frame
 from sentinel.data.history import load_history
-from sentinel.digest import DATA_QUALITY_FLAGS, build_digest, swap_universe
+from sentinel.digest import (
+    DATA_QUALITY_FLAGS,
+    build_digest,
+    pct_beside_floor,
+    swap_universe,
+)
 from sentinel.indicators.fundamentals import R40_BAR, compute_scorecard, display_flags
 from sentinel.report.changes import RunSnapshot
 from sentinel.rotation import Entrant, enters_above_tail, growth_tier, pick_entrant
@@ -237,10 +242,15 @@ def _pct(value: float | None) -> str:
     return "n/a" if value is None else f"{value * 100:.1f}"
 
 
+def _growth(value: float | None, floor: float) -> str:
+    return "n/a" if value is None else pct_beside_floor(value, floor)
+
+
 def _r40(value: float | None) -> str:
     if value is None:
         return "n/a"
-    return f"{value * 100:.1f} {'pass' if value >= R40_BAR else 'fail'}"
+    verdict = "pass" if value >= R40_BAR else "fail"
+    return f"{pct_beside_floor(value, R40_BAR)} {verdict}"
 
 
 def format_report(
@@ -307,7 +317,8 @@ def format_report(
             continue
         clears = "n/a" if r.clears is None else ("yes" if r.clears else "no")
         lines.append(
-            f"| {r.ticker} | {_num(r.score)} | {_pct(r.growth)} | {r.tier or 'n/a'} "
+            f"| {r.ticker} | {_num(r.score)} "
+            f"| {_growth(r.growth, cfg.changes.swap_min_growth)} | {r.tier or 'n/a'} "
             f"| {clears} | {_r40(r.r40_fcf)} | {_pct(r.r40_trend)} "
             f"| {'yes' if r.live else 'no'} | {r.history} "
             f"| {', '.join(r.flags) if r.flags else 'none'} |"

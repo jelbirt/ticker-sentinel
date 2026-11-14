@@ -678,7 +678,7 @@ class TestSwapCheck:
         text = render_markdown(d, 4, date(2026, 8, 15))
         assert "no name qualifies, so no swap this round" in text
         assert "1 eligible bench name would clear the tail on entry (0 growth-tier)" in text
-        assert "Only slower growers would clear" in text
+        assert "Only slower growers among the eligible names would clear" in text
 
     def test_empty_bench_depth_says_refresh(self):
         d = self._digest({"LOW": (15.0, 0.30)}, n_runs=4)
@@ -701,7 +701,7 @@ class TestSwapCheck:
         assert "NEW (joined the bench mid-window" in text
         assert "| yes, not yet eligible |" in text
         assert "The rule promotes NEW" not in text
-        assert "NEW would clear but is not eligible yet" in text
+        assert "NEW (growth tier) would clear but is not eligible yet" in text
         assert "recheck at the next digest before refreshing the bench" in text
         assert "refresh the bench (`python -m sentinel.screen`)" not in text
 
@@ -759,7 +759,10 @@ class TestSwapCheck:
         assert rows["WARM"].clears_tail is True and d.swap_pick == "GRO"
         assert d.bench_waiting == ["WARM"] and d.bench_clearing == 1
         text = render_markdown(d, 15, date(2026, 8, 15))
-        assert "Not part of this round's pick: WARM would clear but is not eligible yet" in text
+        assert ("Not part of this round's pick: WARM (growth tier) would clear "
+                "but is not eligible yet") in text
+        # GRO is a growth-tier pick: no fallback, so no recheck advice
+        assert "before taking the fallback" not in text
 
     def test_swap_merged_after_the_latest_run_is_not_recommended_again(self):
         # the latest run scored CCC in the universe and GRO on the bench, but
@@ -823,6 +826,44 @@ class TestSwapCheck:
         d = build_digest(runs, list(self.BASE), ["GRO"], CFG)
         assert not d.bench_weeks[0].full_window
         assert d.bench_weeks[0].entry_block.startswith("joined the bench mid-window")
+
+    def test_fallback_pick_names_a_waiting_growth_name_and_advises_a_recheck(self):
+        # WARM is growth-tier and would clear but is in warm-up; SLOW is the
+        # only eligible clearing name: the fallback line must not claim that
+        # no growth-tier name clears
+        runs = self._runs({"SLOW": (85.0, 0.05)})
+        for run in runs:
+            run.bench["WARM"] = TickerSnapshot(composite=95.0, score=95.0,
+                                               growth=0.40, r40_trend=None)
+        d = build_digest(runs, list(self.BASE), ["SLOW", "WARM"], CFG)
+        assert d.swap_pick == "SLOW"
+        text = render_markdown(d, 15, date(2026, 8, 15))
+        assert ("The rule promotes SLOW, a slower grower: no eligible growth-tier "
+                "bench name clears the tail") in text
+        assert ("Not part of this round's pick: WARM (growth tier) would clear but "
+                "is not eligible yet (reason in the bench notes above). Growth comes "
+                "first, so consider rechecking at the next digest before taking the "
+                "fallback.") in text
+
+    def test_fallback_pick_names_a_clearing_name_with_unknown_growth(self):
+        d = self._digest({"SLOW": (95.0, 0.10), "UNK": (85.0, None)})
+        assert d.swap_pick == "SLOW"
+        text = render_markdown(d, 15, date(2026, 8, 15))
+        assert ("Growth is n/a this window for UNK, which would also clear: "
+                "check it before taking the fallback.") in text
+
+    def test_growth_computed_at_exactly_the_floor_is_growth_tier(self):
+        # 1150 / 1000 - 1 is 0.1499999999999999 in floating point
+        d = self._digest({"EDGE": (85.0, 1150 / 1000 - 1), "SLOW": (95.0, 0.10)})
+        assert d.swap_pick == "EDGE"
+        text = render_markdown(d, 15, date(2026, 8, 15))
+        assert "| 15.00 growth |" in text
+        assert "The rule promotes EDGE." in text
+
+    def test_growth_just_under_the_floor_never_prints_as_the_floor(self):
+        d = self._digest({"NEAR": (85.0, 0.1496)})
+        text = render_markdown(d, 15, date(2026, 8, 15))
+        assert "| 14.96 fallback |" in text and "15.0 fallback" not in text
 
     def test_name_dropped_from_the_bench_config_is_not_an_entrant(self):
         # scored on the bench all window, then removed from the config

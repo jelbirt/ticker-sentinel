@@ -1447,8 +1447,11 @@ implementing the round-14 swap rule with the growth preference, and the
 bench refresh in section 7.0):
 
 - **Bench table gains growth and clears tail.** Yearly revenue growth,
-  last observed in the window (n/a when unknown, which is not the growth
-  tier), and whether the name would rank above the bottom `weak_bottom_n`
+  last observed in the window (n/a when unknown or NaN, which is not the
+  growth tier; growth exactly at the floor is in it, with a 1e-9 tolerance
+  for float division; a value whose one-decimal display would equal the
+  floor prints to two decimals, as the r40 column already did, so "15.0
+  fallback" cannot appear), and whether the name would rank above the bottom `weak_bottom_n`
   by fundamental score once the outgoing name leaves: yes, no, or n/a
   without a score. The outgoing name is the first qualifier on the level
   table, else the lowest fundamental score as a what-if. Roles come from
@@ -1469,7 +1472,10 @@ bench refresh in section 7.0):
   each with the reason (in the universe now, no longer configured on the
   bench, joined mid-window, warm-up, no fundamental score this window).
 - **Swap-check line.** Under the bench table, in words: the qualifier and
-  the name the rule promotes; a slower-grower fallback said as such; a pick
+  the name the rule promotes; a slower-grower fallback said as such, naming
+  any growth-tier name that would clear but is not eligible yet (with a
+  suggestion to recheck at the next digest before taking the fallback) and
+  any eligible clearing name whose growth is n/a; a pick
   whose growth is n/a said as unknown, with a check before the swap; or no
   swap and a prompt to refresh the bench with `python -m sentinel.screen`.
   When a name that is not eligible yet would clear, the line says so and

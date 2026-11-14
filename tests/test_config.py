@@ -196,7 +196,7 @@ def test_screen_candidates_as_one_string_split_on_commas(tmp_path, caplog):
 
 
 def test_swap_min_growth_out_of_range_or_not_a_number_falls_back(tmp_path, caplog):
-    for bad in ("15", "fast"):
+    for bad in ("15", "fast", "true"):
         path = _write_cfg(tmp_path / bad, f"changes:\n  swap_min_growth: {bad}\n")
         with caplog.at_level(logging.WARNING, logger="sentinel.config"):
             assert load_config(path).changes.swap_min_growth == 0.15

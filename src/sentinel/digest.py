@@ -675,10 +675,20 @@ def _flag_cell(flags: list[str]) -> str:
     return ", ".join(f.replace("_", " ") for f in display_flags(flags)) or "n/a"
 
 
-def _growth_cell(growth: float | None, tier: str | None) -> str:
+def pct_beside_floor(value: float, floor: float) -> str:
+    """A fraction as percent points to 1 decimal, or to 2 when 1 decimal would
+    print the floor itself, so a value just under a line never reads as the
+    line ("40.0 fail", "15.0 fallback"). Shared with the bench screen."""
+    shown = f"{value * 100:.1f}"
+    if shown == f"{floor * 100:.1f}":
+        shown = f"{value * 100:.2f}"
+    return shown
+
+
+def _growth_cell(growth: float | None, tier: str | None, floor: float) -> str:
     if growth is None or tier is None:
         return "n/a"
-    return f"{growth * 100:.1f} {tier}"
+    return f"{pct_beside_floor(growth, floor)} {tier}"
 
 
 def _clears_cell(clears: bool | None, block: str | None = None) -> str:
@@ -740,8 +750,11 @@ def _swap_lines(digest: WeeklyDigest) -> list[str]:
         return [*lines, "Swap check: no name qualifies. Bench depth: n/a "
                 "(no bench snapshots this window)."]
     waiting = digest.bench_waiting
+    tiers = {b.ticker: b.growth_tier for b in digest.bench_weeks}
+    waiting_growth = [t for t in waiting if tiers.get(t) == GROWTH]
     waits = (
-        f"{_names(waiting)} would clear but {_is(waiting)} not eligible yet "
+        _names([f"{t} (growth tier)" if t in waiting_growth else t for t in waiting])
+        + f" would clear but {_is(waiting)} not eligible yet "
         "(reason in the bench notes above)"
     )
     if digest.swap_outgoing_qualifies:
@@ -764,24 +777,43 @@ def _swap_lines(digest: WeeklyDigest) -> list[str]:
                     "bench edit in the refresh PR."
                 )
             return lines
-        if digest.bench_clearing_growth:
-            lines.append(f"The rule promotes {digest.swap_pick}.")
-        elif next(
-            (b.growth_tier for b in digest.bench_weeks if b.ticker == digest.swap_pick),
-            None,
-        ) is None:
+        pick = digest.swap_pick
+        if tiers.get(pick) == GROWTH:
+            lines.append(f"The rule promotes {pick}.")
+            if waiting:
+                lines.append(f"Not part of this round's pick: {waits}.")
+            return lines
+        # a fallback pick: say what growth first would still want checked
+        if tiers.get(pick) is None:
             lines.append(
-                f"The rule promotes {digest.swap_pick}, but its growth is n/a "
-                "this window, so it was ranked with the slower growers: check "
-                "its growth before the swap."
+                f"The rule promotes {pick}, but its growth is n/a this window, "
+                "so it was ranked with the slower growers: check its growth "
+                "before the swap."
             )
         else:
             lines.append(
-                f"The rule promotes {digest.swap_pick}, a slower grower: no "
+                f"The rule promotes {pick}, a slower grower: no eligible "
                 "growth-tier bench name clears the tail, so the fallback applies."
             )
+        unknown = [
+            b.ticker for b in digest.bench_weeks
+            if b.clears_tail and b.entry_block is None and b.growth_tier is None
+            and b.ticker != pick
+        ]
+        if unknown:
+            one = len(unknown) == 1
+            lines.append(
+                f"Growth is n/a this window for {_names(unknown)}, which would "
+                f"also clear: check {'it' if one else 'them'} before taking the "
+                "fallback."
+            )
         if waiting:
-            lines.append(f"Not part of this round's pick: {waits}.")
+            recheck = (
+                " Growth comes first, so consider rechecking at the next digest "
+                "before taking the fallback."
+                if waiting_growth else ""
+            )
+            lines.append(f"Not part of this round's pick: {waits}.{recheck}")
         return lines
     n, g = digest.bench_clearing, digest.bench_clearing_growth
     lines.append(
@@ -808,7 +840,7 @@ def _swap_lines(digest: WeeklyDigest) -> list[str]:
         ]
         if unknown:
             lines.append(
-                "No growth-tier name would clear. Growth is n/a this window "
+                "No eligible growth-tier name would clear. Growth is n/a this window "
                 f"for {_names(unknown)}, so check "
                 f"{'it' if len(unknown) == 1 else 'them'} before counting on "
                 f"{'it' if len(unknown) == 1 else 'them'}; a screen may find a "
@@ -816,7 +848,8 @@ def _swap_lines(digest: WeeklyDigest) -> list[str]:
             )
         else:
             lines.append(
-                "Only slower growers would clear: a screen may find a "
+                "Only slower growers among the eligible names would clear: a "
+                "screen may find a "
                 f"growth-tier name ({SCREEN_CMD})."
             )
     if waiting:
@@ -831,10 +864,7 @@ def _r40_cell(value: float | None) -> str:
     if value is None:
         return "n/a"
     verdict = "pass" if value >= R40_BAR else "fail"
-    shown = f"{value * 100:.1f}"
-    if shown == f"{R40_BAR * 100:.1f}":
-        shown = f"{value * 100:.2f}"   # so "40.0 fail" cannot appear
-    return f"{shown} {verdict}"
+    return f"{pct_beside_floor(value, R40_BAR)} {verdict}"
 
 
 def _weak_status(w: WeakWeek) -> str:
@@ -994,7 +1024,7 @@ def render_markdown(
                 f"| {b.ticker} | {b.runs_seen} of {digest.runs_in_window} | "
                 f"{_fmt(b.composite_last)} | {_fmt(b.composite_delta, '+.1f')} | "
                 f"{_fmt(b.score_last)} | {_r40_cell(b.r40_fcf_last)} | "
-                f"{_growth_cell(b.growth_last, b.growth_tier)} | "
+                f"{_growth_cell(b.growth_last, b.growth_tier, digest.swap_min_growth)} | "
                 f"{_clears_cell(b.clears_tail, b.entry_block)} | "
                 f"{_flag_cell(b.flags_latest)} |"
             )
