@@ -15,14 +15,7 @@ made every second merge conflict here.
   `run_history.json`; discard that change rather than committing it.
 
 ## Active workstreams
-- `bench-refresh` (opened 2026-11-14, PR #53; no issue): growth-first swap
-  rule (owner, 2026-11-14: best clearing bench name growing 15 percent or
-  more, a slower grower only as fallback; `changes.swap_min_growth`), a
-  weekly swap check and bench-depth line in the digest, and the dry-run
-  `python -m sentinel.screen` over `screen.candidates`. First live screen:
-  ZETA is the rule's pick (63.3, growth 41.0), KVYO second. No bench edit in
-  the PR; benching ZETA is a separate owner-gated refresh PR. Config gains
-  keys but no universe or bench change; no cache writes.
+- none open.
 
   One branch per workstream via `scripts/new-worktree.sh <branch>`; main is the
   review inbox; merge back via PR.
@@ -39,6 +32,14 @@ made every second merge conflict here.
   relation instead.
 
 ## Done
+- `bench-refresh` (2026-11-14, merged as PR #53, worktree torn down; no
+  issue): growth-first swap rule (owner, 2026-11-14: the best clearing bench
+  name growing 15 percent or more, a slower grower only as fallback;
+  `changes.swap_min_growth`), a weekly swap check and bench-depth line in
+  the digest, and the dry-run `python -m sentinel.screen` over
+  `screen.candidates`. Five review passes before merge (809 tests). First
+  live screen: ZETA is the rule's pick (63.3, growth 41.0), KVYO second;
+  benching ZETA is a separate owner-gated PR.
 - `rotation-round-14` (2026-11-14, merged as PR #52, worktree torn down;
   closes issue #50): retired the round-7 `r40_fcf` hold. A level-rule
   qualifier is now swapped for the top bench name if that name enters
@@ -312,7 +313,7 @@ made every second merge conflict here.
 ## Next gates (owner)
 - Weekly watchlist candidate refresh: live since 2026-08-15. A digest issue
   opens Saturdays (label `watchlist-refresh`, owner-assigned); do the refresh
-  from the issue. Bench: WDAY, ZM, S, APPF, GWRE, ESTC (a structured `bench:`
+  from the issue. Bench: WDAY, ZM, S, GWRE, ESTC, ZS (a structured `bench:`
   key in watchlist.yaml). Calibration complete: rounds 1-5 (issues #6, #22, #24, #25, #26)
   all closed with no changes; the option-3 decision (2026-08-31, SPEC 7.0.1
   round 3) is STAY MANUAL, reaffirmed 2026-09-17 (round 5: 14 of 20
@@ -342,6 +343,9 @@ made every second merge conflict here.
   refresh #15 (Sat 2026-11-21): OKTA against GWRE under the amended rule,
   APPF's first window on the watchlist, PANW (11-18) and ESTC (11-19)
   report, and the bench needs new candidates before round 16 (after GWRE
-  no bench name clears the tail on entry).
+  no bench name clears the tail on entry). PR #53 (2026-11-14) made the
+  swap growth-first and added the weekly bench check and the screen; its
+  first screen picked ZETA, which needs a full window on the bench (from
+  the 11-17 run) before it can be swapped in.
 - (done) First scheduled run after merge created `data/cache/run_history.json`
   on 2026-08-07; change detection live since 2026-08-08.
