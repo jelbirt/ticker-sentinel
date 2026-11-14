@@ -311,7 +311,7 @@ written from observed rounds rather than guessed up front. From refresh #3 the
 checklist adds the decision on automating proposal drafting against this rubric
 vs staying manual.
 
-**Working rubric (as of round 11):**
+**Working rubric (as of round 13):**
 - Act on **decay-gate hit counts**, not on composite deltas. A name with 0 gate
   hits has not shown persistent decay however far its composite moved. But read
   a zero for what it is: the gate needs `r40_trend` below
@@ -470,6 +470,28 @@ vs staying manual.
   to 35.0 on 10-21, each losing a dilution flag the diluted share count had
   misread. Check the `method` field before reading an in-window step as an
   event.
+- **A quarter lands when the cache next fetches a complete posting, not
+  when the company reports (round 13).** Across the early-November cluster
+  the lag from report to scored quarter ran 1 to 8 days, for two different
+  reasons. Where the earnings-aware refetch ran on every run, the lag is
+  Yahoo's posting delay (to run resolution): MNDY 1, SHOP 2, DT, DDOG and
+  HUBS 3, APPF and NET 5. NOW, PLTR and TEAM took 8 because of the refetch
+  policy, not Yahoo: daily refetch keys on the cached `next_earnings` date
+  (`earnings_refetch_due`, the 14 days after it), Yahoo rolled each of
+  their dates into 2027 on the first fetch after the report, before the
+  quarter was posted, and that switched daily refetch off until the weekly
+  refresh (`REFRESH_DAYS`, 7) came round. Their quarters may have been on
+  Yahoo days earlier. A posting can also arrive hollow: FTNT's 09-30
+  quarter appeared on 10-30 with 2 of its 11 fields, the scorer skipped it
+  under an "incomplete at the source" data note and kept scoring the prior
+  quarter, and the step landed on 11-04 when the column filled. So the
+  earnings calendar says roughly which window a step can land in, not
+  which run: round 11 placed PLTR's step on the 11-03 boundary run and it
+  landed on 11-10, and TEAM, expected in round 13, stepped in round 14.
+  Date a step by the run on which the parquet's newest column fills (`git
+  log data/cache`), not by the report date, and when a name's cached
+  `next_earnings` jumps to next year with the old quarter still newest,
+  expect the step about a week after that fetch.
 
 **Round 1 (issue #6, 2026-08-15, window 2026-08-11 to 2026-08-15, 5 runs):**
 - Outcome: no changes. DDOG held (0 of 5 gate hits, drop was composite-only,
@@ -1059,6 +1081,145 @@ vs staying manual.
   breakdown of the three qualifiers (the floor decision). What was noise:
   change activity (DDOG 6, CRWD 5, NET 4), the bench composite moves and
   the 10-24 rank jumps.
+
+**Round 12 (issue #48, 2026-10-31, window 2026-10-27 to 2026-10-31, 5 runs;
+recorded 2026-11-14 with round 13):**
+- Outcome: no changes. The digest opened #48 on schedule but the round was
+  not worked that week; this catch-up record reads the same sources a
+  weekly round does (retained run history, the window's reports and run
+  logs, live closes). Every daily-report and weekly-refresh run in the
+  window succeeded. Attention list: 10 persistent-decay rows, all at 0 of
+  5 gate hits; three persistently weak rows.
+- Level table: ZS (16.7, `r40_fcf` 48.7 pass, 6th consecutive window),
+  OKTA (23.1, 42.4 pass) and TEAM (24.9, 46.1 pass, both 4th) qualify. All
+  three pass, so all are held under the round-7 line and there is no swap
+  candidate. Floor still deferred (round 11).
+- Every watchlist fundamental score is flat across the window, so each
+  attention delta is 0.4 times its technical move: two earnings reactions
+  inside a two-session software selloff, plus two earlier cliffs. FTNT
+  (-33.6) and NOW (-33.0) reported 10-28 and fell 20.1 and 26.9 percent on
+  the 10-29 close (QQQ -1.4, IGV -3.5), T to 0 on the 10-30 run; the same
+  session took SNOW (-2.8 percent) from `uptrend` to `mixed`, T 72.3 to
+  31.6. The 10-30 close (QQQ -3.5, SPY -1.8, IGV -3.4) took DDOG -11.5, MDB
+  -8.3, SNOW -7.3, PLTR -6.3, TEAM -6.1 and PANW -3.9 percent, read on the
+  10-31 run (DDOG T 45.8 to 0, SNOW 31.6 to 11.5, MDB 73.2 to 8.4, PANW
+  75.8 to 23.9, PLTR 84.1 to 43.2, TEAM 83.5 to 42.6). NET (T 82.9 to 28.7
+  on the 10-29 run, a -2.8 percent session) stepped before the selloff, the
+  trend-state cliff of the round-10 line, and MNDY's -6.2 (warm-up) is
+  mostly the 10-28 run (T 77.6 to 56.0 after a -4.0 percent session).
+- FTNT's new quarter first posted as a stub on 10-30 (2 of 11 fields); the
+  scorer skipped it with a data note and scored the prior quarter, and the
+  step landed on 11-04 (round 13). APPF's quarter (reported 10-22) landed
+  on the 10-27 boundary run, F 58.8 to 55.5 and `r40_fcf` 46.2 to 45.5, so
+  its -3.0 window delta does not show it (round-5 line).
+- Bench (fundamental, `r40_fcf`): APPF 55.5 (45.5 pass) and GWRE 46.2
+  (47.0 pass) remain the ready replacements above the tail; GWRE's
+  composite -22.7 and ZM's -21.2 are technical. ZM 33.8 (43.6 pass), WDAY
+  24.1 (41.4 pass), S 0.0 (23.9 fail), ESTC 15.4 (35.5 fail).
+- Deterioration watch: 11 listings in 5 runs. ADSK on 10-27 to 10-30 and
+  HUBS on four runs pair a drop with a standing signal (ADSK's estimates
+  cut, 20 down vs 1 up; HUBS's short interest, up 69 then 21 percent MoM);
+  on 10-31 DDOG, NET and PLTR (-16.4 on one run, estimates cut 2 down vs 0
+  up). FTNT and NOW were not listed although they lost 27.8 and 32.8
+  composite points on the 10-30 run: one price event counts as one signal (PR #40), and the
+  week signal needs a decline already underway before the run. Each
+  surfaced once a second signal arrived (FTNT on 11-03 with a downtrend
+  break, NOW on 11-04 with an estimates cut). Working as designed.
+- LLM tone (PR #39): 2 rejections in 25 calls (10-28 and 10-29), each a
+  narrative that dropped a digest ticker (ZS, NET).
+- Decay gate: 0 hits. Lowest `r40_trend` unchanged: RBRK -0.035, ZS
+  -0.018, TEAM -0.007, OKTA -0.006, against -0.10. Coverage 18 of 20 live
+  (MNDY, SHOP in warm-up).
+- Automate-vs-manual: stay manual.
+- What mattered: the flat fundamental column and the closes, which made
+  the list two earnings reactions and a two-session software selloff, with
+  NET's and MNDY's earlier cliffs (and SNOW's tape, a round 11 watch item,
+  part of the selloff). What was noise:
+  every attention delta, change activity (rank 28, score 26; HUBS 9 on its
+  10-28 golden cross, the window's one flag set) and the bench composite
+  drops.
+
+**Round 13 (issue #49, 2026-11-07, window 2026-11-03 to 2026-11-07, 5 runs):**
+- Outcome: no changes (owner decision 2026-11-14, worked a week late with
+  round 12's catch-up). Every daily-report and weekly-refresh run in the
+  window succeeded. Attention list: 11 persistent-decay rows, all at 0 of
+  5 gate hits; three persistently weak rows.
+- Level table: ZS (16.7, `r40_fcf` 48.7 pass, 7th consecutive window),
+  OKTA (23.1, 42.4 pass) and TEAM (24.9, 46.1 pass, both 5th) qualify. All
+  three pass and are held; no swap candidate. The floor stays deferred:
+  TEAM reported 11-05 but its quarter landed in the cache only on 11-13
+  (round 14; see the posting-lag rubric line), and ZS moved its report from
+  11-24 to 12-02.
+- Boundary: no fundamental step from 10-31 to 11-03 (`data/cache` has only
+  bot commits, no apply; FTNT still on its stub). The 11-03 boundary run
+  did carry technical cliffs the window deltas cannot see (round-5 line):
+  DT 83.3 to 42.7, OKTA 83.5 to 41.9, HUBS 57.9 to 14.0.
+- Breadth first: earnings reactions and one market-wide session. DT -14.7
+  and SHOP -8.7 percent on the 11-03 close (both reported that day), DDOG
+  -14.4 on 11-04, TEAM -16.2 on 11-06, and MNDY -6.3 on 11-06, three days
+  before its report (T 59.5 to 15.1 on the 11-07 run). The 11-05 close
+  (QQQ -6.5, SPY -4.4, IGV -4.4) took RBRK -11.1, OKTA -10.4, CRWD -9.9,
+  PLTR -9.7, PANW -9.6 and ZS -9.2 percent, read on the 11-06 run: GTLB T
+  83.6 to 42.7, RBRK 83.1 to 41.7, ZS 80.2 to 39.2, PLTR 32.5 to 0.8.
+  CRWD's step (T 83.2 to 43.0) came
+  on the 11-05 run, a -1.5 percent session at the end of a slide of about
+  10 percent from 10-28. ADSK and IOT held `uptrend` throughout; ADSK is
+  rank 1 from 11-05.
+- Attribution: every attention delta reconciles as 0.6 times the F move
+  plus 0.4 times the T move. CRWD -27.7, SHOP -27.6, RBRK -17.8, GTLB and
+  ZS -16.4, MNDY -15.9 (warm-up), PLTR -13.5 and TEAM -8.0 are technical;
+  DT -17.8 and HUBS -7.6 are mostly technical (their quarters: F 40.7 to
+  39.5 on 11-06, 39.0 to 35.7 on 11-07). NOW's -6.5 is entirely
+  fundamental: T was already 0 from 10-30, and its quarter (landed 11-05)
+  set `high_sbc` with TTM SBC at 15.05 percent of revenue against the 15.0
+  limit (14.83 before), a -10 penalty for 0.22 points of SBC: F 63.2 to
+  52.4, `r40_fcf` 52.6 still passing, rank 6. The digest's one flag-set
+  row, a cliff rather than a thesis change (round 7).
+- The same cliff runs the other way without a flag: DDOG's quarter (11-07)
+  took `r40_ebitda` from 38.6 to 42.0 across the +10 bonus at 40, so F
+  43.2 to 54.9 (+11.7, the rest from the gradual terms) and rank 16 to 5
+  with every flag unchanged. DDOG's T had been 0 since 10-31, so its 11-04
+  session could not move its composite and the step only lifted it (about
+  +7); DDOG never reached the attention list. An F step near 10 with no
+  flag change may be this bonus, so check `r40_ebitda` against 40 first:
+  TEAM's +11.3 on 11-13 (round 14) came from the gradual terms alone
+  (`r40_fcf`, rule of x, `r40_trend` turning positive) with `r40_ebitda`
+  at 33.2. FTNT's filled quarter (11-04, the stub of the posting-lag
+  rubric line): F 83.3 to 87.8, `r40_fcf` 63.8, revisions 36 to 1
+  (round-4 rollover).
+- Bench: APPF 55.5 (45.5 pass, `uptrend`) and GWRE 46.2 (47.0 pass) remain
+  the ready replacements above the tail. WDAY's composite -20.2 and S's
+  -24.5 are technical. Fundamentals as in round 12.
+- Deterioration watch: 35 listings in 5 runs (6 to 8 a run). Most pair a
+  week drop with a standing signal re-read on every run: short interest up
+  MoM (DT 38, SHOP 26, HUBS 21 percent), estimates cuts (ADSK 20 down vs 1
+  up, standing since 10-13; PLTR 2, then 4, then 6 down vs 0 up), and
+  post-earnings cuts (NOW 4 down vs 1 up, TEAM 24 down vs 1 up from 11-07) that the
+  round-4 line reads as a possible rollover. DT, HUBS and PLTR were listed
+  on all 5 runs. As designed; the volume is the selloff and the earnings
+  cluster.
+- LLM tone (PR #39): 4 rejections in 25 calls (11-04, two on 11-06,
+  11-07), all a narrative that dropped a digest ticker (NOW, SNOW, MDB,
+  DDOG). Against 0 of 30 in round 10 and 2 of 25 in rounds 11 and 12,
+  worth watching; every rejection so far is the same failure.
+- Decay gate: 0 hits in all 25 runs retained on 11-14 (10-13 to 11-14).
+  Lowest `r40_trend` in the window RBRK -0.035, ZS -0.018, TEAM -0.007,
+  OKTA -0.006, against -0.10. Coverage 18 of 20 live (MNDY, SHOP in warm-up).
+- Automate-vs-manual: stay manual. Revisit when the gate first fires.
+- Carried to round 14: TEAM's quarter and the floor question it reopens;
+  MNDY (reported 11-09), NET and PLTR, whose steps landed on the 11-10
+  boundary run where the window delta cannot see them; post-earnings
+  revisions for NOW and TEAM; the tone rejection rate. PANW 11-18 and ESTC
+  11-19 report in round 15's window.
+- What mattered: the per-run F and T columns read against the closes,
+  which split the eleven rows into one market session (GTLB, RBRK, ZS,
+  PLTR, and CRWD at the end of its slide), earnings reactions (DT, SHOP,
+  TEAM, and MNDY ahead of its report) and fundamental steps (NOW's
+  `high_sbc` cliff, HUBS's quarter after its boundary cliff); DDOG's
+  opposite cliff, which explains its absence; and the parquet's newest
+  column (the FTNT stub). What was noise: the eleven attention deltas, the
+  Deterioration volume and change activity (rank 17, score 26, trend state
+  15; HUBS 9, CRWD 7).
 
 **What the digest carries as of 2026-08-16** (branch `rotation-evidence`,
 answering round-1 gaps 1 and 2 and preparing the refresh #3 decision):
