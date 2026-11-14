@@ -311,7 +311,7 @@ written from observed rounds rather than guessed up front. From refresh #3 the
 checklist adds the decision on automating proposal drafting against this rubric
 vs staying manual.
 
-**Working rubric (as of round 13):**
+**Working rubric (as of round 14):**
 - Act on **decay-gate hit counts**, not on composite deltas. A name with 0 gate
   hits has not shown persistent decay however far its composite moved. But read
   a zero for what it is: the gate needs `r40_trend` below
@@ -374,11 +374,15 @@ vs staying manual.
   1. The name must be `r40_trend`-live. Warm-up names score partly from
      annual data (`growth_from_annual`, `insufficient_history`), so their
      level is not yet trustworthy; a data-quality flag disqualifies.
-  2. The row is surfacing only, not action. It means "compare this name
-     against the bench on the fundamental leg in this round's evidence
-     comment". It does not by itself propose a swap; standing conditions are
-     still not events (round 3), the row just guarantees the comparison is
-     made and recorded each round.
+  2. A qualifier is a swap candidate (amended round 14). Swap it for the
+     bench name with the highest fundamental score, provided that name would
+     rank above the bottom `weak_bottom_n` on entry (the round-7 tail rule
+     below). At most one swap per round: when several names qualify, the one
+     with the most consecutive windows goes first and the rest wait for the
+     next round. If no bench name clears the tail, the action is refreshing
+     the bench. Rounds 5 to 13 read this row as surfacing only, which,
+     together with the round-7 `r40_fcf` hold below, left no path to a swap
+     for any name passing `r40_fcf`.
   The rule reads the fundamental leg only, never the composite. Composite is
   40 percent technical and the technical leg whipsaws universe-wide (18 of
   20 names in `uptrend` on 09-01, 11 on 09-12, 18 on 09-16); a
@@ -405,14 +409,23 @@ vs staying manual.
   "Persistently weak" table under the attention list, `level_watch` in the
   JSON twin; see "What the digest carries as of 2026-09-20" below), so no
   round reads it off the level table by hand again.
-- **The `r40_fcf` verdict decides which conversation a qualifier opens
-  (round 7).** A qualifier that PASSES the Rule of 40 is low on penalties,
-  not on its thesis, and is held: the level rule does not propose swapping
-  it. Penalties are cliffs (ZS at 3.4 percent dilution against the 3.0
-  limit is worth 10 points) and the same three penalties sit on names in
-  the middle of the table, so a penalty-driven bottom slot is not evidence
-  that the business is the weakest on the list. Only a qualifier that FAILS
-  the Rule of 40 is a swap candidate.
+- **The `r40_fcf` verdict no longer holds a qualifier (round 7, retired
+  round 14).** Round 7 held any qualifier that passed `r40_fcf`, on the
+  reading that a bottom slot earned by penalties says nothing against the
+  business. That was wrong on two counts. The dilution and SBC penalties
+  are the scoring model's deliberate judgment that those costs fall on
+  shareholders (PROJECT_PLAN section 6), and a rotation rule should not
+  overrule the score it reads. And `r40_fcf` is the variant SBC inflates,
+  because free cash flow adds SBC back: on 11-14 ZS read 48.7 on `r40_fcf`
+  and 24.1 on `r40_sbc_adj` (the plan's "honest number"), OKTA 42.4 and
+  26.1, RBRK 61.0 and 38.8. The same SBC that put each name at the bottom
+  kept it passing the test that held it there. On 11-14, 19 of 20 names
+  pass `r40_fcf` and the one that fails (HUBS, 38.9) is not in the bottom
+  3, so no qualifier could be swapped; rounds 9 to 13 all closed with no
+  changes. The R40 columns stay in the level table as context for the
+  comparison, not as a gate. Testing on `r40_sbc_adj` instead was
+  considered and rejected: 15 of 20 names fail it on 11-14, so it does not
+  tell the bottom from the middle.
 - **A replacement must enter above the tail (round 7).** A bench name that
   would itself land in the bottom `weak_bottom_n` on entry is not a better
   candidate, however much it beats the qualifier: the swap only relabels

@@ -536,7 +536,9 @@ class TestLevelRule:
         text = render_markdown(digest, 7, date(2026, 9, 26))
         assert "| CCC | 10.0 | 23.9 fail | 20 | qualifies (3 of 3 windows) | dilution, high sbc |" in text
         assert "| DDD | 20.0 | 48.7 pass | 19 | qualifies (3 of 3 windows) | n/a |" in text
-        assert "Surfacing only, never a swap by itself" in text
+        assert "qualifies and is a swap candidate" in text
+        assert "At most one swap per round, longest-standing qualifier first" in text
+        assert "Surfacing only" not in text
 
     def test_r40_cell_never_reads_as_40_point_0_with_a_verdict(self):
         from sentinel.digest import _r40_cell
