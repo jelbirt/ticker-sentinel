@@ -62,13 +62,17 @@ universe:
 # 28 candidates on the watchlist basis. ADSK, APPF, GWRE added (r40_trend-live,
 # pass r40_fcf, 18 to 23 percent growth, fundamental 46 to 74); TWLO dropped
 # (fails r40_fcf even on corrected revenue history).
-bench: [WDAY, ZM, S, GWRE, ESTC, ZS]   # reserve swap candidates, shadow-scored, never ranked; owner-gated like universe
+# bench refresh (2026-11-14, SPEC 7.0): ZETA added from the first screen run
+# under the growth-first swap rule (growth 41.0 percent, fundamental 63.3,
+# r40_fcf 54.6, r40_trend-live; flagged dilution). Eligible to swap in after
+# one full digest window on the bench.
+bench: [WDAY, ZM, S, GWRE, ESTC, ZS, ZETA]   # reserve swap candidates, shadow-scored, never ranked; owner-gated like universe
 # Bench screen pool: `python -m sentinel.screen` scores these in memory when the
 # weekly digest's swap check says the bench needs refreshing. Never fetched by a
 # run and never cached; edit freely. Seeded with the round-7 screen's names that
 # are not already in the universe or on the bench (CWAN dropped: no price data).
 screen:
-  candidates: [QLYS, INTU, ADBE, CRM, ZETA, KVYO, DUOL, DOCS, APP, VEEV, AXON, PATH,
+  candidates: [QLYS, INTU, ADBE, CRM, KVYO, DUOL, DOCS, APP, VEEV, AXON, PATH,
                PCOR, NTNX, TOST, TYL, PCTY, BILL, TENB, TTD, SAIL, PAYC, TWLO]
 benchmark: SPY
 report:
