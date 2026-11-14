@@ -15,7 +15,12 @@ made every second merge conflict here.
   `run_history.json`; discard that change rather than committing it.
 
 ## Active workstreams
-- none open.
+- `bench-zeta` (opened 2026-11-14, PR #54; no issue): ZETA joins the bench
+  from the first growth-first screen (fundamental 63.3, growth 41.0, `r40_fcf`
+  54.6, flagged `dilution`) and leaves `screen.candidates`. Backfill dry run
+  ACCEPT, 7 to 16 quarters, 20 of 20 overlap checks matched. After merge:
+  the owner-gated `--apply --tickers ZETA` on main (writes `data/cache/`,
+  so outside a daily run), then the bench line under Next gates gains ZETA.
 
   One branch per workstream via `scripts/new-worktree.sh <branch>`; main is the
   review inbox; merge back via PR.
