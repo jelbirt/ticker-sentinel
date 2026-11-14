@@ -264,8 +264,9 @@ def _level_watch(runs: list[RunSnapshot], cfg: ChangesCfg) -> list[WeakWeek]:
     a name is in the bottom N "for a window" when it is bottom N on that
     window's LAST run; it qualifies as persistently weak after `weak_windows`
     consecutive such windows while `r40_trend`-live at each of them. Reads the
-    fundamental leg only, never the composite. Surfacing, not action: a row
-    means "compare against the bench on the fundamental leg this round"."""
+    fundamental leg only, never the composite. A qualifying row is a swap
+    candidate under the round-14 amendment (SPEC 7.0.1); this module only
+    reports it, and the swap itself stays owner-gated."""
     ends = _window_ends(runs, cfg)
     if not ends:
         return []
@@ -484,7 +485,7 @@ def _flag_cell(flags: list[str]) -> str:
 def _r40_cell(value: float | None) -> str:
     """r40_fcf as points with the Rule of 40 verdict beside it: a low score for
     penalties and a low score for a failed thesis are different conversations
-    (SPEC 7.0.1 round 6)."""
+    (SPEC 7.0.1 round 6). Since round 14 the verdict is context, not a hold."""
     if value is None:
         return "n/a"
     verdict = "pass" if value >= R40_BAR else "fail"
@@ -578,11 +579,12 @@ def render_markdown(
             "the latest run by fundamental score, with the consecutive digest "
             "windows (last "
             "run of each) the name has held a bottom slot while r40_trend-live. "
-            f"A name at {needed} of {needed} windows qualifies: compare it "
-            "against the bench on the fundamental leg in this round's evidence "
-            "comment (SPEC 7.0.1 round 5). Surfacing only, never a swap by "
-            "itself; r40 fcf says whether the score is a failed thesis or "
-            "penalties on a passing one.",
+            f"A name at {needed} of {needed} windows qualifies and is a swap "
+            "candidate: swap it for the bench name with the highest "
+            "fundamental score if that name would rank above the bottom "
+            f"{len(digest.level_watch)} on entry, otherwise refresh the bench. "
+            "At most one swap per round, longest-standing qualifier first "
+            "(SPEC 7.0.1, amended round 14). r40 fcf is context, not a hold.",
             "",
             "| ticker | fundamental | r40 fcf | rank | status | business flags |",
             "| --- | --- | --- | --- | --- | --- |",
