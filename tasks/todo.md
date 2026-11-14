@@ -15,7 +15,14 @@ made every second merge conflict here.
   `run_history.json`; discard that change rather than committing it.
 
 ## Active workstreams
-- none open.
+- `bench-refresh` (opened 2026-11-14, PR #53; no issue): growth-first swap
+  rule (owner, 2026-11-14: best clearing bench name growing 15 percent or
+  more, a slower grower only as fallback; `changes.swap_min_growth`), a
+  weekly swap check and bench-depth line in the digest, and the dry-run
+  `python -m sentinel.screen` over `screen.candidates`. First live screen:
+  ZETA is the rule's pick (63.3, growth 41.0), KVYO second. No bench edit in
+  the PR; benching ZETA is a separate owner-gated refresh PR. Config gains
+  keys but no universe or bench change; no cache writes.
 
   One branch per workstream via `scripts/new-worktree.sh <branch>`; main is the
   review inbox; merge back via PR.
