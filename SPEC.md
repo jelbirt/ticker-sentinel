@@ -1234,6 +1234,71 @@ recorded 2026-11-14 with round 13):**
   Deterioration volume and change activity (rank 17, score 26, trend state
   15; HUBS 9, CRWD 7).
 
+**Round 14 (issue #50, 2026-11-14, window 2026-11-10 to 2026-11-14, 5 runs):**
+- Outcome: one swap, ZS out (demoted to the bench, still shadow-scored and
+  keeps its cache) and APPF in, the first under the amended level rule
+  (condition 2 and the retired round-7 bullet above). Owner decision
+  2026-11-14, after the review found that rounds 9 to 13 could not have
+  swapped any name. Every daily-report and weekly-refresh run in the window
+  succeeded.
+- Level table: ZS (16.7, `r40_fcf` 48.7, `r40_sbc_adj` 24.1, 8th
+  consecutive window) and OKTA (23.1, 42.4 and 26.1, 6th) qualify. One swap
+  per round, longest-standing first, so ZS goes now and OKTA is next in line
+  for round 15 if it still qualifies. RBRK (27.3, 61.0 and 38.8) enters at
+  1 of 3, with dilution, both SBC tiers and the lowest `r40_trend` in the
+  universe (-0.035). TEAM left the bottom 3 on its own quarter (11-13): F
+  24.9 to 36.2 from `r40_fcf` 46.1 to 50.7 and `r40_trend` turning positive
+  (-0.007 to +0.045, the digest's one inflection row), both SBC flags still
+  set.
+- Replacement: APPF is the highest-scoring bench name (fundamental 55.5,
+  `r40_fcf` 45.5, no flags, `r40_trend` 0.036 live, `uptrend`, composite
+  66.7) and enters 5th of 20 on the fundamental leg, well above the tail
+  (after the swap the bottom 3 are OKTA 23.1, RBRK 27.3 and GTLB 30.7). Its
+  cache already
+  holds 16 quarters from the round-7 seed, so no backfill apply is needed.
+  Its `r40_sbc_adj` was not checked (bench names are not in the daily raw
+  file); no SBC flag means SBC is under 15 percent of revenue.
+- Absolute floor: closed. Round 11 deferred it until TEAM and ZS reported.
+  The bottom slots did not need a floor; they needed the round-7 hold gone.
+- Boundary: MNDY (reported 11-09), NET and PLTR stepped on the 11-10
+  boundary run, invisible to the window delta (round-5 line): MNDY F 48.8
+  to 41.1 and `r40_fcf` 48.3 to 42.2 (composite 35.3 to 24.7, rank 10 to
+  16, still in warm-up), NET 38.6 to 39.7, PLTR clamped at 100 (`r40_fcf`
+  133.5 to 142.7). TEAM's 11-13 step is the only fundamental step in the
+  window.
+- Attribution: ZS's decay row (24.7 to 19.2, -5.5, rank 15 to 19) is
+  technical, with F flat at 16.7. Most of it came on the 11-12 run, when
+  the 3-month relative-strength input fell for nearly every name at once:
+  its 63-session window dropped 2026-08-13, a strong software session
+  (ZS +6.1, RBRK +8.6, WDAY +17.8 percent against SPY +0.7), so each name's
+  3-month outperformance against SPY measured lower (ZS 0.130 to 0.052).
+  That is the measure working as designed. ZS's T went 34.7 to 19.5 on that
+  run, and the same run listed ZS and RBRK in the Deterioration watch.
+  ADSK's +9.9 (golden cross on 11-14, T 91.4, rank 1 since 11-05) is the
+  window's only large move up. HUBS's golden cross cleared on 11-11 by
+  lookback expiry (set 10-28).
+- Bench: composite moves are technical (ZM +18.6, WDAY +14.4, S -18.7,
+  ESTC -5.8); fundamentals unchanged. After this swap the bench is WDAY
+  24.1, ZM 33.8, S 0.0, ZS 16.7, GWRE 46.2 and ESTC 15.4 on the
+  fundamental leg. GWRE is the replacement for OKTA in round 15; after it,
+  only ZM clears the tail, by a hair, so the bench needs new candidates
+  soon (round-7 screen pattern).
+- Deterioration watch: 20 listings in 5 runs (7, 3, 7, 3, 0); 11-14 printed
+  "nothing cleared a threshold". NOW's post-earnings cuts widened to 32
+  down vs 1 up from 11-10.
+- LLM tone (PR #39): 3 rejections in 25 calls (11-10, 11-11, 11-14), each a
+  narrative that dropped a digest ticker (MNDY, MDB, HUBS).
+- Decay gate: 0 hits. Lowest `r40_trend` RBRK -0.035, ZS -0.018, OKTA
+  -0.006 against -0.10. Coverage 18 of 20 live (MNDY, SHOP still in
+  warm-up).
+- Automate-vs-manual: stay manual.
+- Watch items for round 15: OKTA against GWRE under the amended rule. APPF's
+  first window on the watchlist. PANW (11-18) and ESTC (11-19) report. The
+  digest wording now states the amended rule.
+- What mattered: the level table's window counts read against the bench's
+  fundamental scores, once the hold no longer overruled them. What was
+  noise: change activity (score 11, revisions 9, short interest 8).
+
 **What the digest carries as of 2026-08-16** (branch `rotation-evidence`,
 answering round-1 gaps 1 and 2 and preparing the refresh #3 decision):
 
