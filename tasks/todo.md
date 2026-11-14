@@ -15,14 +15,15 @@ made every second merge conflict here.
   `run_history.json`; discard that change rather than committing it.
 
 ## Active workstreams
-- `rotation-round-13` (opened 2026-11-14, PR #51; closes issues #48 and
-  #49): round-12 catch-up and round-13 records in SPEC 7.0.1 plus the
-  posting-lag rubric line. No changes in either round: ZS, OKTA and TEAM
-  qualify at 3 of 3 and all pass the rule, so all held; floor still
-  deferred (TEAM's quarter landed 11-13, ZS now reports 12-02). NOW,
-  PLTR and TEAM quarters waited a week because Yahoo rolled
-  `next_earnings` forward before posting (refetch gap, code follow-up).
-  Stay manual. Docs only, no cache or config.
+- `rotation-round-14` (opened 2026-11-14, PR #52; closes issue #50):
+  replaces the round-7 `r40_fcf` hold with a swap rule (a level-rule
+  qualifier is swapped for the top bench name if it enters above the
+  bottom 3; one swap per round, longest-standing first, counted in
+  consecutive bottom-3 windows, ties to the lower score). First swap under
+  it: ZS (10 windows, F 16.7) out to the bench, APPF (F 55.5) in, 5th of
+  20. OKTA is next in line, GWRE its replacement. Touches SPEC,
+  PROJECT_PLAN 4.3, digest text and tests, `config/watchlist.yaml`; no
+  cache.
 
   One branch per workstream via `scripts/new-worktree.sh <branch>`; main is the
   review inbox; merge back via PR.
@@ -39,6 +40,16 @@ made every second merge conflict here.
   relation instead.
 
 ## Done
+- `rotation-round-13` (2026-11-14, merged as PR #51, worktree torn down;
+  closes issues #48 and #49): round-12 catch-up record (issue #48 had been
+  skipped) and round-13 record in SPEC 7.0.1, plus the "a quarter lands
+  when Yahoo posts it, not when the company reports" rubric line. No
+  changes in either round: ZS, OKTA and TEAM qualified and passed
+  `r40_fcf`, so the round-7 hold kept all three. Round 14 retired that
+  hold and found the records had counted ZS by qualifying round (5th to
+  7th) instead of bottom-3 window (7th to 9th). NOW, PLTR and TEAM
+  quarters waited 8 days because Yahoo rolled `next_earnings` forward
+  before posting the quarter (refetch gap; noted, no fix scheduled).
 - `rotation-round-11` (2026-10-25, merged as PR #47, worktree torn down;
   closes issue #46): round-11 record in SPEC 7.0.1 plus the "a scoring-
   method switch steps fundamentals on the switch run" rubric line. No
@@ -315,10 +326,15 @@ made every second merge conflict here.
   table became three held qualifiers (ZS, OKTA, TEAM), the absolute floor
   is deferred until TEAM (11-05) and ZS (11-24) report or a qualifier
   fails the rule, and PR #45's method switch stepped CRWD, DDOG and IOT on
-  10-21 as predicted. Standing watch items for refresh #12 (Sat
-  2026-10-31): FTNT and NOW report 10-28 (inside the window), APPF's
-  10-22 quarter once Yahoo posts it, ZS in its 6th window, SNOW's tape,
-  and the early-November earnings cluster ahead (round 13: PLTR on the
-  boundary run, DT, SHOP, DDOG, HUBS, NET, TEAM; MNDY in round 14).
+  10-21 as predicted. Rounds 12 and 13 (issues #48 and #49, recorded
+  together 2026-11-14, PR #51) made no changes: an earnings-season and
+  market selloff moved the attention list on the technical leg, and the
+  same three qualifiers held. Round 14 (issue #50, 2026-11-14, PR #52)
+  retires the round-7 `r40_fcf` hold, which had left no path to a swap,
+  and swaps ZS for APPF under the amended rule. Standing watch items for
+  refresh #15 (Sat 2026-11-21): OKTA against GWRE under the amended rule,
+  APPF's first window on the watchlist, PANW (11-18) and ESTC (11-19)
+  report, and the bench needs new candidates before round 16 (after GWRE
+  no bench name clears the tail on entry).
 - (done) First scheduled run after merge created `data/cache/run_history.json`
   on 2026-08-07; change detection live since 2026-08-08.
