@@ -15,7 +15,14 @@ made every second merge conflict here.
   `run_history.json`; discard that change rather than committing it.
 
 ## Active workstreams
-- none open.
+- `rotation-round-13` (opened 2026-11-14, PR #51; closes issues #48 and
+  #49): round-12 catch-up and round-13 records in SPEC 7.0.1 plus the
+  posting-lag rubric line. No changes in either round: ZS, OKTA and TEAM
+  qualify at 3 of 3 and all pass the rule, so all held; floor still
+  deferred (TEAM's quarter landed 11-13, ZS now reports 12-02). NOW,
+  PLTR and TEAM quarters waited a week because Yahoo rolled
+  `next_earnings` forward before posting (refetch gap, code follow-up).
+  Stay manual. Docs only, no cache or config.
 
   One branch per workstream via `scripts/new-worktree.sh <branch>`; main is the
   review inbox; merge back via PR.
