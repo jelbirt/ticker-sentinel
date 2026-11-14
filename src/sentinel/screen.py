@@ -32,7 +32,7 @@ from sentinel.config import Config, load_config
 from sentinel.data import cache
 from sentinel.data.fundamentals import inputs_from_frame
 from sentinel.data.history import load_history
-from sentinel.digest import DATA_QUALITY_FLAGS, build_digest, snapshot_live
+from sentinel.digest import DATA_QUALITY_FLAGS, bench_entry_block, build_digest
 from sentinel.indicators.fundamentals import R40_BAR, compute_scorecard, display_flags
 from sentinel.report.changes import RunSnapshot
 from sentinel.rotation import Entrant, enters_above_tail, growth_tier, pick_entrant
@@ -120,34 +120,32 @@ def baseline_from_history(cfg: Config, history_path: Path | None = None) -> Base
     else:
         outgoing = min(universe_scores, key=lambda t: (universe_scores[t], t))
         qualifies = False
-    # the same entrant tests as the digest's swap check: one full window of
-    # shadow scoring, and live on the latest snapshot
-    windows = {b.ticker: b for b in digest.bench_weeks}
+    # bench names are read exactly as the digest reads them: the window's
+    # bench rows (last observed score and growth, live on the last
+    # appearance) under the same entrant tests. Only the on-entry test is
+    # redone, against the rebased universe. A configured bench name with no
+    # row (a name just moved to the bench, or one no run has scored there yet)
+    # is named, never dropped.
+    rows = {b.ticker: b for b in digest.bench_weeks}
     bench: list[Entrant] = []
     blocked: list[tuple[str, str]] = []
     for t in cfg.bench:
-        snap = scored.get(t)
-        if snap is None:
+        week = rows.get(t)
+        if week is None:
+            blocked.append((t, "not shadow-scored on the bench this window"))
             continue
-        week = windows.get(t)
-        if week is not None and not week.full_window:
-            block: str | None = "joined the bench mid-window"
-        elif not snapshot_live(snap):
-            block = "warm-up: r40 trend n/a or a data-quality flag"
-        elif snap.score is None:
-            block = "no fundamental score"
-        else:
-            block = None
+        block = bench_entry_block(week)
         if block is not None:
             blocked.append((t, block))
         clears = (
-            None if block is not None
+            None if block is not None or week.score_last is None
             else enters_above_tail(
-                snap.score, universe_scores, outgoing, cfg.changes.weak_bottom_n
+                week.score_last, universe_scores, outgoing, cfg.changes.weak_bottom_n
             )
         )
         bench.append(Entrant(
-            t, snap.score, growth_tier(snap.growth, cfg.changes.swap_min_growth), clears,
+            t, week.score_last,
+            growth_tier(week.growth_last, cfg.changes.swap_min_growth), clears,
         ))
     return Baseline(
         run_date=latest.date,
@@ -203,7 +201,11 @@ def screen_ticker(
     notes: list[str] = []
     try:
         inputs = inputs_from_frame(ticker, frame, meta, notes)
-        sc = apply_scores([compute_scorecard(inputs)])[0]
+        sc = apply_scores(
+            [compute_scorecard(inputs)],
+            fundamentals_weight=cfg.fundamentals_weight,
+            technicals_weight=cfg.technicals_weight,
+        )[0]
     except Exception as exc:  # noqa: BLE001 - one bad name never ends the screen
         return ScreenRow(ticker, history=history, error=f"scoring failed ({exc})")
 
@@ -360,7 +362,12 @@ def format_report(
         )
     else:
         where = "already on the bench" if pick.ticker in bench_names else "a candidate"
-        tier = "growth tier" if pick.tier == "growth" else "slower grower, fallback"
+        if pick.tier == "growth":
+            tier = "growth tier"
+        elif pick.tier is None:
+            tier = "growth n/a, so ranked with the slower growers: check its growth first"
+        else:
+            tier = "slower grower, fallback"
         lines.append(
             f"Rule pick over the current bench and the live candidates: "
             f"{pick.ticker} ({where}, {tier}, fundamental {_num(pick.score)})."

@@ -232,7 +232,7 @@ class TestBaselineAfterASwap:
         path.write_text(json.dumps({"version": 1, "runs": [run.to_dict()]}))
         return path
 
-    def test_joined_name_scores_from_its_bench_snapshot_and_left_name_is_bench(
+    def test_joined_name_scores_from_its_bench_snapshot_and_left_name_waits(
         self, cache_root
     ):
         from sentinel.config import TickerCfg
@@ -247,10 +247,15 @@ class TestBaselineAfterASwap:
         assert set(base.universe_scores) == {"B", "C", "D", "E", "NEW"}
         assert base.universe_scores["NEW"] == 60.0
         assert base.outgoing == "B" and base.outgoing_qualifies is False
-        assert [e.ticker for e in base.bench] == ["OLD"]
+        # OLD was scored in the universe, never on the bench: it has had no
+        # shadow window yet, so it is named and never an entrant (the digest
+        # would say the same about it on the next run)
+        assert base.bench == []
+        assert base.bench_blocked == (("OLD", "not shadow-scored on the bench this window"),)
         assert base.moved_out == ("OLD",) and base.moved_in == ("NEW",)
         text = format_report([], base, cfg)
         assert "left: OLD; joined: NEW" in text
+        assert "cannot be swapped in yet: OLD (not shadow-scored" in text
 
     def test_universe_name_missing_from_the_run_has_not_joined(self, cache_root):
         # a fetch miss is an absence, not a role change
@@ -282,6 +287,55 @@ class TestBaselineAfterASwap:
         assert base.bench[0].clears is None
         assert base.bench_blocked[0][0] == "NEW"
         assert "cannot be swapped in yet: NEW (warm-up" in format_report([], base, cfg)
+
+    def test_bench_name_missing_from_the_latest_run_is_read_like_the_digest(
+        self, cache_root
+    ):
+        # GRO's fetch failed on the latest run only: the digest still reads
+        # its last observed score and picks it, so the screen must too
+        import json
+
+        from sentinel.config import TickerCfg
+        from sentinel.digest import build_digest
+        from sentinel.screen import baseline_from_history
+
+        universe = {"A": 10.0, "B": 20.0, "C": 30.0, "D": 80.0, "E": 90.0}
+        runs = [
+            RunSnapshot(
+                f"2026-11-{10 + i:02d}", "scheduled",
+                {t: TickerSnapshot(composite=s, score=s, r40_trend=0.01)
+                 for t, s in universe.items()},
+                {"GRO": TickerSnapshot(composite=85.0, score=85.0, growth=0.3, r40_trend=0.01),
+                 "LOW": TickerSnapshot(composite=5.0, score=5.0, growth=0.3, r40_trend=0.01)},
+            )
+            for i in range(5)
+        ]
+        del runs[-1].bench["GRO"]
+        path = cache_root / "run_history.json"
+        path.write_text(json.dumps({"version": 1, "runs": [r.to_dict() for r in runs]}))
+        cfg = Config(
+            universe=tuple(TickerCfg(t, ("r40",)) for t in universe),
+            bench=("GRO", "LOW"),
+        )
+        assert build_digest(runs, list(universe), ["GRO", "LOW"], cfg.changes).swap_pick == "GRO"
+        base = baseline_from_history(cfg, path)
+        entrants = {e.ticker: e for e in base.bench}
+        assert entrants["GRO"] == Entrant("GRO", 85.0, "growth", True)
+        assert entrants["LOW"].clears is False and base.bench_blocked == ()
+        assert "Rule pick over the current bench and the live candidates: GRO" in (
+            format_report([], base, cfg)
+        )
+
+    def test_unknown_growth_pick_is_said_as_unknown_not_slow(self, cache_root):
+        # every bench name reads growth n/a until runs record it (history
+        # written before this feature has no growth key)
+        from dataclasses import replace
+
+        base = replace(_baseline({"A": 1.0, "B": 2.0, "C": 3.0, "D": 4.0}),
+                       bench=[Entrant("BEN", 95.0, None, True)])
+        text = format_report([], base, CFG)
+        assert "BEN (already on the bench, growth n/a, so ranked with the slower growers" in text
+        assert "slower grower, fallback" not in text
 
     def test_matching_run_says_nothing_about_roles(self, cache_root):
         from sentinel.config import TickerCfg

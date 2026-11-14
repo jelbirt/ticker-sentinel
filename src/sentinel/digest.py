@@ -317,14 +317,49 @@ def _level_watch(runs: list[RunSnapshot], cfg: ChangesCfg) -> list[WeakWeek]:
     return rows
 
 
+def _bench_stretch_start(runs: list[RunSnapshot], ticker: str) -> int | None:
+    """Index of the run that opened the name's current spell on the bench.
+
+    That is its first bench appearance after the last run that scored it in
+    the universe, so a name demoted from the universe, or promoted and sent
+    back, starts over. A run that dropped the name (a failed fetch) does not
+    end the spell: absence is not a role change."""
+    last_in_universe = max(
+        (i for i, run in enumerate(runs) if ticker in run.tickers), default=-1
+    )
+    return next(
+        (i for i, run in enumerate(runs) if i > last_in_universe and ticker in run.bench),
+        None,
+    )
+
+
+def bench_entry_block(week: BenchWeek) -> str | None:
+    """Why a bench row cannot be swapped in this window; None when it can.
+
+    The round-7 bench-before-promotion test (one full window of shadow
+    scoring), then the condition-1 test (a warm-up score is not a level to
+    act on), then a score to test at all. Shared by the digest's swap check
+    and the bench screen so the two cannot disagree."""
+    if not week.full_window:
+        return "joined the bench mid-window: one full window of shadow scoring comes first"
+    if not week.live_latest:
+        return "warm-up: r40 trend n/a or a data-quality flag"
+    if week.score_last is None:
+        return "no fundamental score this window"
+    return None
+
+
 def _bench_weeks(
-    window: list[RunSnapshot], bench: list[str]
+    runs: list[RunSnapshot], window: list[RunSnapshot], bench: list[str]
 ) -> list[BenchWeek]:
     """Window-scale composite move per bench name, first vs last appearance.
 
     Names configured on the bench but absent from history (every run predating
     bench shadow-scoring) are simply not returned; the renderer turns an empty
-    list into a warm-up note rather than an error.
+    list into a warm-up note rather than an error. `window` is the tail of
+    `runs`; the full history is read only for when each name's bench spell
+    began, so a fetch that failed on the window's first run neither blocks a
+    long-standing name nor lets a newer one through.
     """
     seen: list[str] = []
     for run in window:
@@ -332,9 +367,7 @@ def _bench_weeks(
             if ticker not in seen:
                 seen.append(ticker)
     order = [t for t in bench if t in seen] + [t for t in sorted(seen) if t not in bench]
-    # a run whose bench scoring failed carries no bench block at all, so the
-    # window opens at the first run that has one
-    opening = next((run.bench for run in window if run.bench), {})
+    window_start = len(runs) - len(window)
 
     weeks: list[BenchWeek] = []
     for ticker in order:
@@ -355,7 +388,10 @@ def _bench_weeks(
             r40_fcf_last=r40s[-1] if r40s else None,
             flags_latest=list(appearances[-1].flags) if appearances else [],
             growth_last=growths[-1] if growths else None,
-            full_window=ticker in opening,
+            full_window=(
+                (start := _bench_stretch_start(runs, ticker)) is not None
+                and start <= window_start
+            ),
             live_latest=snapshot_live(appearances[-1]) if appearances else False,
         ))
     return weeks
@@ -401,14 +437,8 @@ def _swap_check(
         tier = growth_tier(b.growth_last, cfg.swap_min_growth)
         if b.ticker not in bench or b.ticker in latest.tickers:
             block: str | None = "no longer on the bench"
-        elif not b.full_window:
-            block = "joined the bench mid-window: one full window of shadow scoring comes first"
-        elif not b.live_latest:
-            block = "warm-up: r40 trend n/a or a data-quality flag"
-        elif b.score_last is None:
-            block = "no fundamental score this window"
         else:
-            block = None
+            block = bench_entry_block(b)
         clears = (
             None if block is not None
             else enters_above_tail(b.score_last, universe, outgoing, cfg.weak_bottom_n)
@@ -543,7 +573,7 @@ def build_digest(
     # looks back weak_windows digest windows, so it reads `runs`, not `window`
     level_watch = _level_watch(runs, cfg)
     bench_weeks, outgoing, outgoing_qualifies, pick = _swap_check(
-        latest_run, level_watch, _bench_weeks(window, list(bench)), list(bench), cfg
+        latest_run, level_watch, _bench_weeks(runs, window, list(bench)), list(bench), cfg
     )
 
     return WeeklyDigest(

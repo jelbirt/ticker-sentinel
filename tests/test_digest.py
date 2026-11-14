@@ -698,11 +698,48 @@ class TestSwapCheck:
         assert "NEW (joined the bench mid-window" in text
         assert "The rule promotes NEW" not in text
 
-    def test_failed_bench_fetch_on_the_first_run_does_not_shorten_the_window(self):
+    def test_failed_bench_scoring_on_the_window_open_does_not_block(self):
+        # the whole bench block failed on the window's first run
         runs = self._runs({"GRO": (85.0, 0.20)})
-        runs[0] = RunSnapshot(runs[0].date, runs[0].run_type, runs[0].tickers, {})
+        first = len(runs) - CFG.week_window_runs
+        runs[first] = RunSnapshot(runs[first].date, runs[first].run_type, runs[first].tickers, {})
         d = build_digest(runs, list(self.BASE), ["GRO"], CFG)
         assert d.bench_weeks[0].full_window and d.swap_pick == "GRO"
+
+    def test_one_failed_fetch_on_the_window_open_does_not_block_that_name(self):
+        # only GRO's fetch failed on the window's first run; OTHER was scored
+        runs = self._runs({"GRO": (85.0, 0.20), "OTHER": (5.0, 0.20)})
+        del runs[len(runs) - CFG.week_window_runs].bench["GRO"]
+        d = build_digest(runs, list(self.BASE), ["GRO", "OTHER"], CFG)
+        rows = {b.ticker: b for b in d.bench_weeks}
+        assert rows["GRO"].full_window and rows["GRO"].entry_block is None
+        assert d.swap_pick == "GRO"
+
+    def test_new_name_after_failed_bench_runs_still_waits_a_window(self):
+        # earlier bench blocks empty (failed or no bench yet): NEWB first
+        # appears on the window's last 2 runs, so it has 2 runs, not a window
+        runs = self._runs({})
+        for run in runs[-2:]:
+            run.bench["NEWB"] = TickerSnapshot(composite=85.0, score=85.0,
+                                               growth=0.30, r40_trend=0.05)
+        d = build_digest(runs, list(self.BASE), ["NEWB"], CFG)
+        assert not d.bench_weeks[0].full_window
+        assert d.bench_weeks[0].entry_block.startswith("joined the bench mid-window")
+        assert d.swap_pick is None
+
+    def test_demoted_name_counts_its_window_from_its_first_bench_run(self):
+        # DEM was scored in the universe until the window opened, on the
+        # bench from then on: a full window. Moving one run later is not.
+        def demoted(last_universe_run: int):
+            runs = self._runs({})
+            for i, run in enumerate(runs):
+                snap = TickerSnapshot(composite=85.0, score=85.0, growth=0.30, r40_trend=0.05)
+                (run.tickers if i <= last_universe_run else run.bench)["DEM"] = snap
+            return build_digest(runs, list(self.BASE), ["DEM"], CFG)
+
+        first = 15 - CFG.week_window_runs
+        assert demoted(first - 1).bench_weeks[0].full_window
+        assert not demoted(first).bench_weeks[0].full_window
 
     def test_warm_up_bench_name_is_not_an_entrant(self):
         runs = self._runs({"GRO": (85.0, 0.20)})

@@ -319,8 +319,11 @@ can clear the tail when a name qualifies. Two pieces keep it that way:
    behind the backfill verification gate; yfinance alone when the gate
    rejects, which leaves the name in warm-up), measures each name against the
    latest run in `run_history.json`, and prints a table plus the name the rule
-   would pick over the bench and the live candidates together, holding bench
-   names to the digest's entrant tests (one full window, live). It writes
+   would pick over the bench and the live candidates together. Bench names
+   are read from the window's bench rows exactly as the digest reads them
+   (last observed score and growth, the same entrant tests); only the
+   on-entry test is redone against the current universe, and a name just
+   moved to the bench is named as not yet shadow-scored. It writes
    nothing; `--tickers` screens names outside the pool (universe and bench
    names are skipped, they are scored every run). If EDGAR is unreachable,
    every name scores on yfinance alone and says so. It needs the network, so
@@ -1444,10 +1447,12 @@ bench refresh in section 7.0):
   by fundamental score once the outgoing name leaves: yes, no, or n/a
   without a score. The outgoing name is the first qualifier on the level
   table, else the lowest fundamental score as a what-if. Entrants are
-  configured bench names outside the latest run's universe that were on the
-  bench from the window's first run carrying a bench block (the round-7 one
-  window of shadow scoring; a run whose bench scoring failed does not
-  shorten it) and are live on their latest snapshot (the condition-1 test:
+  configured bench names outside the latest run's universe whose current
+  spell on the bench began on or before the window's first run (the round-7
+  one window of shadow scoring; the spell starts at the name's first bench
+  run after its last universe run, so a demoted name starts over, and a
+  failed fetch neither ends it nor lets a newer name through) and are live
+  on their latest snapshot (the condition-1 test:
   `r40_trend` present, no data-quality flag). Any other row reads n/a, and a
   line under the table names it with the reason (no longer on the bench,
   joined mid-window, warm-up).
