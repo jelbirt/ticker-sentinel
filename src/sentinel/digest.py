@@ -17,6 +17,7 @@ from pathlib import Path
 from sentinel.config import ChangesCfg, Config, load_config
 from sentinel.data.history import load_history
 from sentinel.indicators.fundamentals import R40_BAR, display_flags
+from sentinel.rotation import GROWTH, Entrant, enters_above_tail, growth_tier, pick_entrant
 from sentinel.report.changes import RunSnapshot, TickerSnapshot, diff_runs
 
 # manual refreshes before the digest starts prompting the automation decision
@@ -110,6 +111,13 @@ class BenchWeek:
     score_last: float | None = None        # fundamental leg, for the level-rule comparison
     r40_fcf_last: float | None = None      # fraction; rendered as points with pass/fail
     flags_latest: list[str] = field(default_factory=list)
+    growth_last: float | None = None       # yearly revenue growth, fraction
+    growth_tier: str | None = None         # rotation.growth_tier(); None = unknown
+    clears_tail: bool | None = None        # would enter above the bottom N on entry,
+                                           # tested for blocked rows too (see entry_block)
+    full_window: bool = False              # on the bench from the window's first bench run
+    live_latest: bool = False              # snapshot_live() on its latest appearance
+    entry_block: str | None = None         # why it cannot be swapped in; None = entrant
 
 
 @dataclass(frozen=True)
@@ -150,7 +158,9 @@ class CoverageGap:
     """
 
     ticker: str
-    kind: str                     # absent_all | missing_streak | unconfigured
+    # absent_all | missing_streak | unconfigured | moved_to_bench |
+    # joined_from_bench (the last two: a swap merged inside the window)
+    kind: str
     streak: int = 0               # consecutive runs missing at the END of the window
     runs_seen: int = 0            # runs in the window where the name appeared
     runs_in_window: int = 0
@@ -163,6 +173,16 @@ class CoverageGap:
             return f"no run history yet for {self.runs_seen} scored tickers"
         if self.kind == "unconfigured":
             return f"{self.ticker}: in run history but no longer configured"
+        if self.kind == "moved_to_bench":
+            return (
+                f"{self.ticker}: moved to the bench (scored in the universe in "
+                f"{self.runs_seen} of {self.runs_in_window} runs this window)"
+            )
+        if self.kind == "joined_from_bench":
+            return (
+                f"{self.ticker}: joined the universe from the bench; no run this "
+                f"window scored it in the universe yet ({self.streak} runs)"
+            )
         if self.kind == "absent_all":
             return (
                 f"{self.ticker}: configured but absent from every run in the "
@@ -190,6 +210,18 @@ class WeeklyDigest:
     notes: list[str]                   # degradation notes (unreadable history etc.)
     bench_weeks: list[BenchWeek] = field(default_factory=list)
     level_watch: list[WeakWeek] = field(default_factory=list)  # bottom N, qualifiers first
+    swap_outgoing: str | None = None   # name the on-entry test removes (first qualifier,
+                                       # else the lowest score: a what-if)
+    swap_outgoing_qualifies: bool = False
+    swap_pick: str | None = None       # bench name the rule would promote, None = refresh
+    bench_clearing: int = 0            # eligible bench names that clear the tail on entry
+    bench_clearing_growth: int = 0     # of those, growth-tier names
+    bench_waiting: list[str] = field(default_factory=list)  # would clear, not eligible yet
+    swap_min_growth: float = 0.15      # cfg value the tiers were read against
+    # set when the latest run predates the configured roles (a swap merged
+    # since): the swap check reads that run under the current roles
+    swap_moved_out: list[str] = field(default_factory=list)
+    swap_moved_in: list[str] = field(default_factory=list)
 
 
 def _window(runs: list[RunSnapshot], cfg: ChangesCfg) -> list[RunSnapshot]:
@@ -303,14 +335,54 @@ def _level_watch(runs: list[RunSnapshot], cfg: ChangesCfg) -> list[WeakWeek]:
     return rows
 
 
+def _bench_stretch_start(runs: list[RunSnapshot], ticker: str) -> int | None:
+    """Index of the run that opened the name's current spell on the bench.
+
+    That is its first bench appearance after the last run that scored it in
+    the universe, so a name demoted from the universe, or promoted and sent
+    back, starts over. A run that dropped the name (a failed fetch) does not
+    end the spell: absence is not a role change."""
+    last_in_universe = max(
+        (i for i, run in enumerate(runs) if ticker in run.tickers), default=-1
+    )
+    return next(
+        (i for i, run in enumerate(runs) if i > last_in_universe and ticker in run.bench),
+        None,
+    )
+
+
+# the one block with a known end: the name is eligible from the next window
+# if it stays live, so it is worth waiting for; warm-up has no set end
+MID_WINDOW = "joined the bench mid-window: one full window of shadow scoring comes first"
+
+
+def bench_entry_block(week: BenchWeek) -> str | None:
+    """Why a bench row cannot be swapped in this window; None when it can.
+
+    The round-7 bench-before-promotion test (one full window of shadow
+    scoring), then the condition-1 test (a warm-up score is not a level to
+    act on), then a score to test at all. Shared by the digest's swap check
+    and the bench screen so the two cannot disagree."""
+    if not week.full_window:
+        return MID_WINDOW
+    if not week.live_latest:
+        return "warm-up: r40 trend n/a or a data-quality flag"
+    if week.score_last is None:
+        return "no fundamental score this window"
+    return None
+
+
 def _bench_weeks(
-    window: list[RunSnapshot], bench: list[str]
+    runs: list[RunSnapshot], window: list[RunSnapshot], bench: list[str]
 ) -> list[BenchWeek]:
     """Window-scale composite move per bench name, first vs last appearance.
 
     Names configured on the bench but absent from history (every run predating
     bench shadow-scoring) are simply not returned; the renderer turns an empty
-    list into a warm-up note rather than an error.
+    list into a warm-up note rather than an error. `window` is the tail of
+    `runs`; the full history is read only for when each name's bench spell
+    began, so a fetch that failed on the window's first run neither blocks a
+    long-standing name nor lets a newer one through.
     """
     seen: list[str] = []
     for run in window:
@@ -318,6 +390,7 @@ def _bench_weeks(
             if ticker not in seen:
                 seen.append(ticker)
     order = [t for t in bench if t in seen] + [t for t in sorted(seen) if t not in bench]
+    window_start = len(runs) - len(window)
 
     weeks: list[BenchWeek] = []
     for ticker in order:
@@ -327,6 +400,7 @@ def _bench_weeks(
         # composite from one run with "n/a" fundamentals from another
         scores = [a.score for a in appearances if a.score is not None]
         r40s = [a.r40_fcf for a in appearances if a.r40_fcf is not None]
+        growths = [a.growth for a in appearances if a.growth is not None]
         weeks.append(BenchWeek(
             ticker=ticker,
             runs_seen=len(appearances),
@@ -336,8 +410,103 @@ def _bench_weeks(
             score_last=scores[-1] if scores else None,
             r40_fcf_last=r40s[-1] if r40s else None,
             flags_latest=list(appearances[-1].flags) if appearances else [],
+            growth_last=growths[-1] if growths else None,
+            full_window=(
+                (start := _bench_stretch_start(runs, ticker)) is not None
+                and start <= window_start
+            ),
+            live_latest=snapshot_live(appearances[-1]) if appearances else False,
         ))
     return weeks
+
+
+def swap_universe(
+    latest: RunSnapshot, universe: list[str]
+) -> tuple[dict[str, float], list[str], list[str]]:
+    """The latest run's fundamental scores under the CONFIGURED roles, and
+    the names whose role changed since that run (left, joined).
+
+    Between a merged swap and the next scheduled run, the latest run still
+    scores the outgoing name in the universe and the incoming one on the
+    bench. The digest reads such a run when the Saturday run fails after a
+    merge, or on a manual dispatch. Both names were scored on the same basis
+    that day, so their snapshots are reused under the new roles. A universe
+    name the run did not score (a fetch miss) is absent, not moved. Shared by
+    the digest's swap check and the bench screen so the two cannot disagree.
+    """
+    scored = {**latest.bench, **latest.tickers}
+    scores = {
+        t: score for t in universe
+        if t in scored and (score := scored[t].score) is not None
+    }
+    left = sorted(set(latest.tickers) - set(universe))
+    joined = sorted(t for t in universe if t in latest.bench and t not in latest.tickers)
+    return scores, left, joined
+
+
+def _swap_check(
+    latest: RunSnapshot,
+    level_watch: list[WeakWeek],
+    bench_weeks: list[BenchWeek],
+    universe: list[str],
+    bench: list[str],
+    cfg: ChangesCfg,
+) -> tuple[list[BenchWeek], str | None, bool, str | None]:
+    """Run the SPEC 7.0.1 on-entry test for every bench name.
+
+    Roles are the configured ones (`swap_universe`), so a swap merged after
+    the latest run is not recommended again. The outgoing name is the first
+    qualifying level-table row still in the universe (the rule swaps the
+    longest-standing qualifier; the digest counts at most `weak_windows`
+    windows, so the full count is confirmed against the weekly records).
+    With no qualifier the test still runs against the lowest-scoring name, as
+    a what-if: it tells the owner whether the bench could act if a name
+    qualified, which is what decides when the bench needs refreshing.
+    Entrants are configured bench names outside the configured universe that
+    have been shadow-scored since the window opened (SPEC 7.0.1 round 7,
+    bench before promotion) and are live on their latest snapshot (the
+    condition-1 test: a warm-up score is not a level to act on, for an
+    entrant any more than for a qualifier). A blocked bench name still gets
+    the on-entry test, so "would clear once eligible" is told apart from
+    "refresh the bench"; only rows now in the universe or dropped from the
+    bench config read n/a.
+    Returns the bench rows with growth tier, on-entry result and block
+    filled in, the outgoing name, whether it qualifies, and the rule's pick.
+    """
+    scores, _, _ = swap_universe(latest, universe)
+    in_universe = set(universe)
+    outgoing: str | None = None
+    qualifies = False
+    if scores:
+        qualifier = next(
+            (w for w in level_watch if w.qualifies and w.ticker in in_universe), None
+        )
+        if qualifier is not None:
+            outgoing, qualifies = qualifier.ticker, True
+        else:
+            outgoing = min(scores, key=lambda t: (scores[t], t))
+    filled: list[BenchWeek] = []
+    entrants: list[Entrant] = []
+    for b in bench_weeks:
+        tier = growth_tier(b.growth_last, cfg.swap_min_growth)
+        clears: bool | None = None
+        if b.ticker in in_universe:
+            block: str | None = "in the universe now"
+        elif b.ticker not in bench:
+            block = "no longer configured on the bench"
+        else:
+            block = bench_entry_block(b)
+            if outgoing is not None and b.score_last is not None:
+                clears = enters_above_tail(
+                    b.score_last, scores, outgoing, cfg.weak_bottom_n
+                )
+        filled.append(BenchWeek(**{
+            **asdict(b), "growth_tier": tier, "clears_tail": clears, "entry_block": block,
+        }))
+        if block is None:
+            entrants.append(Entrant(b.ticker, b.score_last, tier, clears))
+    pick = pick_entrant(entrants)
+    return filled, outgoing, qualifies, pick.ticker if pick is not None else None
 
 
 def build_digest(
@@ -364,7 +533,7 @@ def build_digest(
                 CoverageGap(ticker="", kind="no_history", runs_seen=len(universe))
             ],
             bench=list(bench), notes=list(notes or []), bench_weeks=[],
-            level_watch=[],
+            level_watch=[], swap_min_growth=cfg.swap_min_growth,
         )
 
     change_counts: dict[str, int] = {}
@@ -429,10 +598,15 @@ def build_digest(
 
     latest_run = window[-1]
     gaps: list[CoverageGap] = []
+    benched_in_window = {t for run in window for t in run.bench}
     for ticker in universe:
         if ticker not in seen:
             gaps.append(CoverageGap(
-                ticker=ticker, kind="absent_all", streak=len(window),
+                ticker=ticker,
+                # promoted by a swap the window's runs predate: scored on the
+                # bench every run, so "check listing status" would be false
+                kind="joined_from_bench" if ticker in benched_in_window else "absent_all",
+                streak=len(window),
                 runs_seen=0, runs_in_window=len(window),
                 since=window[0].date, until=latest_run.date,
             ))
@@ -449,7 +623,8 @@ def build_digest(
             ))
     for ticker in sorted(seen - set(universe)):
         gaps.append(CoverageGap(
-            ticker=ticker, kind="unconfigured",
+            ticker=ticker,
+            kind="moved_to_bench" if ticker in bench else "unconfigured",
             runs_seen=sum(1 for r in window if ticker in r.tickers),
             runs_in_window=len(window), until=latest_run.date,
         ))
@@ -457,6 +632,14 @@ def build_digest(
     busiest = sorted(
         per_ticker_changes.items(), key=lambda item: (-item[1], item[0])
     )[:5]
+
+    # looks back weak_windows digest windows, so it reads `runs`, not `window`
+    level_watch = _level_watch(runs, cfg)
+    bench_weeks, outgoing, outgoing_qualifies, pick = _swap_check(
+        latest_run, level_watch, _bench_weeks(runs, window, list(bench)),
+        list(universe), list(bench), cfg,
+    )
+    _, moved_out, moved_in = swap_universe(latest_run, list(universe))
 
     return WeeklyDigest(
         window_start=window[0].date,
@@ -468,9 +651,24 @@ def build_digest(
         coverage_gaps=gaps,
         bench=list(bench),
         notes=list(notes or []),
-        bench_weeks=_bench_weeks(window, list(bench)),
-        # looks back weak_windows digest windows, so it reads `runs`, not `window`
-        level_watch=_level_watch(runs, cfg),
+        bench_weeks=bench_weeks,
+        level_watch=level_watch,
+        swap_outgoing=outgoing,
+        swap_outgoing_qualifies=outgoing_qualifies,
+        swap_pick=pick,
+        bench_clearing=sum(
+            1 for b in bench_weeks if b.clears_tail and b.entry_block is None
+        ),
+        bench_clearing_growth=sum(
+            1 for b in bench_weeks
+            if b.clears_tail and b.entry_block is None and b.growth_tier == GROWTH
+        ),
+        bench_waiting=[
+            b.ticker for b in bench_weeks if b.clears_tail and b.entry_block is not None
+        ],
+        swap_min_growth=cfg.swap_min_growth,
+        swap_moved_out=moved_out,
+        swap_moved_in=moved_in,
     )
 
 
@@ -482,6 +680,249 @@ def _flag_cell(flags: list[str]) -> str:
     return ", ".join(f.replace("_", " ") for f in display_flags(flags)) or "n/a"
 
 
+def pct_beside_floor(value: float, floor: float) -> str:
+    """A fraction as percent points to 1 decimal, or to 2 when 1 decimal would
+    print the floor itself, so a value just under a line never reads as the
+    line ("40.0 fail", "15.0 fallback"). Shared with the bench screen."""
+    shown = f"{value * 100:.1f}"
+    if shown == f"{floor * 100:.1f}":
+        shown = f"{value * 100:.2f}"
+    return shown
+
+
+def _growth_cell(growth: float | None, tier: str | None, floor: float) -> str:
+    if growth is None or tier is None:
+        return "n/a"
+    return f"{pct_beside_floor(growth, floor)} {tier}"
+
+
+def _clears_cell(clears: bool | None, block: str | None = None) -> str:
+    if clears is None:
+        return "n/a"
+    if not clears:
+        return "no"
+    return "yes" if block is None else "yes, not yet eligible"
+
+
+def _names(tickers: list[str]) -> str:
+    return ", ".join(tickers)
+
+
+def _is(tickers: list[str]) -> str:
+    return "is" if len(tickers) == 1 else "are"
+
+
+SCREEN_CMD = "`python -m sentinel.screen`"
+
+
+def _swap_lines(digest: WeeklyDigest) -> list[str]:
+    """The SPEC 7.0.1 swap check in words: what the rule does this round, and
+    whether the bench is deep enough to act when a name next qualifies."""
+    floor = f"{digest.swap_min_growth * 100:.0f}"
+    tiers = (
+        f"Growth tier: yearly revenue growth of {floor}% or more. The swap "
+        f"takes the highest-scoring growth-tier name that clears the tail on "
+        f"entry (would rank above the bottom of the list once the outgoing name "
+        f"leaves), a slower grower only when no growth-tier name can."
+    )
+    lines = [tiers]
+    # the latest run predates the current roles: a change was made on this
+    # window's scores, so (at most one swap per round) what follows previews
+    # the next round instead of asking for a second swap now
+    preview = bool(digest.swap_moved_out or digest.swap_moved_in)
+    if preview:
+        moved = []
+        if digest.swap_moved_out:
+            moved.append(f"left the universe: {_names(digest.swap_moved_out)}")
+        if digest.swap_moved_in:
+            moved.append(f"joined it: {_names(digest.swap_moved_in)}")
+        lines += [
+            "",
+            f"The watchlist changed after the latest run ({digest.window_end}): "
+            f"{'; '.join(moved)}. That is this round's change (at most one swap "
+            "per round), so the check below previews the next round, read from "
+            "that run's scores under the current roles; the next digest retests "
+            "it on fresh runs.",
+        ]
+    check = "Swap check (preview of the next round)" if preview else "Swap check"
+    this_round = "next round" if preview else "this round"
+    promotes = "would promote" if preview else "promotes"
+    lines.append("")
+    out = digest.swap_outgoing
+    if out is None:
+        if digest.runs_in_window == 0:
+            return [*lines, "Swap check: n/a (no runs in the window)."]
+        return [*lines, "Swap check: n/a (no scored names on the latest run)."]
+    if not digest.bench_weeks:
+        if digest.swap_outgoing_qualifies:
+            return [
+                *lines,
+                f"{check}: {out} qualifies, but no bench name was scored "
+                "this window, so the swap cannot be tested: check the bench "
+                f"fetch in the run logs, or refresh the bench ({SCREEN_CMD}).",
+            ]
+        return [*lines, f"{check}: no name qualifies. Bench depth: n/a "
+                "(no bench snapshots this window)."]
+    waiting = digest.bench_waiting
+    tiers = {b.ticker: b.growth_tier for b in digest.bench_weeks}
+    blocks = {b.ticker: b.entry_block for b in digest.bench_weeks}
+    # mid-window names are eligible from the next window; warm-up has no set
+    # end, so only the former is worth putting a refresh off for
+    soon = [t for t in waiting if blocks.get(t) == MID_WINDOW]
+    stuck = [t for t in waiting if t not in soon]
+
+    def tagged(names: list[str]) -> str:
+        return _names([f"{t} (growth tier)" if tiers.get(t) == GROWTH else t for t in names])
+
+    def soon_text() -> str:
+        has = "it has" if len(soon) == 1 else "they have"
+        return f"{tagged(soon)} would clear once {has} a full window on the bench"
+
+    def stuck_line() -> str:
+        does = "it does" if len(stuck) == 1 else "they do"
+        return (
+            f"{tagged(stuck)} would clear but {_is(stuck)} in warm-up, which "
+            f"has no set end, so {does} not put off a bench refresh."
+        )
+
+    not_yet = (
+        f"{tagged(waiting)} would clear but {_is(waiting)} not eligible yet "
+        "(reason in the bench notes above)"
+    )
+
+    def unknown_clearing(exclude: str | None = None) -> list[BenchWeek]:
+        return [
+            b for b in digest.bench_weeks
+            if b.clears_tail and b.entry_block is None and b.growth_tier is None
+            and b.ticker != exclude
+        ]
+
+    def check_them(names: list[str]) -> str:
+        return "it" if len(names) == 1 else "them"
+
+    if digest.swap_outgoing_qualifies:
+        skipped = []
+        for w in digest.level_watch:
+            if w.ticker == out:
+                break
+            if w.qualifies:
+                skipped.append(w.ticker)
+        where = (
+            f"the first qualifier on the level table still in the universe; "
+            f"{_names(skipped)} left it"
+            if skipped else "the first qualifier on the level table"
+        )
+        lines.append(
+            f"{check}: {out} qualifies ({where}; confirm it is the "
+            "longest-standing one against the weekly records in SPEC.md 7.0)."
+        )
+        if digest.swap_pick is None:
+            if soon:
+                lines.append(
+                    "No eligible bench name clears the tail on entry, so there "
+                    f"is no swap {this_round}. {soon_text()}: recheck at the "
+                    "next digest before refreshing the bench."
+                )
+            else:
+                lines.append(
+                    "No eligible bench name clears the tail on entry, so there "
+                    f"is no swap {this_round}: refresh the bench ({SCREEN_CMD}) "
+                    "and propose the bench edit in the refresh PR."
+                )
+            if stuck:
+                lines.append(stuck_line())
+            return lines
+        pick = digest.swap_pick
+        if tiers.get(pick) == GROWTH:
+            lines.append(f"The rule {promotes} {pick}.")
+            pick_score = next(
+                (b.score_last for b in digest.bench_weeks if b.ticker == pick), None
+            )
+            higher = [
+                b.ticker for b in unknown_clearing(pick)
+                if pick_score is not None and b.score_last is not None
+                and b.score_last > pick_score
+            ]
+            if higher:
+                lines.append(
+                    f"Growth is n/a this window for {_names(higher)}, which "
+                    f"{'scores' if len(higher) == 1 else 'score'} higher and would "
+                    f"also clear: check {check_them(higher)} before the swap, "
+                    "since a growth-tier name with a higher score comes first."
+                )
+            if waiting:
+                lines.append(f"Not part of this round's pick: {not_yet}.")
+            return lines
+        # a fallback pick: say what growth first would still want checked
+        if tiers.get(pick) is None:
+            lines.append(
+                f"The rule {promotes} {pick}, but its growth is n/a this window, "
+                "so it was ranked with the slower growers: check its growth "
+                "before the swap."
+            )
+        else:
+            lines.append(
+                f"The rule {promotes} {pick}, a slower grower: no eligible "
+                "growth-tier bench name clears the tail, so the fallback applies."
+            )
+        unknown = [b.ticker for b in unknown_clearing(pick)]
+        if unknown:
+            lines.append(
+                f"Growth is n/a this window for {_names(unknown)}, which would "
+                f"also clear: check {check_them(unknown)} before taking the "
+                "fallback."
+            )
+        if waiting:
+            soon_growth = [t for t in soon if tiers.get(t) == GROWTH]
+            recheck = (
+                f" Growth comes first and {_names(soon_growth)} "
+                f"{_is(soon_growth)} eligible from the next window, so consider "
+                "rechecking at the next digest before taking the fallback."
+                if soon_growth else ""
+            )
+            lines.append(f"Not part of this round's pick: {not_yet}.{recheck}")
+        return lines
+    n, g = digest.bench_clearing, digest.bench_clearing_growth
+    lines.append(
+        f"{check}: no name qualifies, so no swap {this_round}. Bench depth, "
+        f"tested against the lowest score ({out}): {n} eligible bench "
+        f"{'name' if n == 1 else 'names'} would clear the tail on entry "
+        f"({g} growth-tier)."
+    )
+    if n == 0:
+        if soon:
+            lines.append(
+                f"{soon_text()}: recheck at the next digest before refreshing "
+                "the bench."
+            )
+        else:
+            lines.append(
+                "None would clear: refresh the bench before a name qualifies "
+                f"({SCREEN_CMD})."
+            )
+        if stuck:
+            lines.append(stuck_line())
+        return lines
+    if g == 0:
+        unknown = [b.ticker for b in unknown_clearing()]
+        if unknown:
+            lines.append(
+                "No eligible growth-tier name would clear. Growth is n/a this window "
+                f"for {_names(unknown)}, so check {check_them(unknown)} before "
+                f"counting on {check_them(unknown)}; a screen may find a "
+                f"growth-tier name ({SCREEN_CMD})."
+            )
+        else:
+            lines.append(
+                "Only slower growers among the eligible names would clear: a "
+                "screen may find a "
+                f"growth-tier name ({SCREEN_CMD})."
+            )
+    if waiting:
+        lines.append(f"Also, {not_yet}.")
+    return lines
+
+
 def _r40_cell(value: float | None) -> str:
     """r40_fcf as points with the Rule of 40 verdict beside it: a low score for
     penalties and a low score for a failed thesis are different conversations
@@ -489,10 +930,7 @@ def _r40_cell(value: float | None) -> str:
     if value is None:
         return "n/a"
     verdict = "pass" if value >= R40_BAR else "fail"
-    shown = f"{value * 100:.1f}"
-    if shown == f"{R40_BAR * 100:.1f}":
-        shown = f"{value * 100:.2f}"   # so "40.0 fail" cannot appear
-    return f"{shown} {verdict}"
+    return f"{pct_beside_floor(value, R40_BAR)} {verdict}"
 
 
 def _weak_status(w: WeakWeek) -> str:
@@ -580,11 +1018,13 @@ def render_markdown(
             "windows (last "
             "run of each) the name has held a bottom slot while r40_trend-live. "
             f"A name at {needed} of {needed} windows qualifies and is a swap "
-            "candidate: swap it for the bench name with the highest "
-            "fundamental score if that name would rank above the bottom "
-            f"{len(digest.level_watch)} on entry, otherwise refresh the bench. "
-            "At most one swap per round, longest-standing qualifier first "
-            "(SPEC 7.0.1, amended round 14). r40 fcf is context, not a hold.",
+            "candidate: swap it for the highest-scoring bench name growing "
+            f"{digest.swap_min_growth * 100:.0f}% or more that would rank above "
+            f"the bottom {len(digest.level_watch)} on entry (a slower grower "
+            "only when none does), otherwise refresh the bench; the swap check "
+            "under the bench table applies it. At most one swap per round, "
+            "longest-standing qualifier first (SPEC 7.0.1, amended round 14). "
+            "r40 fcf is context, not a hold.",
             "",
             "| ticker | fundamental | r40 fcf | rank | status | business flags |",
             "| --- | --- | --- | --- | --- | --- |",
@@ -642,16 +1082,26 @@ def render_markdown(
             "Unranked, and never part of any watchlist number.",
             "",
             "| ticker | runs seen | composite | window delta | fundamental "
-            "| r40 fcf | latest flags |",
-            "| --- | --- | --- | --- | --- | --- | --- |",
+            "| r40 fcf | growth | clears tail | latest flags |",
+            "| --- | --- | --- | --- | --- | --- | --- | --- | --- |",
         ]
         for b in digest.bench_weeks:
             lines.append(
                 f"| {b.ticker} | {b.runs_seen} of {digest.runs_in_window} | "
                 f"{_fmt(b.composite_last)} | {_fmt(b.composite_delta, '+.1f')} | "
                 f"{_fmt(b.score_last)} | {_r40_cell(b.r40_fcf_last)} | "
+                f"{_growth_cell(b.growth_last, b.growth_tier, digest.swap_min_growth)} | "
+                f"{_clears_cell(b.clears_tail, b.entry_block)} | "
                 f"{_flag_cell(b.flags_latest)} |"
             )
+        blocked = [b for b in digest.bench_weeks if b.entry_block is not None]
+        if blocked:
+            lines += [
+                "",
+                "Not swap candidates this window: "
+                + "; ".join(f"{b.ticker} ({b.entry_block})" for b in blocked)
+                + ".",
+            ]
         scored_bench = {b.ticker for b in digest.bench_weeks}
         unseen = [t for t in digest.bench if t not in scored_bench]
         if unseen:
@@ -666,6 +1116,7 @@ def render_markdown(
             "starts with the first scheduled run after it ships, so early "
             "windows are warming up rather than failing."
         )
+    lines += ["", *_swap_lines(digest)]
     lines += [
         "",
         "## Owner checklist",

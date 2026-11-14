@@ -40,6 +40,8 @@ class TickerSnapshot:
     net_revisions_30d: int | None = None
     short_pct_float: float | None = None
     shares_short: float | None = None
+    growth: float | None = None     # yearly revenue growth; the swap rule's
+                                    # growth tier reads it (null before 2026-11)
 
 
 def _snapshots(raw: object) -> dict[str, TickerSnapshot]:
@@ -136,6 +138,7 @@ def _ticker_snapshot(sc: Scorecard, rank: int | None) -> TickerSnapshot:
         net_revisions_30d=net_revisions_30d(signals) if signals is not None else None,
         short_pct_float=signals.short_pct_float if signals is not None else None,
         shares_short=signals.shares_short if signals is not None else None,
+        growth=sc.growth,
     )
 
 

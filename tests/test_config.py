@@ -7,7 +7,7 @@ from sentinel.config import ChangesCfg, load_config
 
 
 def _write_cfg(tmp_path, news_block: str):
-    (tmp_path / "config").mkdir()
+    (tmp_path / "config").mkdir(parents=True)
     (tmp_path / "config" / "watchlist.yaml").write_text(
         "universe:\n  - ticker: CRWD\n    tags: [r40]\n" + news_block
     )
@@ -159,3 +159,48 @@ def test_recipients_is_accepted_and_reserved(tmp_path, caplog):
     with caplog.at_level(logging.WARNING, logger="sentinel.config"):
         load_config(path)
     assert _warnings(caplog) == ""
+
+
+def test_screen_candidates_load_uppercased_and_typos_warn(tmp_path, caplog):
+    path = _write_cfg(tmp_path, "screen:\n  candidates: [qlys, Intu]\n  candidate: [X]\n")
+    with caplog.at_level(logging.WARNING, logger="sentinel.config"):
+        cfg = load_config(path)
+    assert cfg.screen_candidates == ("QLYS", "INTU")
+    assert "candidate" in _warnings(caplog) and "screen: block" in _warnings(caplog)
+
+
+def test_repo_screen_pool_never_overlaps_the_scored_names():
+    # a name already scored daily needs no screen; overlap means a stale pool
+    cfg = load_config()
+    assert cfg.screen_candidates
+    assert not set(cfg.screen_candidates) & (set(cfg.all_tickers) | set(cfg.bench))
+    assert cfg.changes.swap_min_growth == 0.15
+
+
+def test_malformed_screen_block_warns_and_never_breaks_the_load(tmp_path, caplog):
+    # the daily run loads this file; only the bench screen reads screen:
+    path = _write_cfg(tmp_path, "screen: [QLYS]\n")
+    with caplog.at_level(logging.WARNING, logger="sentinel.config"):
+        cfg = load_config(path)
+    assert cfg.screen_candidates == ()
+    assert "screen: must be a block" in _warnings(caplog)
+
+
+def test_screen_candidates_as_one_string_split_on_commas(tmp_path, caplog):
+    path = _write_cfg(tmp_path / "a", "screen:\n  candidates: qlys, intu\n")
+    assert load_config(path).screen_candidates == ("QLYS", "INTU")
+    path = _write_cfg(tmp_path / "b", "screen:\n  candidates: {a: 1}\n")
+    with caplog.at_level(logging.WARNING, logger="sentinel.config"):
+        assert load_config(path).screen_candidates == ()
+    assert "screen.candidates must be a list" in _warnings(caplog)
+
+
+def test_swap_min_growth_out_of_range_or_not_a_number_falls_back(tmp_path, caplog):
+    for bad in ("15", "fast", "true"):
+        path = _write_cfg(tmp_path / bad, f"changes:\n  swap_min_growth: {bad}\n")
+        with caplog.at_level(logging.WARNING, logger="sentinel.config"):
+            assert load_config(path).changes.swap_min_growth == 0.15
+        assert "0.15 means 15 percent" in _warnings(caplog)
+        caplog.clear()
+    path = _write_cfg(tmp_path / "ok", "changes:\n  swap_min_growth: 0.2\n")
+    assert load_config(path).changes.swap_min_growth == 0.2
