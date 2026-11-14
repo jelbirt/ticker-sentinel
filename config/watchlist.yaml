@@ -63,6 +63,13 @@ universe:
 # pass r40_fcf, 18 to 23 percent growth, fundamental 46 to 74); TWLO dropped
 # (fails r40_fcf even on corrected revenue history).
 bench: [WDAY, ZM, S, GWRE, ESTC, ZS]   # reserve swap candidates, shadow-scored, never ranked; owner-gated like universe
+# Bench screen pool: `python -m sentinel.screen` scores these in memory when the
+# weekly digest's swap check says the bench needs refreshing. Never fetched by a
+# run and never cached; edit freely. Seeded with the round-7 screen's names that
+# are not already in the universe or on the bench (CWAN dropped: no price data).
+screen:
+  candidates: [QLYS, INTU, ADBE, CRM, ZETA, KVYO, DUOL, DOCS, APP, VEEV, AXON, PATH,
+               PCOR, NTNX, TOST, TYL, PCTY, BILL, TENB, TTD, SAIL, PAYC, TWLO]
 benchmark: SPY
 report:
   top_n: 10
@@ -86,6 +93,7 @@ changes:                 # day-over-day change detection (defaults shown; all op
   digest_decay_runs: 2   # decay-gate hits in the weekly digest window for the attention list
   weak_bottom_n: 3       # level rule (SPEC 7.0.1 round 5): bottom N fundamental scores on a window's last run
   weak_windows: 3        # consecutive digest windows in that bottom N before a name is "persistently weak"
+  swap_min_growth: 0.15  # bench names growing at least this much a year are promoted first; slower growers only as fallback
 news:
   feeds:               # general feeds — every entry text-matched to your tickers
     - https://www.cnbc.com/id/100003114/device/rss/rss.html          # CNBC Top Business

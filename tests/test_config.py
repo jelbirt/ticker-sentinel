@@ -159,3 +159,19 @@ def test_recipients_is_accepted_and_reserved(tmp_path, caplog):
     with caplog.at_level(logging.WARNING, logger="sentinel.config"):
         load_config(path)
     assert _warnings(caplog) == ""
+
+
+def test_screen_candidates_load_uppercased_and_typos_warn(tmp_path, caplog):
+    path = _write_cfg(tmp_path, "screen:\n  candidates: [qlys, Intu]\n  candidate: [X]\n")
+    with caplog.at_level(logging.WARNING, logger="sentinel.config"):
+        cfg = load_config(path)
+    assert cfg.screen_candidates == ("QLYS", "INTU")
+    assert "candidate" in _warnings(caplog) and "screen: block" in _warnings(caplog)
+
+
+def test_repo_screen_pool_never_overlaps_the_scored_names():
+    # a name already scored daily needs no screen; overlap means a stale pool
+    cfg = load_config()
+    assert cfg.screen_candidates
+    assert not set(cfg.screen_candidates) & (set(cfg.all_tickers) | set(cfg.bench))
+    assert cfg.changes.swap_min_growth == 0.15

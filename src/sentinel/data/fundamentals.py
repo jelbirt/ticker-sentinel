@@ -558,12 +558,23 @@ def get_fundamentals(ticker: str, force_refresh: bool = False) -> tuple[Fundamen
         except Exception as exc:  # a disk problem must not cost us the report
             log.warning("cache save failed for %s: %s", ticker, exc)
             notes.append(f"{ticker}: cache not updated ({exc})")
-    df = sanitize_share_counts(ticker, df, (meta or {}).get("shares_outstanding"), notes)
+    return inputs_from_frame(ticker, df, meta, notes), notes
 
+
+def inputs_from_frame(
+    ticker: str,
+    df: pd.DataFrame,
+    meta: dict[str, Any] | None,
+    notes: list[str],
+) -> FundamentalInputs:
+    """A cached-shaped (frame, meta) pair -> FundamentalInputs, scrubbing share
+    counts at read time. Shared by the run and the bench screen, so a screened
+    candidate is read exactly the way a cached name is."""
+    df = sanitize_share_counts(ticker, df, (meta or {}).get("shares_outstanding"), notes)
     annual_revenue = {
         date.fromisoformat(k): v for k, v in (meta or {}).get("annual_revenue", {}).items()
     }
-    inputs = inputs_from_canonical(
+    return inputs_from_canonical(
         ticker,
         df,
         (meta or {}).get("market_cap"),
@@ -572,4 +583,3 @@ def get_fundamentals(ticker: str, force_refresh: bool = False) -> tuple[Fundamen
         company_name=(meta or {}).get("company_name"),
         shares_outstanding=(meta or {}).get("shares_outstanding"),
     )
-    return inputs, notes

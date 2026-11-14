@@ -17,6 +17,7 @@ from pathlib import Path
 from sentinel.config import ChangesCfg, Config, load_config
 from sentinel.data.history import load_history
 from sentinel.indicators.fundamentals import R40_BAR, display_flags
+from sentinel.rotation import GROWTH, Entrant, enters_above_tail, growth_tier, pick_entrant
 from sentinel.report.changes import RunSnapshot, TickerSnapshot, diff_runs
 
 # manual refreshes before the digest starts prompting the automation decision
@@ -110,6 +111,9 @@ class BenchWeek:
     score_last: float | None = None        # fundamental leg, for the level-rule comparison
     r40_fcf_last: float | None = None      # fraction; rendered as points with pass/fail
     flags_latest: list[str] = field(default_factory=list)
+    growth_last: float | None = None       # yearly revenue growth, fraction
+    growth_tier: str | None = None         # rotation.growth_tier(); None = unknown
+    clears_tail: bool | None = None        # would enter above the bottom N on entry
 
 
 @dataclass(frozen=True)
@@ -190,6 +194,13 @@ class WeeklyDigest:
     notes: list[str]                   # degradation notes (unreadable history etc.)
     bench_weeks: list[BenchWeek] = field(default_factory=list)
     level_watch: list[WeakWeek] = field(default_factory=list)  # bottom N, qualifiers first
+    swap_outgoing: str | None = None   # name the on-entry test removes (first qualifier,
+                                       # else the lowest score: a what-if)
+    swap_outgoing_qualifies: bool = False
+    swap_pick: str | None = None       # bench name the rule would promote, None = refresh
+    bench_clearing: int = 0            # bench names that clear the tail on entry
+    bench_clearing_growth: int = 0     # of those, growth-tier names
+    swap_min_growth: float = 0.15      # cfg value the tiers were read against
 
 
 def _window(runs: list[RunSnapshot], cfg: ChangesCfg) -> list[RunSnapshot]:
@@ -327,6 +338,7 @@ def _bench_weeks(
         # composite from one run with "n/a" fundamentals from another
         scores = [a.score for a in appearances if a.score is not None]
         r40s = [a.r40_fcf for a in appearances if a.r40_fcf is not None]
+        growths = [a.growth for a in appearances if a.growth is not None]
         weeks.append(BenchWeek(
             ticker=ticker,
             runs_seen=len(appearances),
@@ -336,8 +348,55 @@ def _bench_weeks(
             score_last=scores[-1] if scores else None,
             r40_fcf_last=r40s[-1] if r40s else None,
             flags_latest=list(appearances[-1].flags) if appearances else [],
+            growth_last=growths[-1] if growths else None,
         ))
     return weeks
+
+
+def _swap_check(
+    latest: RunSnapshot,
+    level_watch: list[WeakWeek],
+    bench_weeks: list[BenchWeek],
+    bench: list[str],
+    cfg: ChangesCfg,
+) -> tuple[list[BenchWeek], str | None, bool, str | None]:
+    """Run the SPEC 7.0.1 on-entry test for every bench name.
+
+    The outgoing name is the first qualifying level-table row (the rule swaps
+    the longest-standing qualifier; the digest counts at most `weak_windows`
+    windows, so the full count is confirmed against the weekly records).
+    With no qualifier the test still runs against the lowest-scoring name, as
+    a what-if: it tells the owner whether the bench could act if a name
+    qualified, which is what decides when the bench needs refreshing.
+    Only configured bench names outside the latest run's universe are
+    entrants: a window can still hold bench snapshots of a name promoted
+    mid-week, or of one dropped from the bench, and neither can be swapped in.
+    Their rows keep the growth tier but read n/a on the on-entry test.
+    Returns the bench rows with growth tier and on-entry result filled in,
+    the outgoing name, whether it qualifies, and the rule's pick.
+    """
+    universe = {t: s.score for t, s in latest.tickers.items() if s.score is not None}
+    if not universe:
+        return bench_weeks, None, False, None
+    qualifier = next((w for w in level_watch if w.qualifies), None)
+    if qualifier is not None:
+        outgoing, qualifies = qualifier.ticker, True
+    else:
+        outgoing, qualifies = min(universe, key=lambda t: (universe[t], t)), False
+    filled: list[BenchWeek] = []
+    entrants: list[Entrant] = []
+    for b in bench_weeks:
+        tier = growth_tier(b.growth_last, cfg.swap_min_growth)
+        entrant = b.ticker in bench and b.ticker not in latest.tickers
+        clears = (
+            None if b.score_last is None or not entrant
+            else enters_above_tail(b.score_last, universe, outgoing, cfg.weak_bottom_n)
+        )
+        filled.append(BenchWeek(**{**asdict(b), "growth_tier": tier, "clears_tail": clears}))
+        if entrant:
+            entrants.append(Entrant(b.ticker, b.score_last, tier, clears))
+    pick = pick_entrant(entrants)
+    return filled, outgoing, qualifies, pick.ticker if pick is not None else None
 
 
 def build_digest(
@@ -458,6 +517,12 @@ def build_digest(
         per_ticker_changes.items(), key=lambda item: (-item[1], item[0])
     )[:5]
 
+    # looks back weak_windows digest windows, so it reads `runs`, not `window`
+    level_watch = _level_watch(runs, cfg)
+    bench_weeks, outgoing, outgoing_qualifies, pick = _swap_check(
+        latest_run, level_watch, _bench_weeks(window, list(bench)), list(bench), cfg
+    )
+
     return WeeklyDigest(
         window_start=window[0].date,
         window_end=latest_run.date,
@@ -468,9 +533,16 @@ def build_digest(
         coverage_gaps=gaps,
         bench=list(bench),
         notes=list(notes or []),
-        bench_weeks=_bench_weeks(window, list(bench)),
-        # looks back weak_windows digest windows, so it reads `runs`, not `window`
-        level_watch=_level_watch(runs, cfg),
+        bench_weeks=bench_weeks,
+        level_watch=level_watch,
+        swap_outgoing=outgoing,
+        swap_outgoing_qualifies=outgoing_qualifies,
+        swap_pick=pick,
+        bench_clearing=sum(1 for b in bench_weeks if b.clears_tail),
+        bench_clearing_growth=sum(
+            1 for b in bench_weeks if b.clears_tail and b.growth_tier == GROWTH
+        ),
+        swap_min_growth=cfg.swap_min_growth,
     )
 
 
@@ -480,6 +552,84 @@ def _fmt(value: float | None, spec: str = ".1f") -> str:
 
 def _flag_cell(flags: list[str]) -> str:
     return ", ".join(f.replace("_", " ") for f in display_flags(flags)) or "n/a"
+
+
+def _growth_cell(growth: float | None, tier: str | None) -> str:
+    if growth is None or tier is None:
+        return "n/a"
+    return f"{growth * 100:.1f} {tier}"
+
+
+def _clears_cell(clears: bool | None) -> str:
+    return "n/a" if clears is None else ("yes" if clears else "no")
+
+
+SCREEN_CMD = "`python -m sentinel.screen`"
+
+
+def _swap_lines(digest: WeeklyDigest) -> list[str]:
+    """The SPEC 7.0.1 swap check in words: what the rule does this round, and
+    whether the bench is deep enough to act when a name next qualifies."""
+    floor = f"{digest.swap_min_growth * 100:.0f}"
+    tiers = (
+        f"Growth tier: yearly revenue growth of {floor}% or more. The swap "
+        f"takes the highest-scoring growth-tier name that clears the tail on "
+        f"entry (would rank above the bottom of the list once the outgoing name "
+        f"leaves), a slower grower only when no growth-tier name can."
+    )
+    out = digest.swap_outgoing
+    if out is None:
+        return [tiers, "", "Swap check: n/a (no scored names on the latest run)."]
+    if digest.swap_outgoing_qualifies:
+        lines = [
+            tiers,
+            "",
+            f"Swap check: {out} qualifies (the first qualifier on the level "
+            "table; confirm it is the longest-standing one against the weekly "
+            "records in SPEC.md 7.0).",
+        ]
+        if digest.swap_pick is None:
+            lines.append(
+                "No bench name clears the tail on entry, so there is no swap "
+                f"this round: refresh the bench ({SCREEN_CMD}) and propose the "
+                "bench edit in the refresh PR."
+            )
+        elif digest.bench_clearing_growth:
+            lines.append(f"The rule promotes {digest.swap_pick}.")
+        elif next(
+            (b.growth_tier for b in digest.bench_weeks if b.ticker == digest.swap_pick),
+            None,
+        ) is None:
+            lines.append(
+                f"The rule promotes {digest.swap_pick}, but its growth is n/a "
+                "this window, so it was ranked with the slower growers: check "
+                "its growth before the swap."
+            )
+        else:
+            lines.append(
+                f"The rule promotes {digest.swap_pick}, a slower grower: no "
+                "growth-tier bench name clears the tail, so the fallback applies."
+            )
+        return lines
+    lines = [
+        tiers,
+        "",
+        "Swap check: no name qualifies, so no swap this round. Bench depth, "
+        f"tested against the lowest score ({out}): {digest.bench_clearing} "
+        f"bench name(s) would clear the tail on entry, "
+        f"{digest.bench_clearing_growth} of them growth-tier.",
+    ]
+    if digest.bench_clearing == 0:
+        lines.append(
+            "None would clear: refresh the bench before a name qualifies "
+            f"({SCREEN_CMD})."
+        )
+    elif digest.bench_clearing_growth == 0:
+        lines.append(
+            "Only slower growers would clear: a screen may find a growth-tier "
+            f"name ({SCREEN_CMD})."
+        )
+    return lines
 
 
 def _r40_cell(value: float | None) -> str:
@@ -642,16 +792,19 @@ def render_markdown(
             "Unranked, and never part of any watchlist number.",
             "",
             "| ticker | runs seen | composite | window delta | fundamental "
-            "| r40 fcf | latest flags |",
-            "| --- | --- | --- | --- | --- | --- | --- |",
+            "| r40 fcf | growth | clears tail | latest flags |",
+            "| --- | --- | --- | --- | --- | --- | --- | --- | --- |",
         ]
         for b in digest.bench_weeks:
             lines.append(
                 f"| {b.ticker} | {b.runs_seen} of {digest.runs_in_window} | "
                 f"{_fmt(b.composite_last)} | {_fmt(b.composite_delta, '+.1f')} | "
                 f"{_fmt(b.score_last)} | {_r40_cell(b.r40_fcf_last)} | "
+                f"{_growth_cell(b.growth_last, b.growth_tier)} | "
+                f"{_clears_cell(b.clears_tail)} | "
                 f"{_flag_cell(b.flags_latest)} |"
             )
+        lines += ["", *_swap_lines(digest)]
         scored_bench = {b.ticker for b in digest.bench_weeks}
         unseen = [t for t in digest.bench if t not in scored_bench]
         if unseen:

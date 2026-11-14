@@ -91,6 +91,10 @@ class BackfillResult:
     cells_filled: int = 0  # empty cells inside the cached range filled from EDGAR
     seeded: bool = False  # bench name whose yfinance overlap had to be fetched
     base_note: str | None = None  # gate-selected composite base, when it mattered
+    # the verified merge, kept in memory for the bench screen (ACCEPT only);
+    # never compared or printed, and never written unless `apply`
+    merged: pd.DataFrame | None = field(default=None, repr=False, compare=False)
+    meta: dict[str, Any] | None = field(default=None, repr=False, compare=False)
 
     @property
     def gained(self) -> int:
@@ -327,6 +331,7 @@ def backfill_ticker(
         return result
 
     merged = merge_backfill(cached_df, edgar)
+    result.merged, result.meta = merged, meta
     result.status = ACCEPT
     result.quarters_after = int(merged.shape[1])
     result.cells_filled = count_filled_cells(cached_df, merged)

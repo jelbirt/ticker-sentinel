@@ -335,7 +335,7 @@ class TestBenchSection:
             1, date(2026, 8, 15),
         )
         assert "WDAY." in text                      # the configured-names line
-        assert "| WDAY | 2 of 2 | 57.0 | -4.0 | n/a | n/a | dilution |" in text
+        assert "| WDAY | 2 of 2 | 57.0 | -4.0 | n/a | n/a | n/a | n/a | dilution |" in text
         assert "compare directly with the attention list" in text
 
     def test_configured_bench_name_without_snapshots_is_named(self):
@@ -575,6 +575,120 @@ class TestLevelRule:
 
     def test_empty_history_has_no_rows(self):
         assert build_digest([], ["AAA"], [], CFG).level_watch == []
+
+
+class TestSwapCheck:
+    """SPEC 7.0.1 condition 2 with the round-15 growth preference: the swap
+    takes the best growth-tier bench name that clears the tail on entry, a
+    slower grower only when none can, and no swap when nothing clears."""
+
+    # same shape as TestLevelRule: CCC, DDD, EEE qualify after 15 runs and
+    # CCC (lowest score) is the first qualifier
+    BASE = {"AAA": 90.0, "BBB": 80.0, "CCC": 10.0, "DDD": 20.0, "EEE": 30.0}
+
+    def _runs(self, bench: dict[str, tuple[float | None, float | None]],
+              n_runs: int = 15) -> list[RunSnapshot]:
+        def snap(score, growth):
+            return TickerSnapshot(composite=score, score=score, growth=growth)
+        return [
+            RunSnapshot(
+                f"2026-08-{1 + i:02d}", "scheduled",
+                {t: _scored(v) for t, v in self.BASE.items()},
+                {t: snap(s, g) for t, (s, g) in bench.items()},
+            )
+            for i in range(n_runs)
+        ]
+
+    def _digest(self, bench, n_runs: int = 15):
+        return build_digest(self._runs(bench, n_runs), list(self.BASE), list(bench), CFG)
+
+    def test_growth_name_beats_a_higher_scoring_slow_grower(self):
+        # after CCC leaves, GRO (85) sits above DDD, EEE and BBB: clears
+        d = self._digest({"SLOW": (95.0, 0.10), "GRO": (85.0, 0.20)})
+        assert d.swap_outgoing == "CCC" and d.swap_outgoing_qualifies
+        assert d.swap_pick == "GRO"
+        rows = {b.ticker: b for b in d.bench_weeks}
+        assert rows["GRO"].growth_tier == "growth" and rows["GRO"].clears_tail
+        assert rows["SLOW"].growth_tier == "fallback" and rows["SLOW"].clears_tail
+        assert (d.bench_clearing, d.bench_clearing_growth) == (2, 1)
+        text = render_markdown(d, 15, date(2026, 8, 15))
+        assert "Swap check: CCC qualifies" in text
+        assert "The rule promotes GRO." in text
+        assert "| 20.0 growth | yes |" in text
+
+    def test_promoted_or_unbenched_name_in_the_window_is_not_an_entrant(self):
+        # a mid-week swap leaves bench snapshots of the promoted name (BBB,
+        # now in the universe) and of a name dropped from the bench (OLD) in
+        # the window: neither can be swapped in
+        runs = self._runs({"BBB": (99.0, 0.30), "OLD": (98.0, 0.30), "GRO": (85.0, 0.20)})
+        d = build_digest(runs, list(self.BASE), ["GRO"], CFG)
+        rows = {b.ticker: b for b in d.bench_weeks}
+        assert set(rows) == {"BBB", "OLD", "GRO"}
+        assert rows["BBB"].clears_tail is None and rows["OLD"].clears_tail is None
+        assert d.swap_pick == "GRO" and d.bench_clearing == 1
+
+    def test_unknown_growth_pick_is_said_as_unknown_not_slow(self):
+        # history recorded before the growth field: the tier is n/a
+        d = self._digest({"OLDREC": (85.0, None)})
+        assert d.swap_pick == "OLDREC"
+        text = render_markdown(d, 15, date(2026, 8, 15))
+        assert "its growth is n/a this window" in text
+        assert "a slower grower: no" not in text
+
+    def test_slow_grower_is_the_fallback_when_no_growth_name_clears(self):
+        # GRO at 25 has only DDD below it once CCC leaves: does not clear
+        d = self._digest({"SLOW": (95.0, 0.10), "GRO": (25.0, 0.20)})
+        assert d.swap_pick == "SLOW"
+        text = render_markdown(d, 15, date(2026, 8, 15))
+        assert "The rule promotes SLOW, a slower grower" in text
+
+    def test_nothing_clears_means_refresh_the_bench(self):
+        d = self._digest({"GRO": (25.0, 0.20), "SLOW": (15.0, 0.05)})
+        assert d.swap_pick is None and d.bench_clearing == 0
+        text = render_markdown(d, 15, date(2026, 8, 15))
+        assert "no swap this round: refresh the bench" in text
+        assert "python -m sentinel.screen" in text
+
+    def test_a_tie_is_not_above(self):
+        # 80.0 ties BBB: only DDD and EEE are strictly below, so it fails
+        d = self._digest({"TIE": (80.0, 0.20)})
+        assert d.bench_weeks[0].clears_tail is False
+
+    def test_unknown_growth_is_never_growth_tier(self):
+        d = self._digest({"UNK": (95.0, None), "GRO": (85.0, 0.20)})
+        rows = {b.ticker: b for b in d.bench_weeks}
+        assert rows["UNK"].growth_tier is None
+        assert d.swap_pick == "GRO"
+        assert "| UNK |" in render_markdown(d, 15, date(2026, 8, 15))
+
+    def test_threshold_comes_from_config(self):
+        cfg = ChangesCfg(swap_min_growth=0.25)
+        runs = self._runs({"SLOW": (95.0, 0.10), "GRO": (85.0, 0.20)})
+        d = build_digest(runs, list(self.BASE), ["SLOW", "GRO"], cfg)
+        assert d.swap_pick == "SLOW"           # 20% is below a 25% floor
+        assert "25% or more" in render_markdown(d, 15, date(2026, 8, 15))
+
+    def test_no_qualifier_reports_bench_depth_as_a_what_if(self):
+        # 4 runs: no full window end yet, so nothing qualifies
+        d = self._digest({"SLOW": (95.0, 0.10)}, n_runs=4)
+        assert not d.swap_outgoing_qualifies and d.swap_outgoing == "CCC"
+        assert d.swap_pick == "SLOW"           # what the rule would do
+        text = render_markdown(d, 4, date(2026, 8, 15))
+        assert "no name qualifies, so no swap this round" in text
+        assert "1 bench name(s) would clear the tail on entry, 0 of them growth-tier" in text
+        assert "Only slower growers would clear" in text
+
+    def test_empty_bench_depth_says_refresh(self):
+        d = self._digest({"LOW": (15.0, 0.30)}, n_runs=4)
+        text = render_markdown(d, 4, date(2026, 8, 15))
+        assert "None would clear: refresh the bench before a name qualifies" in text
+
+    def test_swap_fields_reach_the_json(self):
+        d = self._digest({"GRO": (85.0, 0.20)})
+        payload = json.loads(render_json(d, 15, date(2026, 8, 15)))
+        assert payload["swap_pick"] == "GRO"
+        assert payload["bench_weeks"][0]["clears_tail"] is True
+        assert payload["bench_weeks"][0]["growth_tier"] == "growth"
 
 
 class TestJsonOutput:

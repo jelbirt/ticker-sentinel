@@ -46,7 +46,7 @@ class TestSnapshot:
         sc = _sc(
             "AAA",
             composite=71.2, score=68.0, technical_score=76.1,
-            r40_fcf=0.52, r40_trend=0.03, valuation="fair",
+            r40_fcf=0.52, r40_trend=0.03, valuation="fair", growth=0.24,
             flags=["passes_all_r40"],
             tech=TechnicalSnapshot(trend_state="uptrend", golden_cross_recent=True),
             signals=SignalSnapshot(
@@ -62,6 +62,7 @@ class TestSnapshot:
         assert t.net_revisions_30d == 4
         assert t.short_pct_float == 0.021 and t.shares_short == 2_000_000
         assert t.flags == ["passes_all_r40"]
+        assert t.growth == 0.24          # read by the swap rule's growth tier
 
     def test_rank_follows_list_order(self):
         run = snapshot_from_scorecards(

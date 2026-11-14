@@ -304,6 +304,31 @@ What decides the outcome:
   stays out of the backfilled field set (Amendment 2), because the overlap gate
   cannot see split-driven basis breaks outside its window.
 
+**Bench refresh (adopted 2026-11-14).** The bench only helps if a name on it
+can clear the tail when a name qualifies. Two pieces keep it that way:
+
+1. Weekly, automatic: the digest's bench table carries each name's growth and
+   whether it clears the tail on entry, and a swap-check line under it says
+   what the rule does this round: the name it promotes when a name qualifies,
+   or "refresh the bench" when none clears. With no qualifier it tests depth
+   against the lowest-scoring name, so an empty or slower-grower-only bench
+   shows up before a name qualifies.
+2. On demand, when the digest asks for it: `python -m sentinel.screen` scores
+   the `screen.candidates` pool in `config/watchlist.yaml` in memory with the
+   repo's own scoring (current yfinance statements, deepened by EDGAR history
+   behind the backfill verification gate; yfinance alone when the gate
+   rejects, which leaves the name in warm-up), measures each name against the
+   latest run in `run_history.json`, and prints a table plus the name the rule
+   would pick over the bench and the live candidates together. It writes
+   nothing; `--tickers` screens names outside the pool. It needs the network,
+   so it is never scheduled and never in tests.
+
+Adding a screened name to the bench is the usual owner-gated config edit in
+the refresh PR, which also moves it out of `screen.candidates` (a test fails
+on overlap). It then follows the promotion step above (backfill dry run,
+owner-gated apply after merge) and the round-7 bench-before-promotion line:
+one window of shadow scoring before it can be swapped in.
+
 #### 7.0.1 Rotation rubric (built round by round from the weekly digests)
 The first 3 refreshes are calibration rounds: each one records which digest
 evidence actually drove a decision and which was noise, so the rubric below is
@@ -374,10 +399,13 @@ vs staying manual.
   1. The name must be `r40_trend`-live. Warm-up names score partly from
      annual data (`growth_from_annual`, `insufficient_history`), so their
      level is not yet trustworthy; a data-quality flag disqualifies.
-  2. A qualifier is a swap candidate (amended round 14). Swap it for the
-     bench name with the highest fundamental score, provided that name would
-     rank above the bottom `weak_bottom_n` on entry, meaning in the universe
-     after the outgoing name is removed (the round-7 tail rule below). At
+  2. A qualifier is a swap candidate (amended round 14; growth preference
+     added 2026-11-14). Swap it for the highest-scoring bench name growing
+     at least `changes.swap_min_growth` (15 percent yearly revenue growth)
+     that would rank above the bottom `weak_bottom_n` on entry, meaning in
+     the universe after the outgoing name is removed (the round-7 tail rule
+     below). Only when no such name clears does the highest-scoring slower
+     grower that clears take the slot (growth first, fallback, below). At
      most one swap per round: when several names qualify, the one with the
      most consecutive bottom-3 windows goes first and the rest wait for the
      next round. The digest caps its count at `weak_windows`, so the full
@@ -442,6 +470,18 @@ vs staying manual.
   swap decision reads the same numbers the watchlist is scored on.
   Fundamentals are constant inside a window by construction, so one window
   is enough.
+- **Growth first, slower growers as fallback (owner, 2026-11-14).** Settles
+  the question round 7 left open (QLYS 66.7, INTU 65.7, ADBE 57.8 and CRM
+  53.5 scored well while growing 10 to 14 percent). This is a growth
+  watchlist: on 11-14, 19 of 20 universe names grow 17.8 percent or more
+  (OKTA, at 11.2, is the exception). Margin-led names outscore growers on
+  the fundamental leg, partly because the `high_sbc` and `dilution`
+  penalties land on growers, so a plain highest-score pick would turn the
+  list into mature software one round at a time. The swap therefore takes
+  the best clearing name at or above `changes.swap_min_growth` (0.15, in
+  config), and a slower grower only when no growth name clears. Unknown
+  growth (a warm-up name) is not the growth tier. The screen keeps scoring
+  slower growers, so the fallback has candidates on record.
 - **A warm-up flag can be a source defect (round 7).** Five names (MDB,
   HUBS, NOW, WDAY, TWLO) read `growth_from_annual` on 16-quarter caches
   because the backfill's revenue tag choice picked a pre-2018 `Revenues`
@@ -1391,6 +1431,38 @@ does not depend on the hand read that round 6 made):
 The digest remains read-only over history: no network, no scoring, no cache
 writes.
 
+**What the digest carries as of 2026-11-14** (branch `bench-refresh`,
+implementing the round-14 swap rule with the growth preference, and the
+bench refresh in section 7.0):
+
+- **Bench table gains growth and clears tail.** Yearly revenue growth,
+  last observed in the window (n/a when unknown, which is not the growth
+  tier), and whether the name would rank above the bottom `weak_bottom_n`
+  by fundamental score once the outgoing name leaves: yes, no, or n/a
+  without a score. The outgoing name is the first qualifier on the level
+  table, else the lowest fundamental score as a what-if. Only configured
+  bench names outside the latest run's universe are entrants: a window can
+  hold bench snapshots of a name promoted mid-week, and those read n/a.
+- **Swap-check line.** Under the bench table, in words: the qualifier and
+  the name the rule promotes; a slower-grower fallback said as such; a pick
+  whose growth is n/a said as unknown, with a check before the swap; or no
+  swap and a prompt to refresh the bench with `python -m sentinel.screen`.
+  With no qualifier, the bench depth: how many names would clear and how
+  many of those are growth-tier, with the same prompt when none or only
+  slower growers would. The longest-standing tiebreak still needs the
+  weekly records (the digest caps its window count at `weak_windows`), so
+  the line names the first qualifier and asks for that check.
+- **JSON twin and history.** `bench_weeks` rows gain `growth_last`,
+  `growth_tier`, `clears_tail`; the digest gains `swap_outgoing`,
+  `swap_outgoing_qualifies`, `swap_pick`, `bench_clearing`,
+  `bench_clearing_growth`, `swap_min_growth`. Run-history ticker snapshots
+  gain `growth` (additive, schema version unchanged). Runs recorded before
+  it read growth n/a, so the first digest after this merges shows growth
+  only where a run since has recorded it.
+
+Still read-only over history: no network, no scoring, no cache writes. The
+screen is the separate tool that does score, and it writes nothing either.
+
 ### 7.1 Capacity verification at ~22-28 tickers
 - **Batched price pull**: unchanged, still one yfinance `download()` call for the
   whole universe plus SPY. OK.
@@ -1440,6 +1512,13 @@ writes.
   missing fields (None) never crash or fabricate deltas; rank moves respect the
   ranking mode; deterioration min-signals logic including the `deteriorating()`
   sufficiency rule; reason strings contain no em/en dashes.
+- **Unit, `rotation.py`, `screen.py`, digest swap check**: growth tier
+  boundaries and unknown growth; the on-entry test removes the outgoing name
+  and treats a tie as not above; the pick prefers growth tier, falls back,
+  and returns none when nothing clears; screen rows come from injected EDGAR
+  and yfinance fakes, a rejected history scores on yfinance alone, warm-up
+  names never become the pick, the baseline follows the current config
+  after a swap, and the cache is byte-identical after a CLI run.
 - **Unit, `data/history.py`**: round-trip; retention pruning; same-date replace;
   corrupt-file degradation; `cache.prune()` leaves `run_history.json` alone.
 - **Report/golden**: template renders both sections from fixture context; quiet-day
