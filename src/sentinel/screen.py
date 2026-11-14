@@ -34,6 +34,7 @@ from sentinel.data.fundamentals import inputs_from_frame
 from sentinel.data.history import load_history
 from sentinel.digest import (
     DATA_QUALITY_FLAGS,
+    MID_WINDOW,
     build_digest,
     pct_beside_floor,
     swap_universe,
@@ -67,7 +68,7 @@ class ScreenRow:
 
 @dataclass(frozen=True)
 class Baseline:
-    """What a candidate is measured against: the latest scheduled run."""
+    """What a candidate is measured against: the latest recorded run."""
 
     run_date: str
     universe_scores: dict[str, float]
@@ -80,8 +81,10 @@ class Baseline:
     moved_in: tuple[str, ...] = ()
     # bench names that cannot be swapped in yet, with the reason
     bench_blocked: tuple[tuple[str, str], ...] = ()
-    # of those, the ones that would clear the tail once eligible
+    # of those, the ones that would clear the tail once eligible, and their
+    # growth tiers (so a waiting growth name is marked as one)
     bench_waiting: tuple[str, ...] = ()
+    bench_waiting_tiers: tuple[tuple[str, str | None], ...] = ()
 
 
 def _sort_key(row: ScreenRow) -> tuple:
@@ -133,6 +136,9 @@ def baseline_from_history(cfg: Config, history_path: Path | None = None) -> Base
         moved_in=tuple(moved_in),
         bench_blocked=tuple(blocked),
         bench_waiting=tuple(digest.bench_waiting),
+        bench_waiting_tiers=tuple(
+            (t, rows[t].growth_tier) for t in digest.bench_waiting if t in rows
+        ),
     )
 
 
@@ -169,7 +175,6 @@ def screen_ticker(
         if result is not None:
             reason = f"{result.status.lower()}: {result.reason or 'n/a'}"
         history = f"yfinance only, {frame.shape[1]} quarters ({reason})"
-
 
     notes: list[str] = []
     try:
@@ -276,19 +281,22 @@ def format_report(
         ]
     else:
         why = "qualifies" if baseline.outgoing_qualifies else "lowest score, a what-if"
+        preview = bool(baseline.moved_out or baseline.moved_in)
         lines += [
             f"Measured against the {baseline.run_date} run "
             f"({len(baseline.universe_scores)} names scored). Outgoing name: "
             f"{baseline.outgoing or 'n/a'} ({why}).",
             "",
         ]
-        if baseline.moved_out or baseline.moved_in:
+        if preview:
             lines += [
                 "That run predates the current watchlist (left: "
                 f"{', '.join(baseline.moved_out) or 'none'}; joined: "
                 f"{', '.join(baseline.moved_in) or 'none'}), so its scores are "
                 "used under the current roles: a joined name's bench snapshot "
-                "counts as its universe score.",
+                "counts as its universe score. That change is this round's (at "
+                "most one swap per round), so the outgoing name and the rule pick "
+                "preview the next round.",
                 "",
             ]
         if baseline.bench_blocked:
@@ -334,24 +342,42 @@ def format_report(
     pick = pick_entrant(pool)
     bench_names = {e.ticker for e in (baseline.bench if baseline else [])}
     # names the table shows clearing that the pick cannot take yet, so the
-    # pick line never contradicts the table above it
+    # pick line never contradicts the table above it. Only a bench name that
+    # joined mid-window has a known end (eligible from the next window);
+    # warm-up has none, so it never puts off widening the pool.
+    def marked(ticker: str, tier: str | None, why: str) -> str:
+        return f"{ticker} ({why}{', growth tier' if tier == 'growth' else ''})"
+
     waiting = [
-        f"{r.ticker} (warm-up)" for r in sorted(rows, key=_sort_key)
+        marked(r.ticker, r.tier, "warm-up") for r in sorted(rows, key=_sort_key)
         if r.error is None and not r.live and r.clears
     ]
+    soon: list[str] = []
     if baseline is not None:
-        waiting += [f"{t} (on the bench, not eligible yet)" for t in baseline.bench_waiting]
-    lines.append("")
+        reasons = dict(baseline.bench_blocked)
+        tiers = {t: tier for t, tier in baseline.bench_waiting_tiers}
+        for t in baseline.bench_waiting:
+            if reasons.get(t) == MID_WINDOW:
+                soon.append(t)
+                waiting.append(marked(t, tiers.get(t), "on the bench, mid-window"))
+            else:
+                waiting.append(marked(t, tiers.get(t), "on the bench, warm-up"))
+    pick_label = "Rule pick over the current bench and the live candidates"
+    if baseline is not None and (baseline.moved_out or baseline.moved_in):
+        pick_label += " (preview of the next round)"
+    if lines[-1] != "":
+        lines.append("")
     if baseline is None:
         lines.append("Rule pick: n/a (no scored run to test against).")
     elif pick is None:
         lines.append(
-            "Rule pick over the current bench and the live candidates: none "
-            "clears the tail on entry. Widen the pool (screen: candidates in "
-            "config/watchlist.yaml, or --tickers)."
-            if not waiting else
-            "Rule pick over the current bench and the live candidates: none "
-            "of the eligible names clears the tail on entry."
+            f"{pick_label}: none of the eligible names clears the tail on entry. "
+            f"Recheck after {', '.join(soon)} {'has' if len(soon) == 1 else 'have'} "
+            "a full window on the bench before widening the pool."
+            if soon else
+            f"{pick_label}: none of the eligible names clears the tail on entry. "
+            "Widen the pool (screen: candidates in config/watchlist.yaml, or "
+            "--tickers)."
         )
     else:
         where = "already on the bench" if pick.ticker in bench_names else "a candidate"
@@ -362,7 +388,7 @@ def format_report(
         else:
             tier = "slower grower, fallback"
         lines.append(
-            f"Rule pick over the current bench and the live candidates: "
+            f"{pick_label}: "
             f"{pick.ticker} ({where}, {tier}, fundamental {_num(pick.score)})."
         )
     if baseline is not None and waiting:

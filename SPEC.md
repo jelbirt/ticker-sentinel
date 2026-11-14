@@ -324,8 +324,12 @@ can clear the tail when a name qualifies. Two pieces keep it that way:
    (last observed score and growth, the same entrant tests); only the
    on-entry test is redone against the current universe, and a name just
    moved to the bench is named as not yet shadow-scored; a name that would
-   clear but is not eligible yet (warm-up, mid-window) is named next to the
-   pick line rather than hidden behind "widen the pool". The candidates list
+   clear but is not eligible yet is named next to the pick line with its
+   reason and tier. Only a bench name that joined mid-window (eligible from
+   the next window) puts off "widen the pool"; warm-up has no set end, so a
+   warm-up name never does. When the latest run predates the current
+   watchlist, the pick is labelled a preview of the next round (at most one
+   swap per round). The candidates list
    may be a YAML list or one comma-separated string; a malformed `screen:`
    block warns and is ignored, so it can never stop the daily run that loads
    the same file. It writes nothing to the repo; `--tickers` screens names
@@ -1454,11 +1458,15 @@ bench refresh in section 7.0):
   fallback" cannot appear), and whether the name would rank above the bottom `weak_bottom_n`
   by fundamental score once the outgoing name leaves: yes, no, or n/a
   without a score. The outgoing name is the first qualifier on the level
-  table, else the lowest fundamental score as a what-if. Roles come from
-  the current config, not the latest run: when a swap merged after that run
-  (a failed daily run, or a manual dispatch), its scores are read under the
-  new roles, a line says so, and coverage reports the names as moved to the
-  bench or joined from it instead of missing. Entrants are
+  table still in the configured universe, else the lowest fundamental score
+  as a what-if. Roles come from the current config, not the latest run:
+  when a swap merged after that run (a failed daily run, or a manual
+  dispatch), its scores are read under the new roles and coverage reports
+  the names as moved to the bench or joined from it instead of missing. That
+  change was made on this window's scores, so it is this round's change (at
+  most one swap per round): a line says so, and the swap check that follows
+  is labelled a preview of the next round ("would promote", "no swap next
+  round") instead of asking for a second swap now. Entrants are
   configured bench names outside the configured universe whose current
   spell on the bench began on or before the window's first run (the round-7
   one window of shadow scoring; the spell starts at the name's first bench
@@ -1472,14 +1480,20 @@ bench refresh in section 7.0):
   each with the reason (in the universe now, no longer configured on the
   bench, joined mid-window, warm-up, no fundamental score this window).
 - **Swap-check line.** Under the bench table, in words: the qualifier and
-  the name the rule promotes; a slower-grower fallback said as such, naming
-  any growth-tier name that would clear but is not eligible yet (with a
-  suggestion to recheck at the next digest before taking the fallback) and
-  any eligible clearing name whose growth is n/a; a pick
-  whose growth is n/a said as unknown, with a check before the swap; or no
-  swap and a prompt to refresh the bench with `python -m sentinel.screen`.
-  When a name that is not eligible yet would clear, the line says so and
-  asks for a recheck at the next digest before any refresh.
+  the name the rule promotes; for a growth-tier pick, any eligible clearing
+  name of unknown growth that scores higher (it would come first if it grows
+  15 percent); a slower-grower fallback said as such, naming any eligible
+  clearing name whose growth is n/a and any name that would clear but is
+  not eligible yet, with a suggestion to recheck at the next digest before
+  taking the fallback only when a growth-tier name among those joined
+  mid-window; a pick whose growth is n/a said as unknown, with a check
+  before the swap; or no swap and a prompt to refresh the bench with
+  `python -m sentinel.screen`. A name that would clear but is not eligible
+  yet is always named. Only a mid-window name (eligible from the next
+  window if it stays live) puts the refresh off to the next digest; a
+  warm-up name has no set end, so the refresh prompt stands and the line
+  says why the warm-up name does not hold it (the round-7 tail rule: refresh
+  the bench rather than hold a qualifier indefinitely).
   With no qualifier, the bench depth: how many names would clear and how
   many of those are growth-tier, with the same prompt when none or only
   slower growers would (clearing names whose growth is n/a are named as
@@ -1488,7 +1502,8 @@ bench refresh in section 7.0):
   prompt to check the bench fetch or refresh the bench. The level-table
   intro states the same growth-first rule. The longest-standing tiebreak still needs the
   weekly records (the digest caps its window count at `weak_windows`), so
-  the line names the first qualifier and asks for that check.
+  the line names the first qualifier still in the universe (and any
+  qualifier above it that left) and asks for that check.
 - **JSON twin and history.** `bench_weeks` rows gain `growth_last`,
   `growth_tier`, `clears_tail`, `full_window`, `live_latest`,
   `entry_block`; the digest gains `swap_outgoing`,

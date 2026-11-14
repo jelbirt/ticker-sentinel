@@ -13,6 +13,7 @@ from sentinel.digest import (
     BUSINESS_FLAGS,
     CALIBRATION_REFRESHES,
     DATA_QUALITY_FLAGS,
+    MID_WINDOW,
     build_digest,
     classify_flags,
     main,
@@ -701,8 +702,8 @@ class TestSwapCheck:
         assert "NEW (joined the bench mid-window" in text
         assert "| yes, not yet eligible |" in text
         assert "The rule promotes NEW" not in text
-        assert "NEW (growth tier) would clear but is not eligible yet" in text
-        assert "recheck at the next digest before refreshing the bench" in text
+        assert ("NEW (growth tier) would clear once it has a full window on the "
+                "bench: recheck at the next digest before refreshing the bench.") in text
         assert "refresh the bench (`python -m sentinel.screen`)" not in text
 
     def test_failed_bench_scoring_on_the_window_open_does_not_block(self):
@@ -778,9 +779,17 @@ class TestSwapCheck:
         assert rows["GRO"].entry_block == "in the universe now"
         assert rows["GRO"].clears_tail is None
         text = render_markdown(d, 15, date(2026, 8, 15))
-        assert ("The latest run (2026-08-15) predates the current watchlist "
-                "(left the universe: CCC; joined it: GRO)") in text
-        assert "Swap check: DDD qualifies" in text
+        # at most one swap per round: the CCC-for-GRO change was this round's,
+        # so the DDD line is a preview, never a second swap for this window
+        assert ("The watchlist changed after the latest run (2026-08-15): left "
+                "the universe: CCC; joined it: GRO. That is this round's change "
+                "(at most one swap per round), so the check below previews the "
+                "next round") in text
+        assert ("Swap check (preview of the next round): DDD qualifies (the "
+                "first qualifier on the level table still in the universe; CCC "
+                "left it;") in text
+        assert "The rule would promote SLOW, a slower grower" in text
+        assert "The rule promotes" not in text and "Swap check: " not in text
         assert "CCC qualifies" not in text
         assert "CCC: moved to the bench (scored in the universe in 5 of 5 runs" in text
         assert "GRO: joined the universe from the bench" in text
@@ -827,10 +836,11 @@ class TestSwapCheck:
         assert not d.bench_weeks[0].full_window
         assert d.bench_weeks[0].entry_block.startswith("joined the bench mid-window")
 
-    def test_fallback_pick_names_a_waiting_growth_name_and_advises_a_recheck(self):
+    def test_fallback_pick_names_a_waiting_warm_up_growth_name_without_a_recheck(self):
         # WARM is growth-tier and would clear but is in warm-up; SLOW is the
         # only eligible clearing name: the fallback line must not claim that
-        # no growth-tier name clears
+        # no growth-tier name clears, and warm-up has no set end, so it does
+        # not put the fallback off
         runs = self._runs({"SLOW": (85.0, 0.05)})
         for run in runs:
             run.bench["WARM"] = TickerSnapshot(composite=95.0, score=95.0,
@@ -841,9 +851,8 @@ class TestSwapCheck:
         assert ("The rule promotes SLOW, a slower grower: no eligible growth-tier "
                 "bench name clears the tail") in text
         assert ("Not part of this round's pick: WARM (growth tier) would clear but "
-                "is not eligible yet (reason in the bench notes above). Growth comes "
-                "first, so consider rechecking at the next digest before taking the "
-                "fallback.") in text
+                "is not eligible yet (reason in the bench notes above).") in text
+        assert "Growth comes first" not in text
 
     def test_fallback_pick_names_a_clearing_name_with_unknown_growth(self):
         d = self._digest({"SLOW": (95.0, 0.10), "UNK": (85.0, None)})
@@ -915,6 +924,130 @@ class TestSwapCheck:
         text = render_markdown(d, 4, date(2026, 8, 15))
         assert "Growth is n/a this window for UNK" in text
         assert "Only slower growers would clear" not in text
+
+    def test_fallback_pick_advises_a_recheck_for_a_mid_window_growth_name(self):
+        runs = self._runs({"SLOW": (85.0, 0.05)})
+        runs[-1].bench["NEW"] = TickerSnapshot(composite=95.0, score=95.0,
+                                               growth=0.40, r40_trend=0.05)
+        d = build_digest(runs, list(self.BASE), ["SLOW", "NEW"], CFG)
+        assert d.swap_pick == "SLOW" and d.bench_waiting == ["NEW"]
+        text = render_markdown(d, 15, date(2026, 8, 15))
+        assert ("Growth comes first and NEW is eligible from the next window, so "
+                "consider rechecking at the next digest before taking the "
+                "fallback.") in text
+
+    def test_fallback_pick_with_a_waiting_slow_name_gives_no_recheck(self):
+        runs = self._runs({"SLOW": (85.0, 0.05)})
+        runs[-1].bench["LATE"] = TickerSnapshot(composite=95.0, score=95.0,
+                                                growth=0.05, r40_trend=0.05)
+        d = build_digest(runs, list(self.BASE), ["SLOW", "LATE"], CFG)
+        assert d.swap_pick == "SLOW" and d.bench_waiting == ["LATE"]
+        text = render_markdown(d, 15, date(2026, 8, 15))
+        assert "Not part of this round's pick: LATE would clear" in text
+        assert "Growth comes first" not in text
+
+    def test_only_a_warm_up_name_waiting_still_asks_for_a_refresh(self):
+        # round-7 tail rule: no eligible name clears, so refresh the bench;
+        # a warm-up name has no set end and must not defer that every week
+        runs = self._runs({"LOW": (25.0, 0.20)})
+        for run in runs:
+            run.bench["WARM"] = TickerSnapshot(composite=95.0, score=95.0,
+                                               growth=0.40, r40_trend=None)
+        d = build_digest(runs, list(self.BASE), ["LOW", "WARM"], CFG)
+        assert d.swap_pick is None and d.bench_waiting == ["WARM"]
+        text = render_markdown(d, 15, date(2026, 8, 15))
+        assert ("No eligible bench name clears the tail on entry, so there is no "
+                "swap this round: refresh the bench (`python -m sentinel.screen`)") in text
+        assert ("WARM (growth tier) would clear but is in warm-up, which has no "
+                "set end, so it does not put off a bench refresh.") in text
+        assert "recheck at the next digest" not in text
+
+    def test_what_if_depth_with_only_warm_up_waiting_asks_for_a_refresh(self):
+        runs = self._runs({"LOW": (25.0, 0.20)}, n_runs=5)
+        for run in runs:
+            run.bench["WARM"] = TickerSnapshot(composite=95.0, score=95.0,
+                                               growth=0.40, r40_trend=None)
+        d = build_digest(runs, list(self.BASE), ["LOW", "WARM"], CFG)
+        assert not d.swap_outgoing_qualifies and d.bench_clearing == 0
+        text = render_markdown(d, 5, date(2026, 8, 5))
+        assert "None would clear: refresh the bench before a name qualifies" in text
+        assert "WARM (growth tier) would clear but is in warm-up" in text
+        assert "recheck at the next digest" not in text
+
+    def test_what_if_depth_with_a_mid_window_name_waiting_says_recheck(self):
+        runs = self._runs({"LOW": (25.0, 0.20)}, n_runs=5)
+        runs[-1].bench["NEW"] = TickerSnapshot(composite=95.0, score=95.0,
+                                               growth=0.40, r40_trend=0.05)
+        d = build_digest(runs, list(self.BASE), ["LOW", "NEW"], CFG)
+        assert not d.swap_outgoing_qualifies and d.bench_clearing == 0
+        text = render_markdown(d, 5, date(2026, 8, 5))
+        assert ("NEW (growth tier) would clear once it has a full window on the "
+                "bench: recheck at the next digest before refreshing the bench.") in text
+        assert "None would clear" not in text
+
+    def test_two_waiting_names_read_in_the_plural(self):
+        runs = self._runs({"LOW": (25.0, 0.20)})
+        for t in ("NEW", "NEW2"):
+            runs[-1].bench[t] = TickerSnapshot(composite=95.0, score=95.0,
+                                               growth=0.40, r40_trend=0.05)
+        d = build_digest(runs, list(self.BASE), ["LOW", "NEW", "NEW2"], CFG)
+        assert d.bench_waiting == ["NEW", "NEW2"]
+        text = render_markdown(d, 15, date(2026, 8, 15))
+        assert ("NEW (growth tier), NEW2 (growth tier) would clear once they have "
+                "a full window on the bench") in text
+        runs = self._runs({"SLOW": (85.0, 0.05)})
+        for t in ("NEW", "NEW2"):
+            runs[-1].bench[t] = TickerSnapshot(composite=95.0, score=95.0,
+                                               growth=0.40, r40_trend=0.05)
+        d = build_digest(runs, list(self.BASE), ["SLOW", "NEW", "NEW2"], CFG)
+        text = render_markdown(d, 15, date(2026, 8, 15))
+        assert "NEW2 (growth tier) would clear but are not eligible yet" in text
+
+    def test_growth_counts_exclude_names_not_eligible_yet(self):
+        # no qualifier: SLOW (eligible, slow) clears; NEW (growth) clears but
+        # joined mid-window, so it is not part of the growth-tier count
+        runs = self._runs({"SLOW": (85.0, 0.05)}, n_runs=5)
+        runs[-1].bench["NEW"] = TickerSnapshot(composite=95.0, score=95.0,
+                                               growth=0.40, r40_trend=0.05)
+        d = build_digest(runs, list(self.BASE), ["SLOW", "NEW"], CFG)
+        assert not d.swap_outgoing_qualifies
+        assert (d.bench_clearing, d.bench_clearing_growth) == (1, 0)
+        text = render_markdown(d, 5, date(2026, 8, 5))
+        assert "1 eligible bench name would clear the tail on entry (0 growth-tier)" in text
+        assert "Only slower growers among the eligible names would clear" in text
+        assert json.loads(render_json(d, 5, date(2026, 8, 5)))["bench_clearing_growth"] == 0
+
+    def test_unknown_growth_pick_is_not_also_listed_as_would_also_clear(self):
+        d = self._digest({"UNK": (85.0, None)})
+        assert d.swap_pick == "UNK"
+        text = render_markdown(d, 15, date(2026, 8, 15))
+        assert "The rule promotes UNK, but its growth is n/a this window" in text
+        assert "which would also clear" not in text
+
+    def test_growth_pick_flags_a_higher_scoring_name_of_unknown_growth(self):
+        # GRO is the growth-tier pick; UNK scores higher, clears and is
+        # eligible, but its growth is n/a: if it grows 15% it comes first
+        d = self._digest({"GRO": (85.0, 0.20), "UNK": (95.0, None)})
+        assert d.swap_pick == "GRO"
+        text = render_markdown(d, 15, date(2026, 8, 15))
+        assert "The rule promotes GRO." in text
+        assert ("Growth is n/a this window for UNK, which scores higher and would "
+                "also clear: check it before the swap") in text
+
+    def test_growth_pick_ignores_a_lower_scoring_name_of_unknown_growth(self):
+        d = self._digest({"GRO": (95.0, 0.20), "UNK": (85.0, None)})
+        assert d.swap_pick == "GRO"
+        assert "Growth is n/a" not in render_markdown(d, 15, date(2026, 8, 15))
+
+    def test_mid_window_is_named_before_warm_up(self):
+        # a name that is both new to the bench and in warm-up waits on the
+        # full window first: that block has a known end
+        runs = self._runs({"LOW": (25.0, 0.20)})
+        runs[-1].bench["NEW"] = TickerSnapshot(composite=95.0, score=95.0,
+                                               growth=0.40, r40_trend=None)
+        d = build_digest(runs, list(self.BASE), ["LOW", "NEW"], CFG)
+        rows = {b.ticker: b for b in d.bench_weeks}
+        assert rows["NEW"].entry_block == MID_WINDOW
 
     def test_swap_fields_reach_the_json(self):
         d = self._digest({"GRO": (85.0, 0.20)})

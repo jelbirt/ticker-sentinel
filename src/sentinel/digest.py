@@ -351,6 +351,11 @@ def _bench_stretch_start(runs: list[RunSnapshot], ticker: str) -> int | None:
     )
 
 
+# the one block with a known end: the name is eligible from the next window
+# if it stays live, so it is worth waiting for; warm-up has no set end
+MID_WINDOW = "joined the bench mid-window: one full window of shadow scoring comes first"
+
+
 def bench_entry_block(week: BenchWeek) -> str | None:
     """Why a bench row cannot be swapped in this window; None when it can.
 
@@ -359,7 +364,7 @@ def bench_entry_block(week: BenchWeek) -> str | None:
     act on), then a score to test at all. Shared by the digest's swap check
     and the bench screen so the two cannot disagree."""
     if not week.full_window:
-        return "joined the bench mid-window: one full window of shadow scoring comes first"
+        return MID_WINDOW
     if not week.live_latest:
         return "warm-up: r40 trend n/a or a data-quality flag"
     if week.score_last is None:
@@ -721,7 +726,11 @@ def _swap_lines(digest: WeeklyDigest) -> list[str]:
         f"leaves), a slower grower only when no growth-tier name can."
     )
     lines = [tiers]
-    if digest.swap_moved_out or digest.swap_moved_in:
+    # the latest run predates the current roles: a change was made on this
+    # window's scores, so (at most one swap per round) what follows previews
+    # the next round instead of asking for a second swap now
+    preview = bool(digest.swap_moved_out or digest.swap_moved_in)
+    if preview:
         moved = []
         if digest.swap_moved_out:
             moved.append(f"left the universe: {_names(digest.swap_moved_out)}")
@@ -729,10 +738,15 @@ def _swap_lines(digest: WeeklyDigest) -> list[str]:
             moved.append(f"joined it: {_names(digest.swap_moved_in)}")
         lines += [
             "",
-            f"The latest run ({digest.window_end}) predates the current "
-            f"watchlist ({'; '.join(moved)}), so the swap check reads that "
-            "run's scores under the current roles.",
+            f"The watchlist changed after the latest run ({digest.window_end}): "
+            f"{'; '.join(moved)}. That is this round's change (at most one swap "
+            "per round), so the check below previews the next round, read from "
+            "that run's scores under the current roles; the next digest retests "
+            "it on fresh runs.",
         ]
+    check = "Swap check (preview of the next round)" if preview else "Swap check"
+    this_round = "next round" if preview else "this round"
+    promotes = "would promote" if preview else "promotes"
     lines.append("")
     out = digest.swap_outgoing
     if out is None:
@@ -743,107 +757,159 @@ def _swap_lines(digest: WeeklyDigest) -> list[str]:
         if digest.swap_outgoing_qualifies:
             return [
                 *lines,
-                f"Swap check: {out} qualifies, but no bench name was scored "
+                f"{check}: {out} qualifies, but no bench name was scored "
                 "this window, so the swap cannot be tested: check the bench "
                 f"fetch in the run logs, or refresh the bench ({SCREEN_CMD}).",
             ]
-        return [*lines, "Swap check: no name qualifies. Bench depth: n/a "
+        return [*lines, f"{check}: no name qualifies. Bench depth: n/a "
                 "(no bench snapshots this window)."]
     waiting = digest.bench_waiting
     tiers = {b.ticker: b.growth_tier for b in digest.bench_weeks}
-    waiting_growth = [t for t in waiting if tiers.get(t) == GROWTH]
-    waits = (
-        _names([f"{t} (growth tier)" if t in waiting_growth else t for t in waiting])
-        + f" would clear but {_is(waiting)} not eligible yet "
+    blocks = {b.ticker: b.entry_block for b in digest.bench_weeks}
+    # mid-window names are eligible from the next window; warm-up has no set
+    # end, so only the former is worth putting a refresh off for
+    soon = [t for t in waiting if blocks.get(t) == MID_WINDOW]
+    stuck = [t for t in waiting if t not in soon]
+
+    def tagged(names: list[str]) -> str:
+        return _names([f"{t} (growth tier)" if tiers.get(t) == GROWTH else t for t in names])
+
+    def soon_text() -> str:
+        has = "it has" if len(soon) == 1 else "they have"
+        return f"{tagged(soon)} would clear once {has} a full window on the bench"
+
+    def stuck_line() -> str:
+        does = "it does" if len(stuck) == 1 else "they do"
+        return (
+            f"{tagged(stuck)} would clear but {_is(stuck)} in warm-up, which "
+            f"has no set end, so {does} not put off a bench refresh."
+        )
+
+    not_yet = (
+        f"{tagged(waiting)} would clear but {_is(waiting)} not eligible yet "
         "(reason in the bench notes above)"
     )
+
+    def unknown_clearing(exclude: str | None = None) -> list[BenchWeek]:
+        return [
+            b for b in digest.bench_weeks
+            if b.clears_tail and b.entry_block is None and b.growth_tier is None
+            and b.ticker != exclude
+        ]
+
+    def check_them(names: list[str]) -> str:
+        return "it" if len(names) == 1 else "them"
+
     if digest.swap_outgoing_qualifies:
+        skipped = []
+        for w in digest.level_watch:
+            if w.ticker == out:
+                break
+            if w.qualifies:
+                skipped.append(w.ticker)
+        where = (
+            f"the first qualifier on the level table still in the universe; "
+            f"{_names(skipped)} left it"
+            if skipped else "the first qualifier on the level table"
+        )
         lines.append(
-            f"Swap check: {out} qualifies (the first qualifier on the level "
-            "table; confirm it is the longest-standing one against the weekly "
-            "records in SPEC.md 7.0)."
+            f"{check}: {out} qualifies ({where}; confirm it is the "
+            "longest-standing one against the weekly records in SPEC.md 7.0)."
         )
         if digest.swap_pick is None:
-            if waiting:
+            if soon:
                 lines.append(
                     "No eligible bench name clears the tail on entry, so there "
-                    f"is no swap this round. {waits}: recheck at the next "
-                    "digest before refreshing the bench."
+                    f"is no swap {this_round}. {soon_text()}: recheck at the "
+                    "next digest before refreshing the bench."
                 )
             else:
                 lines.append(
-                    "No bench name clears the tail on entry, so there is no swap "
-                    f"this round: refresh the bench ({SCREEN_CMD}) and propose the "
-                    "bench edit in the refresh PR."
+                    "No eligible bench name clears the tail on entry, so there "
+                    f"is no swap {this_round}: refresh the bench ({SCREEN_CMD}) "
+                    "and propose the bench edit in the refresh PR."
                 )
+            if stuck:
+                lines.append(stuck_line())
             return lines
         pick = digest.swap_pick
         if tiers.get(pick) == GROWTH:
-            lines.append(f"The rule promotes {pick}.")
+            lines.append(f"The rule {promotes} {pick}.")
+            pick_score = next(
+                (b.score_last for b in digest.bench_weeks if b.ticker == pick), None
+            )
+            higher = [
+                b.ticker for b in unknown_clearing(pick)
+                if pick_score is not None and b.score_last is not None
+                and b.score_last > pick_score
+            ]
+            if higher:
+                lines.append(
+                    f"Growth is n/a this window for {_names(higher)}, which "
+                    f"{'scores' if len(higher) == 1 else 'score'} higher and would "
+                    f"also clear: check {check_them(higher)} before the swap, "
+                    "since a growth-tier name with a higher score comes first."
+                )
             if waiting:
-                lines.append(f"Not part of this round's pick: {waits}.")
+                lines.append(f"Not part of this round's pick: {not_yet}.")
             return lines
         # a fallback pick: say what growth first would still want checked
         if tiers.get(pick) is None:
             lines.append(
-                f"The rule promotes {pick}, but its growth is n/a this window, "
+                f"The rule {promotes} {pick}, but its growth is n/a this window, "
                 "so it was ranked with the slower growers: check its growth "
                 "before the swap."
             )
         else:
             lines.append(
-                f"The rule promotes {pick}, a slower grower: no eligible "
+                f"The rule {promotes} {pick}, a slower grower: no eligible "
                 "growth-tier bench name clears the tail, so the fallback applies."
             )
-        unknown = [
-            b.ticker for b in digest.bench_weeks
-            if b.clears_tail and b.entry_block is None and b.growth_tier is None
-            and b.ticker != pick
-        ]
+        unknown = [b.ticker for b in unknown_clearing(pick)]
         if unknown:
-            one = len(unknown) == 1
             lines.append(
                 f"Growth is n/a this window for {_names(unknown)}, which would "
-                f"also clear: check {'it' if one else 'them'} before taking the "
+                f"also clear: check {check_them(unknown)} before taking the "
                 "fallback."
             )
         if waiting:
+            soon_growth = [t for t in soon if tiers.get(t) == GROWTH]
             recheck = (
-                " Growth comes first, so consider rechecking at the next digest "
-                "before taking the fallback."
-                if waiting_growth else ""
+                f" Growth comes first and {_names(soon_growth)} "
+                f"{_is(soon_growth)} eligible from the next window, so consider "
+                "rechecking at the next digest before taking the fallback."
+                if soon_growth else ""
             )
-            lines.append(f"Not part of this round's pick: {waits}.{recheck}")
+            lines.append(f"Not part of this round's pick: {not_yet}.{recheck}")
         return lines
     n, g = digest.bench_clearing, digest.bench_clearing_growth
     lines.append(
-        "Swap check: no name qualifies, so no swap this round. Bench depth, "
+        f"{check}: no name qualifies, so no swap {this_round}. Bench depth, "
         f"tested against the lowest score ({out}): {n} eligible bench "
         f"{'name' if n == 1 else 'names'} would clear the tail on entry "
         f"({g} growth-tier)."
     )
     if n == 0:
-        if waiting:
+        if soon:
             lines.append(
-                f"{waits}: recheck at the next digest before refreshing the bench."
+                f"{soon_text()}: recheck at the next digest before refreshing "
+                "the bench."
             )
         else:
             lines.append(
                 "None would clear: refresh the bench before a name qualifies "
                 f"({SCREEN_CMD})."
             )
+        if stuck:
+            lines.append(stuck_line())
         return lines
     if g == 0:
-        unknown = [
-            b.ticker for b in digest.bench_weeks
-            if b.clears_tail and b.entry_block is None and b.growth_tier is None
-        ]
+        unknown = [b.ticker for b in unknown_clearing()]
         if unknown:
             lines.append(
                 "No eligible growth-tier name would clear. Growth is n/a this window "
-                f"for {_names(unknown)}, so check "
-                f"{'it' if len(unknown) == 1 else 'them'} before counting on "
-                f"{'it' if len(unknown) == 1 else 'them'}; a screen may find a "
+                f"for {_names(unknown)}, so check {check_them(unknown)} before "
+                f"counting on {check_them(unknown)}; a screen may find a "
                 f"growth-tier name ({SCREEN_CMD})."
             )
         else:
@@ -853,7 +919,7 @@ def _swap_lines(digest: WeeklyDigest) -> list[str]:
                 f"growth-tier name ({SCREEN_CMD})."
             )
     if waiting:
-        lines.append(f"Also, {waits}.")
+        lines.append(f"Also, {not_yet}.")
     return lines
 
 

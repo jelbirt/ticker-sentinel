@@ -11,6 +11,7 @@ import pytest
 
 from sentinel import backfill, screen
 from sentinel.config import ChangesCfg, Config
+from sentinel.digest import MID_WINDOW
 from sentinel.report.changes import RunSnapshot, TickerSnapshot
 from sentinel.rotation import Entrant
 from sentinel.screen import Baseline, format_report, run_screen, screen_ticker
@@ -75,8 +76,10 @@ class TestScreenTicker:
         row = screen_ticker("SLOWCO", facts, yf, _baseline(LOW_TAIL), CFG)
         assert row.score is not None and row.score > 4.0
         assert row.clears is True          # B, C, D below once A leaves
-        # same name against a tail it cannot clear
-        tight = {"A": 1.0, "B": 2.0, "C": 80.0, "D": 85.0, "E": 90.0}
+        # the outgoing name A must not count: with it, A, B and C (three) sit
+        # below and the name would wrongly clear; without it, only B and C
+        tight = {"A": 1.0, "B": 2.0, "C": 3.0, "D": 80.0, "E": 90.0}
+        assert row.score < 80.0
         facts, yf = _fetchers(_series(SLOW), yf_frame=_yf(SLOW))
         assert screen_ticker("SLOWCO", facts, yf, _baseline(tight), CFG).clears is False
 
@@ -125,7 +128,8 @@ class TestReport:
         facts, yf = _fetchers(series(14, 999_000_000.0), yf_frame=_yf(FAST))
         row = screen_ticker("BADCO", facts, yf, _baseline(LOW_TAIL), CFG)
         text = format_report([row], _baseline(LOW_TAIL), CFG)
-        assert "none clears the tail on entry" in text
+        assert ("Rule pick over the current bench and the live candidates: none "
+                "of the eligible names clears the tail on entry.") in text
 
     def test_values_just_under_a_floor_never_print_as_the_floor(self):
         from sentinel.screen import ScreenRow
@@ -142,8 +146,44 @@ class TestReport:
                           clears=True, live=False)]
         text = format_report(rows, _baseline(LOW_TAIL), CFG)
         assert "none of the eligible names clears the tail on entry" in text
-        assert "Would clear the tail but not eligible yet: WARM (warm-up)." in text
+        assert ("Would clear the tail but not eligible yet: WARM (warm-up, "
+                "growth tier).") in text
+        # warm-up has no set end, so it never puts off widening the pool
+        assert "Widen the pool" in text
+
+    def test_a_live_clearing_candidate_is_never_listed_as_waiting(self):
+        from sentinel.screen import ScreenRow
+        rows = [ScreenRow("LIVE", score=95.0, growth=0.40, tier="growth",
+                          clears=True, live=True)]
+        text = format_report(rows, _baseline(LOW_TAIL), CFG)
+        assert "live candidates: LIVE (a candidate, growth tier" in text
+        assert "not eligible yet" not in text
+
+    def test_a_mid_window_bench_name_puts_widening_off_one_window(self):
+        base = Baseline(
+            "2026-11-14", LOW_TAIL, "A", True, [],
+            bench_blocked=(("NEW", MID_WINDOW),), bench_waiting=("NEW",),
+            bench_waiting_tiers=(("NEW", "growth"),),
+        )
+        text = format_report([], base, CFG)
+        assert ("none of the eligible names clears the tail on entry. Recheck "
+                "after NEW has a full window on the bench before widening the "
+                "pool.") in text
+        assert ("Would clear the tail but not eligible yet: NEW (on the bench, "
+                "mid-window, growth tier).") in text
         assert "Widen the pool" not in text
+        assert "\n\n\n" not in text          # one blank line before the pick
+
+    def test_after_a_merged_swap_the_pick_is_a_preview(self):
+        base = Baseline(
+            "2026-11-14", LOW_TAIL, "A", True,
+            [Entrant("BENCH", 95.0, "growth", True)],
+            moved_out=("ZS",), moved_in=("APPF",),
+        )
+        text = format_report([], base, CFG)
+        assert "(at most one swap per round), so the outgoing name and the rule pick preview the next round" in text
+        assert ("Rule pick over the current bench and the live candidates "
+                "(preview of the next round): BENCH") in text
 
     def test_within_a_tier_a_clearing_name_sorts_ahead_of_a_higher_score(self):
         from sentinel.screen import ScreenRow
@@ -338,14 +378,14 @@ class TestBaselineAfterASwap:
         base = baseline_from_history(cfg, path)
         assert base.bench == []                  # never in the pick pool
         assert base.bench_blocked[0][0] == "NEW"
-        # NEW (60.0) would clear once live, so the pick line must not say
-        # "widen the pool" while the bench already holds a clearing name
+        # NEW (60.0) would clear once live, but warm-up has no set end, so
+        # it is named as waiting and the pool is still to be widened
         assert base.bench_waiting == ("NEW",)
         text = format_report([], base, cfg)
         assert "cannot be swapped in yet: NEW (warm-up" in text
         assert "none of the eligible names clears the tail on entry" in text
-        assert "Would clear the tail but not eligible yet: NEW (on the bench" in text
-        assert "Widen the pool" not in text
+        assert "Would clear the tail but not eligible yet: NEW (on the bench, warm-up" in text
+        assert "Widen the pool" in text
 
     def test_bench_name_missing_from_the_latest_run_is_read_like_the_digest(
         self, cache_root
