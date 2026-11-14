@@ -323,9 +323,14 @@ can clear the tail when a name qualifies. Two pieces keep it that way:
    are read from the window's bench rows exactly as the digest reads them
    (last observed score and growth, the same entrant tests); only the
    on-entry test is redone against the current universe, and a name just
-   moved to the bench is named as not yet shadow-scored. It writes
-   nothing; `--tickers` screens names outside the pool (universe and bench
-   names are skipped, they are scored every run). If EDGAR is unreachable,
+   moved to the bench is named as not yet shadow-scored; a name that would
+   clear but is not eligible yet (warm-up, mid-window) is named next to the
+   pick line rather than hidden behind "widen the pool". The candidates list
+   may be a YAML list or one comma-separated string; a malformed `screen:`
+   block warns and is ignored, so it can never stop the daily run that loads
+   the same file. It writes nothing to the repo; `--tickers` screens names
+   outside the pool (universe and bench names are skipped, they are scored
+   every run; repeats are dropped). If EDGAR is unreachable,
    every name scores on yfinance alone and says so. It needs the network, so
    it is never scheduled and never in tests.
 
@@ -1446,20 +1451,29 @@ bench refresh in section 7.0):
   tier), and whether the name would rank above the bottom `weak_bottom_n`
   by fundamental score once the outgoing name leaves: yes, no, or n/a
   without a score. The outgoing name is the first qualifier on the level
-  table, else the lowest fundamental score as a what-if. Entrants are
-  configured bench names outside the latest run's universe whose current
+  table, else the lowest fundamental score as a what-if. Roles come from
+  the current config, not the latest run: when a swap merged after that run
+  (a failed daily run, or a manual dispatch), its scores are read under the
+  new roles, a line says so, and coverage reports the names as moved to the
+  bench or joined from it instead of missing. Entrants are
+  configured bench names outside the configured universe whose current
   spell on the bench began on or before the window's first run (the round-7
   one window of shadow scoring; the spell starts at the name's first bench
   run after its last universe run, so a demoted name starts over, and a
   failed fetch neither ends it nor lets a newer name through) and are live
   on their latest snapshot (the condition-1 test:
-  `r40_trend` present, no data-quality flag). Any other row reads n/a, and a
-  line under the table names it with the reason (no longer on the bench,
-  joined mid-window, warm-up).
+  `r40_trend` present, no data-quality flag) and have a fundamental score.
+  A configured bench name that fails only eligibility still shows whether it
+  would clear ("yes, not yet eligible"); a row in the universe now or
+  dropped from the bench config reads n/a. A line under the table names
+  each with the reason (in the universe now, no longer configured on the
+  bench, joined mid-window, warm-up, no fundamental score this window).
 - **Swap-check line.** Under the bench table, in words: the qualifier and
   the name the rule promotes; a slower-grower fallback said as such; a pick
   whose growth is n/a said as unknown, with a check before the swap; or no
   swap and a prompt to refresh the bench with `python -m sentinel.screen`.
+  When a name that is not eligible yet would clear, the line says so and
+  asks for a recheck at the next digest before any refresh.
   With no qualifier, the bench depth: how many names would clear and how
   many of those are growth-tier, with the same prompt when none or only
   slower growers would (clearing names whose growth is n/a are named as
@@ -1470,15 +1484,21 @@ bench refresh in section 7.0):
   weekly records (the digest caps its window count at `weak_windows`), so
   the line names the first qualifier and asks for that check.
 - **JSON twin and history.** `bench_weeks` rows gain `growth_last`,
-  `growth_tier`, `clears_tail`; the digest gains `swap_outgoing`,
+  `growth_tier`, `clears_tail`, `full_window`, `live_latest`,
+  `entry_block`; the digest gains `swap_outgoing`,
   `swap_outgoing_qualifies`, `swap_pick`, `bench_clearing`,
-  `bench_clearing_growth`, `swap_min_growth`. Run-history ticker snapshots
+  `bench_clearing_growth` (both count eligible names only),
+  `bench_waiting`, `swap_moved_out`, `swap_moved_in`, `swap_min_growth`.
+  Coverage gaps gain the kinds `moved_to_bench` and `joined_from_bench`.
+  `changes.swap_min_growth` is a fraction in [0, 1]; anything else warns at
+  config load and the default applies. Run-history ticker snapshots
   gain `growth` (additive, schema version unchanged). Runs recorded before
   it read growth n/a, so the first digest after this merges shows growth
   only where a run since has recorded it.
 
 Still read-only over history: no network, no scoring, no cache writes. The
-screen is the separate tool that does score, and it writes nothing either.
+screen is the separate tool that does score, and it writes nothing to the
+repo either (yfinance keeps its own download cache outside it).
 
 ### 7.1 Capacity verification at ~22-28 tickers
 - **Batched price pull**: unchanged, still one yfinance `download()` call for the

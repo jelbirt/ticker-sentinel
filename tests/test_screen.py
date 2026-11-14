@@ -127,6 +127,37 @@ class TestReport:
         text = format_report([row], _baseline(LOW_TAIL), CFG)
         assert "none clears the tail on entry" in text
 
+    def test_pick_line_names_a_warm_up_row_the_table_shows_clearing(self):
+        from sentinel.screen import ScreenRow
+        rows = [ScreenRow("WARM", score=95.0, growth=0.40, tier="growth",
+                          clears=True, live=False)]
+        text = format_report(rows, _baseline(LOW_TAIL), CFG)
+        assert "none of the eligible names clears the tail on entry" in text
+        assert "Would clear the tail but not eligible yet: WARM (warm-up)." in text
+        assert "Widen the pool" not in text
+
+    def test_within_a_tier_a_clearing_name_sorts_ahead_of_a_higher_score(self):
+        from sentinel.screen import ScreenRow
+        rows = [
+            ScreenRow("HIGHNO", score=80.0, growth=0.30, tier="growth", clears=False, live=True),
+            ScreenRow("LOWYES", score=30.0, growth=0.30, tier="growth", clears=True, live=True),
+        ]
+        body = format_report(rows, _baseline(LOW_TAIL), CFG).split("| --- " * 10 + "|")[1]
+        assert body.index("| LOWYES |") < body.index("| HIGHNO |")
+
+    def test_a_data_quality_flag_makes_a_candidate_not_live(self, cache_root, monkeypatch):
+        from dataclasses import replace
+
+        real = screen.apply_scores
+
+        def flagged(cards, **kw):
+            return [replace(c, flags=[*c.flags, "growth_from_annual"]) for c in real(cards, **kw)]
+
+        monkeypatch.setattr(screen, "apply_scores", flagged)
+        facts, yf = _fetchers(_series(FAST), yf_frame=_yf(FAST))
+        row = screen_ticker("FAST", facts, yf, _baseline(LOW_TAIL), CFG)
+        assert row.r40_trend is not None and row.live is False
+
     def test_report_is_plain_ascii_without_dashes(self, cache_root):
         base, rows = self._rows(cache_root)
         text = format_report(rows, base, CFG) + format_report([], None, CFG)
@@ -179,6 +210,18 @@ class TestCli:
         out = capsys.readouterr().out
         assert "| NEWCO |" in out and "| A |" not in out
         assert "Not screened, already scored by the pipeline: A." in out
+
+    def test_repeated_tickers_are_screened_and_named_once(self, cache_root, monkeypatch, capsys):
+        seen: list[list[str]] = []
+        monkeypatch.setattr(
+            screen, "run_screen",
+            lambda tickers, cfg, baseline: seen.append(list(tickers)) or [],
+        )
+        cfg_path = cache_root.parent.parent / "watchlist.yaml"
+        cfg_path.write_text("universe:\n  - ticker: A\n    tags: [r40]\nbench: [BEN]\n")
+        assert screen.main(["--tickers", "newco,NEWCO,ben,ben", "--config", str(cfg_path)]) == 0
+        assert seen == [["NEWCO"]]
+        assert "already scored by the pipeline: BEN." in capsys.readouterr().out
 
 
 class TestDegrades:
@@ -284,9 +327,16 @@ class TestBaselineAfterASwap:
             bench=("NEW",),
         )
         base = baseline_from_history(cfg, path)
-        assert base.bench[0].clears is None
+        assert base.bench == []                  # never in the pick pool
         assert base.bench_blocked[0][0] == "NEW"
-        assert "cannot be swapped in yet: NEW (warm-up" in format_report([], base, cfg)
+        # NEW (60.0) would clear once live, so the pick line must not say
+        # "widen the pool" while the bench already holds a clearing name
+        assert base.bench_waiting == ("NEW",)
+        text = format_report([], base, cfg)
+        assert "cannot be swapped in yet: NEW (warm-up" in text
+        assert "none of the eligible names clears the tail on entry" in text
+        assert "Would clear the tail but not eligible yet: NEW (on the bench" in text
+        assert "Widen the pool" not in text
 
     def test_bench_name_missing_from_the_latest_run_is_read_like_the_digest(
         self, cache_root
@@ -336,6 +386,37 @@ class TestBaselineAfterASwap:
         text = format_report([], base, CFG)
         assert "BEN (already on the bench, growth n/a, so ranked with the slower growers" in text
         assert "slower grower, fallback" not in text
+
+    def test_qualifier_already_moved_to_the_bench_is_not_the_outgoing_name(
+        self, cache_root
+    ):
+        # 15 runs: Q, B, C hold the bottom 3 for three windows and all
+        # qualify; Q has since been moved to the bench by a merged swap
+        import json
+
+        from sentinel.config import TickerCfg
+        from sentinel.screen import baseline_from_history
+
+        scores = {"Q": 1.0, "B": 2.0, "C": 3.0, "D": 50.0, "E": 90.0}
+        runs = [
+            RunSnapshot(
+                f"2026-10-{1 + i:02d}", "scheduled",
+                {t: TickerSnapshot(composite=s, score=s, r40_trend=0.01)
+                 for t, s in scores.items()},
+                {"NEW": TickerSnapshot(composite=60.0, score=60.0, growth=0.2,
+                                       r40_trend=0.01)},
+            )
+            for i in range(15)
+        ]
+        path = cache_root / "run_history.json"
+        path.write_text(json.dumps({"version": 1, "runs": [r.to_dict() for r in runs]}))
+        cfg = Config(
+            universe=tuple(TickerCfg(t, ("r40",)) for t in ("B", "C", "D", "E", "NEW")),
+            bench=("Q",),
+        )
+        base = baseline_from_history(cfg, path)
+        assert base.outgoing == "B" and base.outgoing_qualifies
+        assert base.moved_out == ("Q",) and base.moved_in == ("NEW",)
 
     def test_matching_run_says_nothing_about_roles(self, cache_root):
         from sentinel.config import TickerCfg

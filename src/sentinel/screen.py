@@ -32,7 +32,7 @@ from sentinel.config import Config, load_config
 from sentinel.data import cache
 from sentinel.data.fundamentals import inputs_from_frame
 from sentinel.data.history import load_history
-from sentinel.digest import DATA_QUALITY_FLAGS, bench_entry_block, build_digest
+from sentinel.digest import DATA_QUALITY_FLAGS, build_digest, swap_universe
 from sentinel.indicators.fundamentals import R40_BAR, compute_scorecard, display_flags
 from sentinel.report.changes import RunSnapshot
 from sentinel.rotation import Entrant, enters_above_tail, growth_tier, pick_entrant
@@ -68,13 +68,15 @@ class Baseline:
     universe_scores: dict[str, float]
     outgoing: str | None
     outgoing_qualifies: bool
-    bench: list[Entrant]
+    bench: list[Entrant]               # eligible bench names only
     # set when the latest run predates the current config (a swap merged
     # since): names that left or joined, said in the report header
     moved_out: tuple[str, ...] = ()
     moved_in: tuple[str, ...] = ()
     # bench names that cannot be swapped in yet, with the reason
     bench_blocked: tuple[tuple[str, str], ...] = ()
+    # of those, the ones that would clear the tail once eligible
+    bench_waiting: tuple[str, ...] = ()
 
 
 def _sort_key(row: ScreenRow) -> tuple:
@@ -89,43 +91,22 @@ def _sort_key(row: ScreenRow) -> tuple:
 
 
 def baseline_from_history(cfg: Config, history_path: Path | None = None) -> Baseline | None:
+    """The digest's swap check over the recorded runs, under the CURRENT
+    config: the outgoing name, the universe scores and the bench rows all
+    come from `build_digest` and `swap_universe`, so the screen and the
+    weekly digest cannot disagree. None when no run scored any universe name.
+    """
     raw_runs, _ = load_history(history_path)
     runs = [RunSnapshot.from_dict(r) for r in raw_runs]
     if not runs:
         return None
     latest = runs[-1]
-    # Rebase the latest run onto the CURRENT config. Between a merged swap and
-    # the next scheduled run, the run still scores the outgoing name in the
-    # universe and the incoming one on the bench; both were scored on the same
-    # basis that day, so the snapshots are reused under their new roles.
-    scored = {**latest.bench, **latest.tickers}
-    # history records r40 names only, so the universe side is cfg.r40_tickers,
-    # the same list the digest reads
-    universe_scores = {
-        t: scored[t].score
-        for t in cfg.r40_tickers
-        if t in scored and scored[t].score is not None
-    }
-    if not universe_scores:
-        return None
-    # qualification is a multi-window history read, so it comes from the
-    # digest over the recorded runs; a qualifier already swapped out is skipped
+    universe_scores, moved_out, moved_in = swap_universe(latest, cfg.r40_tickers)
     digest = build_digest(runs, cfg.r40_tickers, list(cfg.bench), cfg.changes)
-    qualifier = next(
-        (w for w in digest.level_watch if w.qualifies and w.ticker in universe_scores),
-        None,
-    )
-    if qualifier is not None:
-        outgoing, qualifies = qualifier.ticker, True
-    else:
-        outgoing = min(universe_scores, key=lambda t: (universe_scores[t], t))
-        qualifies = False
-    # bench names are read exactly as the digest reads them: the window's
-    # bench rows (last observed score and growth, live on the last
-    # appearance) under the same entrant tests. Only the on-entry test is
-    # redone, against the rebased universe. A configured bench name with no
-    # row (a name just moved to the bench, or one no run has scored there yet)
-    # is named, never dropped.
+    if not universe_scores or digest.swap_outgoing is None:
+        return None
+    # a configured bench name with no row (a name just moved to the bench, or
+    # one no run has scored there yet) is named, never dropped
     rows = {b.ticker: b for b in digest.bench_weeks}
     bench: list[Entrant] = []
     blocked: list[tuple[str, str]] = []
@@ -133,33 +114,20 @@ def baseline_from_history(cfg: Config, history_path: Path | None = None) -> Base
         week = rows.get(t)
         if week is None:
             blocked.append((t, "not shadow-scored on the bench this window"))
-            continue
-        block = bench_entry_block(week)
-        if block is not None:
-            blocked.append((t, block))
-        clears = (
-            None if block is not None or week.score_last is None
-            else enters_above_tail(
-                week.score_last, universe_scores, outgoing, cfg.changes.weak_bottom_n
-            )
-        )
-        bench.append(Entrant(
-            t, week.score_last,
-            growth_tier(week.growth_last, cfg.changes.swap_min_growth), clears,
-        ))
+        elif week.entry_block is not None:
+            blocked.append((t, week.entry_block))
+        else:
+            bench.append(Entrant(t, week.score_last, week.growth_tier, week.clears_tail))
     return Baseline(
         run_date=latest.date,
         universe_scores=universe_scores,
-        outgoing=outgoing,
-        outgoing_qualifies=qualifies,
+        outgoing=digest.swap_outgoing,
+        outgoing_qualifies=digest.swap_outgoing_qualifies,
         bench=bench,
-        # a role change only: a universe name the run did not score (a fetch
-        # miss) has not "joined", it is just absent
-        moved_out=tuple(sorted(set(latest.tickers) - set(cfg.r40_tickers))),
-        moved_in=tuple(sorted(
-            t for t in cfg.r40_tickers if t in latest.bench and t not in latest.tickers
-        )),
+        moved_out=tuple(moved_out),
+        moved_in=tuple(moved_in),
         bench_blocked=tuple(blocked),
+        bench_waiting=tuple(digest.bench_waiting),
     )
 
 
@@ -292,7 +260,10 @@ def format_report(
         "",
     ]
     if baseline is None:
-        lines += ["No run history: the on-entry test needs a scored run, so it reads n/a.", ""]
+        lines += [
+            "No scored run in the history: the on-entry test needs one, so it reads n/a.",
+            "",
+        ]
     else:
         why = "qualifies" if baseline.outgoing_qualifies else "lowest score, a what-if"
         lines += [
@@ -351,6 +322,14 @@ def format_report(
     ]
     pick = pick_entrant(pool)
     bench_names = {e.ticker for e in (baseline.bench if baseline else [])}
+    # names the table shows clearing that the pick cannot take yet, so the
+    # pick line never contradicts the table above it
+    waiting = [
+        f"{r.ticker} (warm-up)" for r in sorted(rows, key=_sort_key)
+        if r.error is None and not r.live and r.clears
+    ]
+    if baseline is not None:
+        waiting += [f"{t} (on the bench, not eligible yet)" for t in baseline.bench_waiting]
     lines.append("")
     if baseline is None:
         lines.append("Rule pick: n/a (no scored run to test against).")
@@ -359,6 +338,9 @@ def format_report(
             "Rule pick over the current bench and the live candidates: none "
             "clears the tail on entry. Widen the pool (screen: candidates in "
             "config/watchlist.yaml, or --tickers)."
+            if not waiting else
+            "Rule pick over the current bench and the live candidates: none "
+            "of the eligible names clears the tail on entry."
         )
     else:
         where = "already on the bench" if pick.ticker in bench_names else "a candidate"
@@ -371,6 +353,10 @@ def format_report(
         lines.append(
             f"Rule pick over the current bench and the live candidates: "
             f"{pick.ticker} ({where}, {tier}, fundamental {_num(pick.score)})."
+        )
+    if baseline is not None and waiting:
+        lines.append(
+            f"Would clear the tail but not eligible yet: {', '.join(waiting)}."
         )
     lines += [
         "",
@@ -406,8 +392,9 @@ def main(argv: list[str] | None = None) -> int:
     # a universe or bench name is already scored every run; screening it again
     # would let it compete against its own score (or twice in the pick pool)
     scored = set(cfg.all_tickers) | set(cfg.bench)
+    tickers = list(dict.fromkeys(tickers))
     skipped = [t for t in tickers if t in scored]
-    tickers = [t for t in dict.fromkeys(tickers) if t not in scored]
+    tickers = [t for t in tickers if t not in scored]
     if not tickers:
         if skipped:
             sys.stdout.write(

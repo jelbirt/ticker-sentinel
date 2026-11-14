@@ -152,6 +152,43 @@ def _warn_unknown(keys: Iterable[str], known: frozenset[str], where: str) -> Non
         )
 
 
+def _ticker_list(value: object, where: str) -> tuple[str, ...]:
+    """A list of tickers, or a comma-separated string of them. Anything else
+    is warned about and ignored, never iterated character by character."""
+    if value is None:
+        return ()
+    if isinstance(value, str):
+        items: Iterable[object] = value.split(",")
+    elif isinstance(value, (list, tuple)):
+        items = value
+    else:
+        log.warning("config: %s must be a list of tickers; ignored", where)
+        return ()
+    return tuple(s.upper() for s in (str(t).strip() for t in items) if s)
+
+
+def _swap_min_growth(changes_kwargs: dict[str, object]) -> None:
+    """Validate changes.swap_min_growth in place: a fraction in [0, 1]. A
+    percent typed as 15, or a non-number, would put every bench name in the
+    slower tier or crash the weekly digest, so it warns and the default
+    applies instead (failures degrade, they don't crash)."""
+    if "swap_min_growth" not in changes_kwargs:
+        return
+    value = changes_kwargs["swap_min_growth"]
+    try:
+        growth = float(value)  # type: ignore[arg-type]
+    except (TypeError, ValueError):
+        growth = None
+    if growth is None or not 0.0 <= growth <= 1.0:
+        log.warning(
+            "config: changes.swap_min_growth must be a fraction between 0 and 1 "
+            "(0.15 means 15 percent), got %r; the default applies", value,
+        )
+        del changes_kwargs["swap_min_growth"]
+    else:
+        changes_kwargs["swap_min_growth"] = growth
+
+
 def load_config(path: Path | None = None) -> Config:
     path = path or repo_root() / "config" / "watchlist.yaml"
     raw = yaml.safe_load(path.read_text()) or {}
@@ -165,12 +202,19 @@ def load_config(path: Path | None = None) -> Config:
     news_raw = raw.get("news", {}) or {}
     changes_raw = raw.get("changes", {}) or {}
     screen_raw = raw.get("screen", {}) or {}
+    if not isinstance(screen_raw, dict):
+        # the daily run loads this file too: a malformed screen block must
+        # never take it down, since only the bench screen reads it
+        log.warning("config: screen: must be a block with a candidates: list; ignored")
+        screen_raw = {}
     _warn_unknown(report, REPORT_KEYS, "in the report: block")
     _warn_unknown(scoring, SCORING_KEYS, "in the scoring: block")
     _warn_unknown(news_raw, NEWS_KEYS, "in the news: block")
     _warn_unknown(changes_raw, CHANGES_KEYS, "in the changes: block")
     _warn_unknown(screen_raw, SCREEN_KEYS, "in the screen: block")
-    changes = ChangesCfg(**{k: v for k, v in changes_raw.items() if k in CHANGES_KEYS})
+    changes_kwargs = {k: v for k, v in changes_raw.items() if k in CHANGES_KEYS}
+    _swap_min_growth(changes_kwargs)
+    changes = ChangesCfg(**changes_kwargs)
     news = NewsCfg(
         feeds=tuple(news_raw.get("feeds", []) or []),
         per_ticker_feed=news_raw.get("per_ticker_feed"),
@@ -193,7 +237,7 @@ def load_config(path: Path | None = None) -> Config:
         technicals_weight=float(scoring.get("technicals_weight", 0.4)),
         news=news,
         changes=changes,
-        screen_candidates=tuple(
-            str(t).upper() for t in screen_raw.get("candidates", []) or []
+        screen_candidates=_ticker_list(
+            screen_raw.get("candidates"), "screen.candidates"
         ),
     )
