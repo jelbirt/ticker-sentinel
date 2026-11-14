@@ -32,7 +32,7 @@ from sentinel.config import Config, load_config
 from sentinel.data import cache
 from sentinel.data.fundamentals import inputs_from_frame
 from sentinel.data.history import load_history
-from sentinel.digest import DATA_QUALITY_FLAGS, build_digest
+from sentinel.digest import DATA_QUALITY_FLAGS, build_digest, snapshot_live
 from sentinel.indicators.fundamentals import R40_BAR, compute_scorecard, display_flags
 from sentinel.report.changes import RunSnapshot
 from sentinel.rotation import Entrant, enters_above_tail, growth_tier, pick_entrant
@@ -73,6 +73,8 @@ class Baseline:
     # since): names that left or joined, said in the report header
     moved_out: tuple[str, ...] = ()
     moved_in: tuple[str, ...] = ()
+    # bench names that cannot be swapped in yet, with the reason
+    bench_blocked: tuple[tuple[str, str], ...] = ()
 
 
 def _sort_key(row: ScreenRow) -> tuple:
@@ -97,9 +99,11 @@ def baseline_from_history(cfg: Config, history_path: Path | None = None) -> Base
     # universe and the incoming one on the bench; both were scored on the same
     # basis that day, so the snapshots are reused under their new roles.
     scored = {**latest.bench, **latest.tickers}
+    # history records r40 names only, so the universe side is cfg.r40_tickers,
+    # the same list the digest reads
     universe_scores = {
         t: scored[t].score
-        for t in cfg.all_tickers
+        for t in cfg.r40_tickers
         if t in scored and scored[t].score is not None
     }
     if not universe_scores:
@@ -116,13 +120,28 @@ def baseline_from_history(cfg: Config, history_path: Path | None = None) -> Base
     else:
         outgoing = min(universe_scores, key=lambda t: (universe_scores[t], t))
         qualifies = False
+    # the same entrant tests as the digest's swap check: one full window of
+    # shadow scoring, and live on the latest snapshot
+    windows = {b.ticker: b for b in digest.bench_weeks}
     bench: list[Entrant] = []
+    blocked: list[tuple[str, str]] = []
     for t in cfg.bench:
         snap = scored.get(t)
         if snap is None:
             continue
+        week = windows.get(t)
+        if week is not None and not week.full_window:
+            block: str | None = "joined the bench mid-window"
+        elif not snapshot_live(snap):
+            block = "warm-up: r40 trend n/a or a data-quality flag"
+        elif snap.score is None:
+            block = "no fundamental score"
+        else:
+            block = None
+        if block is not None:
+            blocked.append((t, block))
         clears = (
-            None if snap.score is None
+            None if block is not None
             else enters_above_tail(
                 snap.score, universe_scores, outgoing, cfg.changes.weak_bottom_n
             )
@@ -136,8 +155,13 @@ def baseline_from_history(cfg: Config, history_path: Path | None = None) -> Base
         outgoing=outgoing,
         outgoing_qualifies=qualifies,
         bench=bench,
-        moved_out=tuple(sorted(set(latest.tickers) - set(cfg.all_tickers))),
-        moved_in=tuple(sorted(set(cfg.all_tickers) - set(latest.tickers))),
+        # a role change only: a universe name the run did not score (a fetch
+        # miss) has not "joined", it is just absent
+        moved_out=tuple(sorted(set(latest.tickers) - set(cfg.r40_tickers))),
+        moved_in=tuple(sorted(
+            t for t in cfg.r40_tickers if t in latest.bench and t not in latest.tickers
+        )),
+        bench_blocked=tuple(blocked),
     )
 
 
@@ -161,16 +185,20 @@ def screen_ticker(
         return ScreenRow(ticker, error="no yfinance statements")
 
     # hand backfill the frame already in hand, so an uncached name is fetched once
-    result = backfill_ticker(ticker, fetch_facts, lambda _t: (base_df, meta), apply=False)
-    if result.status == ACCEPT and result.merged is not None:
+    try:
+        result = backfill_ticker(ticker, fetch_facts, lambda _t: (base_df, meta), apply=False)
+    except Exception as exc:  # noqa: BLE001 - fall back to yfinance, keep sweeping
+        result = None
+        reason = f"backfill failed ({exc})"
+    if result is not None and result.status == ACCEPT and result.merged is not None:
         frame = result.merged
         history = f"EDGAR verified, {frame.shape[1]} quarters"
     else:
         frame = base_df
-        history = (
-            f"yfinance only, {frame.shape[1]} quarters "
-            f"({result.status.lower()}: {result.reason or 'n/a'})"
-        )
+        if result is not None:
+            reason = f"{result.status.lower()}: {result.reason or 'n/a'}"
+        history = f"yfinance only, {frame.shape[1]} quarters ({reason})"
+
 
     notes: list[str] = []
     try:
@@ -210,8 +238,18 @@ def run_screen(
 ) -> list[ScreenRow]:
     if fetch_facts is None or fetch_yfinance is None:
         from sentinel.backfill import _default_fetchers
+        from sentinel.data.fundamentals import fetch_statements
 
-        live_facts, live_yf = _default_fetchers()
+        try:
+            live_facts, live_yf = _default_fetchers()
+        except Exception as exc:  # noqa: BLE001 - degrade to yfinance-only scoring
+            log.warning("screen: EDGAR unavailable (%s); scoring on yfinance only", exc)
+            message = f"EDGAR unavailable ({exc})"
+
+            def live_facts(_ticker: str) -> dict[str, Any]:
+                raise LookupError(message)
+
+            live_yf = fetch_statements
         fetch_facts = fetch_facts or live_facts
         fetch_yfinance = fetch_yfinance or live_yf
     rows = []
@@ -235,7 +273,12 @@ def _r40(value: float | None) -> str:
     return f"{value * 100:.1f} {'pass' if value >= R40_BAR else 'fail'}"
 
 
-def format_report(rows: list[ScreenRow], baseline: Baseline | None, cfg: Config) -> str:
+def format_report(
+    rows: list[ScreenRow],
+    baseline: Baseline | None,
+    cfg: Config,
+    skipped: list[str] | None = None,
+) -> str:
     """Plain ASCII markdown; no em or en dashes (repo rule)."""
     floor = f"{cfg.changes.swap_min_growth * 100:.0f}"
     lines = [
@@ -265,6 +308,18 @@ def format_report(rows: list[ScreenRow], baseline: Baseline | None, cfg: Config)
                 "counts as its universe score.",
                 "",
             ]
+        if baseline.bench_blocked:
+            lines += [
+                "Bench names that cannot be swapped in yet: "
+                + "; ".join(f"{t} ({why})" for t, why in baseline.bench_blocked)
+                + ".",
+                "",
+            ]
+    if skipped:
+        lines += [
+            f"Not screened, already scored by the pipeline: {', '.join(skipped)}.",
+            "",
+        ]
     lines += [
         "| ticker | fundamental | growth | tier | clears tail | r40 fcf "
         "| r40 trend | trend live | history | flags |",
@@ -295,7 +350,9 @@ def format_report(rows: list[ScreenRow], baseline: Baseline | None, cfg: Config)
     pick = pick_entrant(pool)
     bench_names = {e.ticker for e in (baseline.bench if baseline else [])}
     lines.append("")
-    if pick is None:
+    if baseline is None:
+        lines.append("Rule pick: n/a (no scored run to test against).")
+    elif pick is None:
         lines.append(
             "Rule pick over the current bench and the live candidates: none "
             "clears the tail on entry. Widen the pool (screen: candidates in "
@@ -339,12 +396,22 @@ def main(argv: list[str] | None = None) -> int:
         tickers = [t.strip().upper() for t in args.tickers.split(",") if t.strip()]
     else:
         tickers = list(cfg.screen_candidates)
+    # a universe or bench name is already scored every run; screening it again
+    # would let it compete against its own score (or twice in the pick pool)
+    scored = set(cfg.all_tickers) | set(cfg.bench)
+    skipped = [t for t in tickers if t in scored]
+    tickers = [t for t in dict.fromkeys(tickers) if t not in scored]
     if not tickers:
+        if skipped:
+            sys.stdout.write(
+                f"Nothing to screen: {', '.join(skipped)} already scored by the pipeline.\n"
+            )
+            return 0
         sys.stdout.write("No candidates: set screen.candidates in watchlist.yaml or pass --tickers.\n")
         return 0
     baseline = baseline_from_history(cfg, args.history)
     rows = run_screen(tickers, cfg, baseline)
-    sys.stdout.write(format_report(rows, baseline, cfg))
+    sys.stdout.write(format_report(rows, baseline, cfg, skipped))
     return 0
 
 

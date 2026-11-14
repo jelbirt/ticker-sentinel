@@ -166,6 +166,49 @@ class TestCli:
         assert "No candidates" in capsys.readouterr().out
 
 
+    def test_universe_and_bench_names_are_not_screened(self, cache_root, monkeypatch, capsys):
+        monkeypatch.setattr(
+            backfill, "_default_fetchers",
+            lambda: _fetchers(_series(FAST), yf_frame=_yf(FAST)),
+        )
+        cfg_path = cache_root.parent.parent / "watchlist.yaml"
+        cfg_path.write_text("universe:\n  - ticker: A\n    tags: [r40]\nbench: [BEN]\n")
+        assert screen.main(["--tickers", "a,ben", "--config", str(cfg_path)]) == 0
+        assert "Nothing to screen: A, BEN already scored" in capsys.readouterr().out
+        assert screen.main(["--tickers", "a,newco", "--config", str(cfg_path)]) == 0
+        out = capsys.readouterr().out
+        assert "| NEWCO |" in out and "| A |" not in out
+        assert "Not screened, already scored by the pipeline: A." in out
+
+
+class TestDegrades:
+    def test_edgar_down_scores_every_name_on_yfinance(self, cache_root, monkeypatch):
+        def down():
+            raise ConnectionError("sec.gov unreachable")
+
+        monkeypatch.setattr(backfill, "_default_fetchers", down)
+        _, yf = _fetchers(_series(FAST), yf_frame=_yf(FAST))
+        rows = run_screen(["X"], CFG, None, fetch_yfinance=yf)
+        # the sweep finished and the row says why it is yfinance-only
+        assert rows[0].error is None
+        assert "yfinance only" in rows[0].history and "EDGAR unavailable" in rows[0].history
+
+    def test_backfill_exception_is_a_yfinance_row_not_a_crash(self, cache_root, monkeypatch):
+        def boom(*_a, **_k):
+            raise RuntimeError("merge failed")
+
+        monkeypatch.setattr(screen, "backfill_ticker", boom)
+        facts, yf = _fetchers(_series(FAST), yf_frame=_yf(FAST))
+        row = screen_ticker("X", facts, yf, None, CFG)
+        assert row.error is None and "backfill failed (merge failed)" in row.history
+
+    def test_no_history_says_why_there_is_no_pick(self, cache_root):
+        facts, yf = _fetchers(_series(FAST), yf_frame=_yf(FAST))
+        text = format_report([screen_ticker("X", facts, yf, None, CFG)], None, CFG)
+        assert "Rule pick: n/a (no scored run to test against)." in text
+        assert "Widen the pool" not in text
+
+
 def test_run_screen_uses_injected_fetchers(cache_root):
     facts, yf = _fetchers(_series(FAST), yf_frame=_yf(FAST))
     rows = run_screen(["X", "Y"], CFG, None, facts, yf)
@@ -183,7 +226,7 @@ class TestBaselineAfterASwap:
             "2026-11-14", "scheduled",
             {t: TickerSnapshot(composite=s, score=s, r40_trend=0.01)
              for t, s in {"OLD": 1.0, "B": 2.0, "C": 3.0, "D": 4.0, "E": 90.0}.items()},
-            {"NEW": TickerSnapshot(composite=60.0, score=60.0, growth=0.2)},
+            {"NEW": TickerSnapshot(composite=60.0, score=60.0, growth=0.2, r40_trend=0.01)},
         )
         path = cache_root / "run_history.json"
         path.write_text(json.dumps({"version": 1, "runs": [run.to_dict()]}))
@@ -208,6 +251,37 @@ class TestBaselineAfterASwap:
         assert base.moved_out == ("OLD",) and base.moved_in == ("NEW",)
         text = format_report([], base, cfg)
         assert "left: OLD; joined: NEW" in text
+
+    def test_universe_name_missing_from_the_run_has_not_joined(self, cache_root):
+        # a fetch miss is an absence, not a role change
+        from sentinel.config import TickerCfg
+        from sentinel.screen import baseline_from_history
+
+        cfg = Config(
+            universe=tuple(TickerCfg(t, ("r40",)) for t in ("OLD", "B", "C", "D", "E", "GONE")),
+            bench=("NEW",),
+        )
+        base = baseline_from_history(cfg, self._history(cache_root))
+        assert base.moved_in == () and base.moved_out == ()
+
+    def test_warm_up_bench_name_is_blocked_from_the_pick(self, cache_root):
+        import json
+
+        from sentinel.config import TickerCfg
+        from sentinel.screen import baseline_from_history
+
+        path = self._history(cache_root)
+        data = json.loads(path.read_text())
+        data["runs"][0]["bench"]["NEW"]["r40_trend"] = None
+        path.write_text(json.dumps(data))
+        cfg = Config(
+            universe=tuple(TickerCfg(t, ("r40",)) for t in ("OLD", "B", "C", "D", "E")),
+            bench=("NEW",),
+        )
+        base = baseline_from_history(cfg, path)
+        assert base.bench[0].clears is None
+        assert base.bench_blocked[0][0] == "NEW"
+        assert "cannot be swapped in yet: NEW (warm-up" in format_report([], base, cfg)
 
     def test_matching_run_says_nothing_about_roles(self, cache_root):
         from sentinel.config import TickerCfg

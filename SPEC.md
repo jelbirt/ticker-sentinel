@@ -319,9 +319,12 @@ can clear the tail when a name qualifies. Two pieces keep it that way:
    behind the backfill verification gate; yfinance alone when the gate
    rejects, which leaves the name in warm-up), measures each name against the
    latest run in `run_history.json`, and prints a table plus the name the rule
-   would pick over the bench and the live candidates together. It writes
-   nothing; `--tickers` screens names outside the pool. It needs the network,
-   so it is never scheduled and never in tests.
+   would pick over the bench and the live candidates together, holding bench
+   names to the digest's entrant tests (one full window, live). It writes
+   nothing; `--tickers` screens names outside the pool (universe and bench
+   names are skipped, they are scored every run). If EDGAR is unreachable,
+   every name scores on yfinance alone and says so. It needs the network, so
+   it is never scheduled and never in tests.
 
 Adding a screened name to the bench is the usual owner-gated config edit in
 the refresh PR, which also moves it out of `screen.candidates` (a test fails
@@ -1440,16 +1443,25 @@ bench refresh in section 7.0):
   tier), and whether the name would rank above the bottom `weak_bottom_n`
   by fundamental score once the outgoing name leaves: yes, no, or n/a
   without a score. The outgoing name is the first qualifier on the level
-  table, else the lowest fundamental score as a what-if. Only configured
-  bench names outside the latest run's universe are entrants: a window can
-  hold bench snapshots of a name promoted mid-week, and those read n/a.
+  table, else the lowest fundamental score as a what-if. Entrants are
+  configured bench names outside the latest run's universe that were on the
+  bench from the window's first run carrying a bench block (the round-7 one
+  window of shadow scoring; a run whose bench scoring failed does not
+  shorten it) and are live on their latest snapshot (the condition-1 test:
+  `r40_trend` present, no data-quality flag). Any other row reads n/a, and a
+  line under the table names it with the reason (no longer on the bench,
+  joined mid-window, warm-up).
 - **Swap-check line.** Under the bench table, in words: the qualifier and
   the name the rule promotes; a slower-grower fallback said as such; a pick
   whose growth is n/a said as unknown, with a check before the swap; or no
   swap and a prompt to refresh the bench with `python -m sentinel.screen`.
   With no qualifier, the bench depth: how many names would clear and how
   many of those are growth-tier, with the same prompt when none or only
-  slower growers would. The longest-standing tiebreak still needs the
+  slower growers would (clearing names whose growth is n/a are named as
+  unknown, not slow). With no bench snapshots at all the line still
+  renders: a qualifier then reads "the swap cannot be tested", with a
+  prompt to check the bench fetch or refresh the bench. The level-table
+  intro states the same growth-first rule. The longest-standing tiebreak still needs the
   weekly records (the digest caps its window count at `weak_windows`), so
   the line names the first qualifier and asks for that check.
 - **JSON twin and history.** `bench_weeks` rows gain `growth_last`,

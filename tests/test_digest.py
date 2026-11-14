@@ -538,7 +538,8 @@ class TestLevelRule:
         assert "| DDD | 20.0 | 48.7 pass | 19 | qualifies (3 of 3 windows) | n/a |" in text
         assert "qualifies and is a swap candidate" in text
         assert "At most one swap per round, longest-standing qualifier first" in text
-        assert "on entry, otherwise refresh the bench" in text
+        assert "growing 15% or more that would rank above the bottom 3 on entry" in text
+        assert "(a slower grower only when none does), otherwise refresh the bench" in text
         assert "r40 fcf is context, not a hold" in text
         assert "Surfacing only" not in text
 
@@ -589,7 +590,8 @@ class TestSwapCheck:
     def _runs(self, bench: dict[str, tuple[float | None, float | None]],
               n_runs: int = 15) -> list[RunSnapshot]:
         def snap(score, growth):
-            return TickerSnapshot(composite=score, score=score, growth=growth)
+            return TickerSnapshot(composite=score, score=score, growth=growth,
+                                  r40_trend=0.05)
         return [
             RunSnapshot(
                 f"2026-08-{1 + i:02d}", "scheduled",
@@ -682,6 +684,48 @@ class TestSwapCheck:
         d = self._digest({"LOW": (15.0, 0.30)}, n_runs=4)
         text = render_markdown(d, 4, date(2026, 8, 15))
         assert "None would clear: refresh the bench before a name qualifies" in text
+
+    def test_name_benched_mid_window_waits_a_full_window(self):
+        # SPEC 7.0.1 round 7: one window of shadow scoring before promotion
+        runs = self._runs({"OLD": (25.0, 0.20)})
+        live = TickerSnapshot(composite=85.0, score=85.0, growth=0.30, r40_trend=0.05)
+        runs[-1].bench["NEW"] = live
+        d = build_digest(runs, list(self.BASE), ["OLD", "NEW"], CFG)
+        rows = {b.ticker: b for b in d.bench_weeks}
+        assert rows["NEW"].runs_seen == 1 and not rows["NEW"].full_window
+        assert rows["NEW"].clears_tail is None and d.swap_pick is None
+        text = render_markdown(d, 15, date(2026, 8, 15))
+        assert "NEW (joined the bench mid-window" in text
+        assert "The rule promotes NEW" not in text
+
+    def test_failed_bench_fetch_on_the_first_run_does_not_shorten_the_window(self):
+        runs = self._runs({"GRO": (85.0, 0.20)})
+        runs[0] = RunSnapshot(runs[0].date, runs[0].run_type, runs[0].tickers, {})
+        d = build_digest(runs, list(self.BASE), ["GRO"], CFG)
+        assert d.bench_weeks[0].full_window and d.swap_pick == "GRO"
+
+    def test_warm_up_bench_name_is_not_an_entrant(self):
+        runs = self._runs({"GRO": (85.0, 0.20)})
+        for run in runs:
+            run.bench["WARM"] = TickerSnapshot(composite=95.0, score=95.0,
+                                               growth=0.40, r40_trend=None)
+        d = build_digest(runs, list(self.BASE), ["GRO", "WARM"], CFG)
+        rows = {b.ticker: b for b in d.bench_weeks}
+        assert rows["WARM"].entry_block.startswith("warm-up")
+        assert rows["WARM"].clears_tail is None and d.swap_pick == "GRO"
+
+    def test_qualifier_with_no_bench_snapshots_still_gets_a_swap_line(self):
+        d = build_digest(self._runs({}), list(self.BASE), ["WDAY"], CFG)
+        assert d.swap_outgoing == "CCC" and d.swap_outgoing_qualifies
+        text = render_markdown(d, 15, date(2026, 8, 15))
+        assert "Swap check: CCC qualifies, but no bench name was scored" in text
+        assert "python -m sentinel.screen" in text
+
+    def test_unknown_growth_on_the_what_if_is_not_called_slow(self):
+        d = self._digest({"UNK": (95.0, None)}, n_runs=4)
+        text = render_markdown(d, 4, date(2026, 8, 15))
+        assert "Growth is n/a this window for UNK" in text
+        assert "Only slower growers would clear" not in text
 
     def test_swap_fields_reach_the_json(self):
         d = self._digest({"GRO": (85.0, 0.20)})
