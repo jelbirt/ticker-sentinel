@@ -1348,6 +1348,19 @@ recorded 2026-11-14 with round 13):**
   out, ZM's 33.8 would land in the bottom 3 behind GTLB 30.7 and SNOW
   33.3. The bench needs new candidates before round 16 (round-7 screen
   pattern).
+- Bench refresh (2026-11-14, after PR #53, SPEC 7.0): the first
+  `python -m sentinel.screen` run picked ZETA (fundamental 63.3, growth 41.0
+  percent, `r40_fcf` 54.6, `r40_trend` +0.073, flagged `dilution`); KVYO
+  (35.8, growth 27.0) is the only other live growth-tier candidate that
+  clears the tail. ZETA joins the bench and leaves `screen.candidates`.
+  Backfill dry run: ACCEPT, 7 to 16 quarters, 20 of 20 overlap checks
+  matched, so the owner-gated `--apply --tickers ZETA` follows the merge.
+  If the merge lands before the 11-17 run and all five runs of the window
+  record history, round 15 is ZETA's first full window on the bench, so it
+  is eligible there and, at its screen score, would rank ahead of GWRE as
+  OKTA's replacement. A run that does not record pulls the window back to
+  11-14, before ZETA joined, and defers it a round. Liveness is read from
+  the latest snapshot, so the apply only has to land before the 11-21 run.
 - Deterioration watch: 20 listings in 5 runs (7, 3, 7, 3, 0); 11-14 printed
   "nothing cleared a threshold". NOW's post-earnings cuts widened to 32
   down vs 1 up from 11-10.
