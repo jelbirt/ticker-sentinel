@@ -15,12 +15,7 @@ made every second merge conflict here.
   `run_history.json`; discard that change rather than committing it.
 
 ## Active workstreams
-- `bench-zeta` (opened 2026-11-14, PR #54; no issue): ZETA joins the bench
-  from the first growth-first screen (fundamental 63.3, growth 41.0, `r40_fcf`
-  54.6, flagged `dilution`) and leaves `screen.candidates`. Backfill dry run
-  ACCEPT, 7 to 16 quarters, 20 of 20 overlap checks matched. After merge:
-  the owner-gated `--apply --tickers ZETA` on main (writes `data/cache/`,
-  so outside a daily run), then the bench line under Next gates gains ZETA.
+- none open.
 
   One branch per workstream via `scripts/new-worktree.sh <branch>`; main is the
   review inbox; merge back via PR.
@@ -37,6 +32,11 @@ made every second merge conflict here.
   relation instead.
 
 ## Done
+- `bench-zeta` (2026-11-14, merged as PR #54, worktree torn down; no
+  issue): ZETA joins the bench from the first growth-first screen and
+  leaves `screen.candidates`. Apply `041030e` (owner-approved): 7 to 16
+  quarters, 20 of 20 overlap checks matched; scored from the new cache at
+  fundamental 63.3, `r40_trend` +0.073, live.
 - `bench-refresh` (2026-11-14, merged as PR #53, worktree torn down; no
   issue): growth-first swap rule (owner, 2026-11-14: the best clearing bench
   name growing 15 percent or more, a slower grower only as fallback;
@@ -318,7 +318,7 @@ made every second merge conflict here.
 ## Next gates (owner)
 - Weekly watchlist candidate refresh: live since 2026-08-15. A digest issue
   opens Saturdays (label `watchlist-refresh`, owner-assigned); do the refresh
-  from the issue. Bench: WDAY, ZM, S, GWRE, ESTC, ZS (a structured `bench:`
+  from the issue. Bench: WDAY, ZM, S, GWRE, ESTC, ZS, ZETA (a structured `bench:`
   key in watchlist.yaml). Calibration complete: rounds 1-5 (issues #6, #22, #24, #25, #26)
   all closed with no changes; the option-3 decision (2026-08-31, SPEC 7.0.1
   round 3) is STAY MANUAL, reaffirmed 2026-09-17 (round 5: 14 of 20
@@ -350,7 +350,10 @@ made every second merge conflict here.
   report, and the bench needs new candidates before round 16 (after GWRE
   no bench name clears the tail on entry). PR #53 (2026-11-14) made the
   swap growth-first and added the weekly bench check and the screen; its
-  first screen picked ZETA, which needs a full window on the bench (from
-  the 11-17 run) before it can be swapped in.
+  first screen picked ZETA, benched by PR #54 with its history applied
+  (041030e). If all five runs from 11-17 to 11-21 record, round 15 is its
+  first full window, so the round-15 swap check should name ZETA rather
+  than GWRE for OKTA's slot (a run that fails to record defers it to round
+  16). The digest's growth column fills from the first run after PR #53.
 - (done) First scheduled run after merge created `data/cache/run_history.json`
   on 2026-08-07; change detection live since 2026-08-08.
